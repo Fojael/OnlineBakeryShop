@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { register } from "../../services/authService";
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -16,19 +17,42 @@ const Register = () => {
         });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleSubmit = async (e) => {
+    e.preventDefault();
 
-        if (formData.password !== formData.confirmPassword) {
-            alert("Passwords do not match!");
-            return;
-        }
+    if (formData.password !== formData.confirmPassword) {
+        alert("Passwords do not match!");
+        return;
+    }
 
-        // Later you will call the Django API here
-        console.log("Register Data:", formData);
+    try {
+        const response = await register({
+            username: formData.username,
+            email: formData.email,
+            phone: formData.phone,
+            password: formData.password,
+        });
+
+        console.log(response.data);
 
         alert("Registration Successful!");
-    };
+
+        setFormData({
+            username: "",
+            email: "",
+            phone: "",
+            password: "",
+            confirmPassword: "",
+        });
+
+    } catch (error) {
+
+        console.log(error.response);
+
+        alert("Registration Failed!");
+
+    }
+};
 
     return (
         <div className="container py-5">

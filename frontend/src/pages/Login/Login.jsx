@@ -1,10 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { login } from "../../services/authService";
 
 const Login = () => {
     const [loginData, setLoginData] = useState({
         email: "",
         password: "",
     });
+    const navigate = useNavigate();
 
     const handleChange = (e) => {
         setLoginData({
@@ -13,14 +16,43 @@ const Login = () => {
         });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleSubmit = async (e) => {
 
-        // Later you will call the Django API here
-        console.log("Login Data:", loginData);
+    e.preventDefault();
 
-        alert("Login Successful!");
-    };
+    try {
+    const response = await login(loginData);
+
+    console.log(response.data);
+
+    // Save JWT tokens
+    localStorage.setItem(
+        "access",
+        response.data.access
+    );
+
+    localStorage.setItem(
+        "refresh",
+        response.data.refresh
+    );
+
+    // Save user role
+    localStorage.setItem(
+        "role",
+        response.data.user.role
+    );
+
+    alert("Login Successful!");
+    navigate("/");
+
+} catch (error) {
+
+    console.log(error.response);
+
+    alert("Invalid Email or Password");
+
+}
+};
 
     return (
         <div className="container py-5">
