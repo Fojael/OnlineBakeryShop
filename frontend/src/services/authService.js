@@ -19,8 +19,8 @@ export const changePassword = (data) => {
     );
 };
 
-export const logout = (refresh) => {
+export const logout = (refreshToken) => {
     return api.post("auth/logout/", {
-        refresh,
+        refresh: refreshToken,
     });
 };

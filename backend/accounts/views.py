@@ -3,7 +3,6 @@ from rest_framework.permissions import AllowAny
 
 from .models import User
 from .serializers import RegisterSerializer
-from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -13,12 +12,13 @@ from .serializers import LoginSerializer
 from rest_framework.permissions import IsAuthenticated
 from .serializers import UserSerializer
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import ChangePasswordSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
 from .permissions import IsAdmin
+
+
+from accounts.permissions import IsAdmin
 
 
 class RegisterView(generics.CreateAPIView):

@@ -1,21 +1,45 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+    getProfile,
+    changePassword,
+} from "../../services/authService";
 
 const Profile = () => {
+    // User Information
     const [user, setUser] = useState({
-        username: "customer1",
-        email: "customer1@gmail.com",
-        phone: "01700000000",
-        role: "CUSTOMER",
+        username: "",
+        email: "",
+        phone: "",
+        role: "",
     });
 
+    // Enable/Disable Edit Mode
     const [editMode, setEditMode] = useState(false);
 
+    // Password Data
     const [passwordData, setPasswordData] = useState({
         oldPassword: "",
         newPassword: "",
     });
 
-    // Handle Profile Changes
+    const fetchProfile = async () => {
+        try {
+            const response = await getProfile();
+
+            if (response?.data) {
+                setUser((prev) => ({ ...prev, ...response.data }));
+            } else {
+                console.warn("getProfile returned unexpected response:", response);
+            }
+        } catch (error) {
+            console.log(error?.response || error?.message || error);
+        }
+    };
+
+    useEffect(() => {
+        fetchProfile();
+    }, []);
+
     const handleUserChange = (e) => {
         setUser({
             ...user,
@@ -23,28 +47,34 @@ const Profile = () => {
         });
     };
 
-    // Handle Password Changes
-    const handlePasswordChange = (e) => {
+    const handlePasswordInputChange = (e) => {
         setPasswordData({
             ...passwordData,
             [e.target.name]: e.target.value,
         });
     };
 
-    // Update Profile
     const handleUpdateProfile = () => {
         alert("Profile Updated Successfully!");
         setEditMode(false);
     };
 
-    // Change Password
-    const handleChangePassword = () => {
-        alert("Password Changed Successfully!");
+    const handleChangePassword = async () => {
+        try {
+            await changePassword({
+                old_password: passwordData.oldPassword,
+                new_password: passwordData.newPassword,
+            });
 
-        setPasswordData({
-            oldPassword: "",
-            newPassword: "",
-        });
+            alert("Password Changed Successfully!");
+            setPasswordData({
+                oldPassword: "",
+                newPassword: "",
+            });
+        } catch (error) {
+            console.log(error?.response || error?.message || error);
+            alert("Failed to change password.");
+        }
     };
 
     return (
@@ -65,6 +95,7 @@ const Profile = () => {
                             Customer Information
                         </h3>
 
+                        {/* Username */}
                         <div className="mb-3">
                             <label className="form-label">
                                 Username
@@ -80,6 +111,7 @@ const Profile = () => {
                             />
                         </div>
 
+                        {/* Email */}
                         <div className="mb-3">
                             <label className="form-label">
                                 Email
@@ -95,6 +127,7 @@ const Profile = () => {
                             />
                         </div>
 
+                        {/* Phone */}
                         <div className="mb-3">
                             <label className="form-label">
                                 Phone Number
@@ -110,6 +143,7 @@ const Profile = () => {
                             />
                         </div>
 
+                        {/* Role */}
                         <div className="mb-4">
                             <label className="form-label">
                                 Role
@@ -123,21 +157,18 @@ const Profile = () => {
                             />
                         </div>
 
+                        {/* Edit/Save Button */}
                         {!editMode ? (
                             <button
                                 className="btn btn-primary"
-                                onClick={() =>
-                                    setEditMode(true)
-                                }
+                                onClick={() => setEditMode(true)}
                             >
                                 Edit Profile
                             </button>
                         ) : (
                             <button
                                 className="btn btn-success"
-                                onClick={
-                                    handleUpdateProfile
-                                }
+                                onClick={handleUpdateProfile}
                             >
                                 Save Changes
                             </button>
@@ -146,7 +177,6 @@ const Profile = () => {
                     </div>
 
                 </div>
-
 
                 {/* Change Password */}
                 <div className="col-lg-6">
@@ -157,6 +187,7 @@ const Profile = () => {
                             Change Password
                         </h3>
 
+                        {/* Old Password */}
                         <div className="mb-3">
                             <label className="form-label">
                                 Old Password
@@ -166,15 +197,12 @@ const Profile = () => {
                                 type="password"
                                 name="oldPassword"
                                 className="form-control"
-                                value={
-                                    passwordData.oldPassword
-                                }
-                                onChange={
-                                    handlePasswordChange
-                                }
+                                value={passwordData.oldPassword}
+                                onChange={handlePasswordInputChange}
                             />
                         </div>
 
+                        {/* New Password */}
                         <div className="mb-4">
                             <label className="form-label">
                                 New Password
@@ -184,20 +212,15 @@ const Profile = () => {
                                 type="password"
                                 name="newPassword"
                                 className="form-control"
-                                value={
-                                    passwordData.newPassword
-                                }
-                                onChange={
-                                    handlePasswordChange
-                                }
+                                value={passwordData.newPassword}
+                                onChange={handlePasswordInputChange}
                             />
                         </div>
 
+                        {/* Change Password Button */}
                         <button
                             className="btn btn-warning"
-                            onClick={
-                                handleChangePassword
-                            }
+                            onClick={handleChangePassword}
                         >
                             Change Password
                         </button>

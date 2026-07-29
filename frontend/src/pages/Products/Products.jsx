@@ -1,85 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getProducts } from "../../services/productService";
 
 const Products = () => {
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+
     const [search, setSearch] = useState("");
     const [category, setCategory] = useState("All");
     const [sort, setSort] = useState("default");
 
-    const products = [
-        {
-            id: 1,
-            name: "Chocolate Cake",
-            category: "Cake",
-            price: 15.99,
-            image: "https://via.placeholder.com/300",
-            rating: 5,
-            stock: "In Stock",
-        },
-        {
-            id: 2,
-            name: "Red Velvet Cake",
-            category: "Cake",
-            price: 18.99,
-            image: "https://via.placeholder.com/300",
-            rating: 5,
-            stock: "In Stock",
-        },
-        {
-            id: 3,
-            name: "Cup Cake",
-            category: "Cup Cake",
-            price: 4.99,
-            image: "https://via.placeholder.com/300",
-            rating: 4,
-            stock: "In Stock",
-        },
-        {
-            id: 4,
-            name: "Cookies",
-            category: "Cookies",
-            price: 6.99,
-            image: "https://via.placeholder.com/300",
-            rating: 4,
-            stock: "In Stock",
-        },
-        {
-            id: 5,
-            name: "Donut",
-            category: "Donut",
-            price: 3.99,
-            image: "https://via.placeholder.com/300",
-            rating: 5,
-            stock: "In Stock",
-        },
-        {
-            id: 6,
-            name: "Brownie",
-            category: "Brownie",
-            price: 5.99,
-            image: "https://via.placeholder.com/300",
-            rating: 5,
-            stock: "In Stock",
-        },
-        {
-            id: 7,
-            name: "Croissant",
-            category: "Pastry",
-            price: 4.49,
-            image: "https://via.placeholder.com/300",
-            rating: 4,
-            stock: "In Stock",
-        },
-        {
-            id: 8,
-            name: "Blueberry Muffin",
-            category: "Muffin",
-            price: 4.99,
-            image: "https://via.placeholder.com/300",
-            rating: 5,
-            stock: "In Stock",
-        },
-    ];
+    useEffect(() => {
+        fetchProducts();
+    }, []);
 
+    const fetchProducts = async () => {
+        try {
+            const response = await getProducts();
+            setProducts(response.data);
+        } catch (error) {
+            console.log(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Search + Category Filter
     let filteredProducts = products.filter((product) => {
         const matchesSearch = product.name
             .toLowerCase()
@@ -93,22 +38,37 @@ const Products = () => {
         return matchesSearch && matchesCategory;
     });
 
+    // Sort Products
     if (sort === "lowToHigh") {
-        filteredProducts.sort((a, b) => a.price - b.price);
+        filteredProducts.sort(
+            (a, b) => Number(a.price) - Number(b.price)
+        );
     }
 
     if (sort === "highToLow") {
-        filteredProducts.sort((a, b) => b.price - a.price);
+        filteredProducts.sort(
+            (a, b) => Number(b.price) - Number(a.price)
+        );
+    }
+
+    // Loading State
+    if (loading) {
+        return (
+            <div className="container py-5 text-center">
+                <h3>Loading Products...</h3>
+            </div>
+        );
     }
 
     return (
         <div className="container py-5">
+
             {/* Page Title */}
             <h1 className="text-center mb-5">
-                Bakery Products
+                Our Fresh Bakery Collection
             </h1>
 
-            {/* Search and Filters */}
+            {/* Search + Filter Section */}
             <div className="row mb-4">
 
                 {/* Search */}
@@ -116,7 +76,7 @@ const Products = () => {
                     <input
                         type="text"
                         className="form-control"
-                        placeholder="Search products..."
+                        placeholder="Search Bakery Products..."
                         value={search}
                         onChange={(e) =>
                             setSearch(e.target.value)
@@ -124,7 +84,7 @@ const Products = () => {
                     />
                 </div>
 
-                {/* Category Filter */}
+                {/* Category */}
                 <div className="col-md-4 mb-3">
                     <select
                         className="form-select"
@@ -138,36 +98,37 @@ const Products = () => {
                         </option>
 
                         <option value="Cake">
-                            Cakes
+                            Cake
                         </option>
 
-                        <option value="Cup Cake">
-                            Cup Cakes
+                        <option value="Pastry">
+                            Pastry
                         </option>
 
                         <option value="Cookies">
                             Cookies
                         </option>
 
+                        <option value="Bread">
+                            Bread
+                        </option>
+
                         <option value="Donut">
-                            Donuts
-                        </option>
-
-                        <option value="Brownie">
-                            Brownies
-                        </option>
-
-                        <option value="Pastry">
-                            Pastries
+                            Donut
                         </option>
 
                         <option value="Muffin">
-                            Muffins
+                            Muffin
                         </option>
+
+                        <option value="Cup Cake">
+                            Cup Cake
+                        </option>
+
                     </select>
                 </div>
 
-                {/* Sort */}
+                {/* Sorting */}
                 <div className="col-md-4 mb-3">
                     <select
                         className="form-select"
@@ -189,116 +150,101 @@ const Products = () => {
                         </option>
                     </select>
                 </div>
+
             </div>
 
-            {/* Products Grid */}
+            {/* Product Cards */}
             <div className="row">
 
-                {filteredProducts.length === 0 ? (
-                    <div className="text-center">
-                        <h4>No products found.</h4>
-                    </div>
-                ) : (
+                {filteredProducts.length > 0 ? (
+
                     filteredProducts.map((product) => (
+
                         <div
-                            className="col-md-3 mb-4"
+                            className="col-lg-3 col-md-4 col-sm-6 mb-4"
                             key={product.id}
                         >
                             <div className="card shadow h-100">
 
+                                {/* Product Image */}
                                 <img
                                     src={product.image}
                                     alt={product.name}
                                     className="card-img-top"
+                                    style={{
+                                        height: "230px",
+                                        objectFit: "cover",
+                                    }}
                                 />
 
-                                <div className="card-body text-center">
+                                <div className="card-body d-flex flex-column">
 
-                                    <h5>
+                                    {/* Product Name */}
+                                    <h5 className="card-title">
                                         {product.name}
                                     </h5>
 
-                                    <p>
-                                        Category:
-                                        {" "}
+                                    {/* Category */}
+                                    <p className="text-muted mb-1">
                                         {product.category}
                                     </p>
 
-                                    <p>
-                                        <strong>
-                                            £
-                                            {product.price}
-                                        </strong>
+                                    {/* Description */}
+                                    <p
+                                        className="card-text"
+                                        style={{
+                                            minHeight: "50px",
+                                        }}
+                                    >
+                                        {product.description}
                                     </p>
 
-                                    <p>
-                                        Rating:
-                                        {" "}
-                                        {product.rating}
-                                        /5
+                                    {/* Price */}
+                                    <h5 className="text-danger mb-2">
+                                        ৳ {product.price}
+                                    </h5>
+
+                                    {/* Stock */}
+                                    <p className="text-success">
+                                        {product.stock
+                                            ? product.stock
+                                            : "Available"}
                                     </p>
 
+                                    {/* Rating */}
                                     <p>
-                                        {product.stock}
+                                        ⭐ {product.rating || 5}/5
                                     </p>
 
-                                    <button className="btn btn-primary me-2">
-                                        Add to Cart
-                                    </button>
+                                    {/* Buttons */}
+                                    <div className="mt-auto">
 
-                                    <button className="btn btn-outline-dark">
-                                        Details
-                                    </button>
+                                        <button className="btn btn-primary w-100 mb-2">
+                                            Add to Cart
+                                        </button>
+
+                                        <button className="btn btn-outline-dark w-100">
+                                            View Details
+                                        </button>
+
+                                    </div>
 
                                 </div>
-
                             </div>
                         </div>
+
                     ))
+
+                ) : (
+
+                    <div className="text-center">
+                        <h4>No Products Found.</h4>
+                    </div>
+
                 )}
 
             </div>
 
-            {/* Pagination */}
-            <div className="d-flex justify-content-center mt-4">
-
-                <nav>
-                    <ul className="pagination">
-
-                        <li className="page-item">
-                            <button className="page-link">
-                                Previous
-                            </button>
-                        </li>
-
-                        <li className="page-item active">
-                            <button className="page-link">
-                                1
-                            </button>
-                        </li>
-
-                        <li className="page-item">
-                            <button className="page-link">
-                                2
-                            </button>
-                        </li>
-
-                        <li className="page-item">
-                            <button className="page-link">
-                                3
-                            </button>
-                        </li>
-
-                        <li className="page-item">
-                            <button className="page-link">
-                                Next
-                            </button>
-                        </li>
-
-                    </ul>
-                </nav>
-
-            </div>
         </div>
     );
 };

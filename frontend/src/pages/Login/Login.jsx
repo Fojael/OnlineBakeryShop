@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { login } from "../../services/authService";
 
 const Login = () => {
+    const navigate = useNavigate();
+
     const [loginData, setLoginData] = useState({
         email: "",
         password: "",
     });
-    const navigate = useNavigate();
 
+    // Handle input changes
     const handleChange = (e) => {
         setLoginData({
             ...loginData,
@@ -16,47 +18,67 @@ const Login = () => {
         });
     };
 
+    // Handle login
     const handleSubmit = async (e) => {
+        e.preventDefault();
 
-    e.preventDefault();
+        try {
+            const response = await login(loginData);
 
-    try {
-    const response = await login(loginData);
+            // Save JWT tokens
+            localStorage.setItem(
+                "access",
+                response.data.access
+            );
 
-    console.log(response.data);
+            localStorage.setItem(
+                "refresh",
+                response.data.refresh
+            );
 
-    // Save JWT tokens
-    localStorage.setItem(
-        "access",
-        response.data.access
-    );
+            // Save user role
+            localStorage.setItem(
+                "role",
+                response.data.user.role
+            );
 
-    localStorage.setItem(
-        "refresh",
-        response.data.refresh
-    );
+            // Optional: save user information
+            localStorage.setItem(
+                "username",
+                response.data.user.username
+            );
 
-    // Save user role
-    localStorage.setItem(
-        "role",
-        response.data.user.role
-    );
+            localStorage.setItem(
+                "email",
+                response.data.user.email
+            );
 
-    alert("Login Successful!");
-    navigate("/");
+            const role = response.data.user.role;
 
-} catch (error) {
+            alert("Login Successful!");
 
-    console.log(error.response);
+            // Role-based redirection
+            if (role === "ADMIN") {
+                navigate("/admin/dashboard");
+            } else if (role === "CUSTOMER") {
+                navigate("/");
+            } else if (role === "SUPPLIER") {
+                navigate("/");
+            } else if (role === "DELIVERY_RIDER") {
+                navigate("/");
+            } else {
+                navigate("/");
+            }
 
-    alert("Invalid Email or Password");
+        } catch (error) {
+            console.log(error.response);
 
-}
-};
+            alert("Invalid Email or Password.");
+        }
+    };
 
     return (
         <div className="container py-5">
-
             <div className="row justify-content-center">
 
                 <div className="col-md-6">
@@ -64,7 +86,7 @@ const Login = () => {
                     <div className="card shadow p-4">
 
                         <h2 className="text-center mb-4">
-                            Customer Login
+                            Login
                         </h2>
 
                         <form onSubmit={handleSubmit}>
@@ -134,7 +156,6 @@ const Login = () => {
                 </div>
 
             </div>
-
         </div>
     );
 };

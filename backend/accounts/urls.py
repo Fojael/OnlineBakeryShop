@@ -6,6 +6,7 @@ from .views import LogoutView
 from .views import ChangePasswordView
 from .views import AdminDashboardView
 
+
 urlpatterns = [
     path("register/", RegisterView.as_view()),
     
@@ -35,4 +36,5 @@ urlpatterns = [
     AdminDashboardView.as_view(),
     name="admin_dashboard"
 ),
+ 
 ]
