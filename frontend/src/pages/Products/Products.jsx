@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getProducts } from "../../services/productService";
+import { Link } from "react-router-dom";
 
 const Products = () => {
     const [products, setProducts] = useState([]);
@@ -8,21 +9,33 @@ const Products = () => {
     const [search, setSearch] = useState("");
     const [category, setCategory] = useState("All");
     const [sort, setSort] = useState("default");
+    const addToCart = async (productId, quantity) => {
+    try {
+        console.log("Product:", productId);
+        console.log("Quantity:", quantity);
+
+        // Later call Cart API
+
+        alert("Product added to cart!");
+    } catch (error) {
+        console.log(error);
+    }
+};
 
     useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const response = await getProducts();
+                setProducts(response.data);
+            } catch (error) {
+                console.log(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         fetchProducts();
     }, []);
-
-    const fetchProducts = async () => {
-        try {
-            const response = await getProducts();
-            setProducts(response.data);
-        } catch (error) {
-            console.log(error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     // Search + Category Filter
     let filteredProducts = products.filter((product) => {
@@ -33,7 +46,7 @@ const Products = () => {
         const matchesCategory =
             category === "All"
                 ? true
-                : product.category === category;
+                : product.category.toLowerCase() === category.toLowerCase()
 
         return matchesSearch && matchesCategory;
     });
@@ -168,13 +181,12 @@ const Products = () => {
 
                                 {/* Product Image */}
                                 <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="card-img-top"
-                                    style={{
-                                        height: "230px",
-                                        objectFit: "cover",
-                                    }}
+                                   src={
+                                        product.image
+                                       ? product.image
+                                       : "https://placehold.co/300x300?text=No+Image"
+                                         }
+                                      alt={product.name}
                                 />
 
                                 <div className="card-body d-flex flex-column">
@@ -201,15 +213,21 @@ const Products = () => {
 
                                     {/* Price */}
                                     <h5 className="text-danger mb-2">
-                                        ৳ {product.price}
+                                       ৳ {Number(product.price).toFixed(2)}
                                     </h5>
 
                                     {/* Stock */}
-                                    <p className="text-success">
-                                        {product.stock
-                                            ? product.stock
-                                            : "Available"}
-                                    </p>
+                                    <p
+    className={
+        product.stock_quantity > 0
+            ? "text-success"
+            : "text-danger"
+    }
+>
+    {product.stock_quantity > 0
+        ? `${product.stock_quantity} Available`
+        : "Out of Stock"}
+</p>
 
                                     {/* Rating */}
                                     <p>
@@ -217,17 +235,23 @@ const Products = () => {
                                     </p>
 
                                     {/* Buttons */}
-                                    <div className="mt-auto">
+                                   <div className="mt-auto">
 
-                                        <button className="btn btn-primary w-100 mb-2">
-                                            Add to Cart
-                                        </button>
+                                  <button
+                                         className="btn btn-primary w-100 mb-2"
+                                           onClick={() => addToCart(product.id, 1)}
+                                    >
+                                               Add to Cart
+                                   </button>
 
-                                        <button className="btn btn-outline-dark w-100">
-                                            View Details
-                                        </button>
+                                   <Link
+                                      to={`/products/${product.id}`}
+                                       className="btn btn-outline-dark w-100"
+                                        >
+                                          View Details
+                                   </Link>
 
-                                    </div>
+                                             </div>
 
                                 </div>
                             </div>

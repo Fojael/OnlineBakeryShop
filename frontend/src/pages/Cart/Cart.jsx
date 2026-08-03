@@ -1,34 +1,36 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 
 const Cart = () => {
     const [cartItems, setCartItems] = useState([
         {
             id: 1,
             name: "Chocolate Cake",
-            price: 15.99,
+            price: 650,
             quantity: 2,
             image: "https://via.placeholder.com/150",
         },
         {
             id: 2,
-            name: "Cup Cake",
-            price: 4.99,
-            quantity: 3,
+            name: "Red Velvet Cake",
+            price: 850,
+            quantity: 1,
             image: "https://via.placeholder.com/150",
         },
         {
             id: 3,
-            name: "Cookies",
-            price: 6.99,
-            quantity: 1,
+            name: "Cookies Box",
+            price: 350,
+            quantity: 3,
             image: "https://via.placeholder.com/150",
         },
     ]);
 
     // Increase Quantity
     const increaseQuantity = (id) => {
-        setCartItems(
-            cartItems.map((item) =>
+        setCartItems((prev) =>
+            prev.map((item) =>
                 item.id === id
                     ? {
                           ...item,
@@ -41,8 +43,8 @@ const Cart = () => {
 
     // Decrease Quantity
     const decreaseQuantity = (id) => {
-        setCartItems(
-            cartItems.map((item) =>
+        setCartItems((prev) =>
+            prev.map((item) =>
                 item.id === id && item.quantity > 1
                     ? {
                           ...item,
@@ -55,175 +57,230 @@ const Cart = () => {
 
     // Remove Item
     const removeItem = (id) => {
-        setCartItems(
-            cartItems.filter((item) => item.id !== id)
+        if (!window.confirm("Remove this product from cart?")) return;
+
+        setCartItems((prev) =>
+            prev.filter((item) => item.id !== id)
         );
+
+        toast.success("Product removed from cart.");
     };
+
+    // Clear Cart
+    const clearCart = () => {
+        if (!window.confirm("Clear your shopping cart?")) return;
+
+        setCartItems([]);
+
+        toast.success("Cart cleared successfully.");
+    };
+
+    // Total Quantity
+    const totalQuantity = cartItems.reduce(
+        (sum, item) => sum + item.quantity,
+        0
+    );
 
     // Total Price
     const totalPrice = cartItems.reduce(
-        (total, item) =>
-            total + item.price * item.quantity,
+        (sum, item) => sum + item.price * item.quantity,
         0
     );
 
     return (
         <div className="container py-5">
 
-            <h1 className="text-center mb-5">
-                Shopping Cart
-            </h1>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+
+                <h2 className="fw-bold">
+                    🛒 Shopping Cart
+                </h2>
+
+                {cartItems.length > 0 && (
+                    <button
+                        className="btn btn-outline-danger"
+                        onClick={clearCart}
+                    >
+                        Clear Cart
+                    </button>
+                )}
+
+            </div>
 
             {cartItems.length === 0 ? (
-                <div className="text-center">
-                    <h4>Your cart is empty.</h4>
+
+                <div className="text-center py-5">
+
+                    <h3>Your cart is empty.</h3>
+
+                    <p className="text-muted">
+                        Add delicious bakery products to your cart.
+                    </p>
+
+                    <Link
+                        to="/products"
+                        className="btn btn-primary mt-3"
+                    >
+                        Continue Shopping
+                    </Link>
+
                 </div>
+
             ) : (
-                <>
+
+                <div className="row">
+
                     {/* Cart Items */}
-                    <div className="row">
+                    <div className="col-lg-8">
 
                         {cartItems.map((item) => (
+
                             <div
-                                className="col-12 mb-4"
                                 key={item.id}
+                                className="card shadow-sm mb-3"
                             >
-                                <div className="card shadow">
 
-                                    <div className="row g-0 align-items-center">
+                                <div className="row g-0 align-items-center">
 
-                                        {/* Product Image */}
-                                        <div className="col-md-2">
-                                            <img
-                                                src={item.image}
-                                                alt={item.name}
-                                                className="img-fluid rounded-start"
-                                            />
-                                        </div>
+                                    <div className="col-md-3">
 
-                                        {/* Product Details */}
-                                        <div className="col-md-4">
-                                            <div className="card-body">
+                                        <img
+                                            src={item.image}
+                                            alt={item.name}
+                                            className="img-fluid rounded-start"
+                                            style={{
+                                                height: "180px",
+                                                width: "100%",
+                                                objectFit: "cover",
+                                            }}
+                                        />
 
-                                                <h5>
-                                                    {item.name}
-                                                </h5>
+                                    </div>
 
-                                                <p>
-                                                    Price:
-                                                    {" "}
-                                                    £{item.price}
-                                                </p>
+                                    <div className="col-md-6">
 
-                                            </div>
-                                        </div>
+                                        <div className="card-body">
 
-                                        {/* Quantity */}
-                                        <div className="col-md-3 text-center">
+                                            <h5>{item.name}</h5>
 
-                                            <button
-                                                className="btn btn-outline-secondary me-2"
-                                                onClick={() =>
-                                                    decreaseQuantity(
-                                                        item.id
-                                                    )
-                                                }
-                                            >
-                                                -
-                                            </button>
-
-                                            <span>
-                                                {item.quantity}
-                                            </span>
-
-                                            <button
-                                                className="btn btn-outline-secondary ms-2"
-                                                onClick={() =>
-                                                    increaseQuantity(
-                                                        item.id
-                                                    )
-                                                }
-                                            >
-                                                +
-                                            </button>
-
-                                        </div>
-
-                                        {/* Subtotal */}
-                                        <div className="col-md-2 text-center">
-
-                                            <p>
-                                                <strong>
-                                                    £
-                                                    {(
-                                                        item.price *
-                                                        item.quantity
-                                                    ).toFixed(2)}
-                                                </strong>
+                                            <p className="text-muted">
+                                                Price: ৳ {item.price}
                                             </p>
 
-                                        </div>
+                                            <div className="d-flex align-items-center">
 
-                                        {/* Remove Button */}
-                                        <div className="col-md-1 text-center">
+                                                <button
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() =>
+                                                        decreaseQuantity(item.id)
+                                                    }
+                                                >
+                                                    -
+                                                </button>
 
-                                            <button
-                                                className="btn btn-danger"
-                                                onClick={() =>
-                                                    removeItem(
-                                                        item.id
-                                                    )
-                                                }
-                                            >
-                                                X
-                                            </button>
+                                                <span className="mx-3 fw-bold">
+                                                    {item.quantity}
+                                                </span>
+
+                                                <button
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() =>
+                                                        increaseQuantity(item.id)
+                                                    }
+                                                >
+                                                    +
+                                                </button>
+
+                                            </div>
 
                                         </div>
 
                                     </div>
 
+                                    <div className="col-md-3 text-center">
+
+                                        <h5 className="text-danger">
+                                            ৳ {item.price * item.quantity}
+                                        </h5>
+
+                                        <button
+                                            className="btn btn-sm btn-danger mt-2"
+                                            onClick={() =>
+                                                removeItem(item.id)
+                                            }
+                                        >
+                                            Remove
+                                        </button>
+
+                                    </div>
+
                                 </div>
+
                             </div>
+
                         ))}
 
                     </div>
 
-                    {/* Cart Summary */}
-                    <div className="row justify-content-end">
+                    {/* Summary */}
+                    <div className="col-lg-4">
 
-                        <div className="col-md-4">
+                        <div className="card shadow">
 
-                            <div className="card shadow p-4">
+                            <div className="card-body">
 
-                                <h3>
+                                <h4 className="mb-4">
                                     Order Summary
-                                </h3>
+                                </h4>
+
+                                <div className="d-flex justify-content-between">
+
+                                    <span>Total Items</span>
+
+                                    <strong>
+                                        {totalQuantity}
+                                    </strong>
+
+                                </div>
 
                                 <hr />
 
-                                <p>
-                                    Total Items:
-                                    {" "}
-                                    {cartItems.length}
-                                </p>
+                                <div className="d-flex justify-content-between">
 
-                                <h4>
-                                    Total Price:
-                                    {" "}
-                                    £{totalPrice.toFixed(2)}
-                                </h4>
+                                    <span>Total Price</span>
 
-                                <button className="btn btn-success w-100 mt-3">
+                                    <strong className="text-danger">
+                                        ৳ {totalPrice}
+                                    </strong>
+
+                                </div>
+
+                                <hr />
+
+                                <Link
+                                    to="/checkout"
+                                    className="btn btn-success w-100 mb-2"
+                                >
                                     Proceed to Checkout
-                                </button>
+                                </Link>
+
+                                <Link
+                                    to="/products"
+                                    className="btn btn-outline-primary w-100"
+                                >
+                                    Continue Shopping
+                                </Link>
 
                             </div>
 
                         </div>
 
                     </div>
-                </>
+
+                </div>
+
             )}
+
         </div>
     );
 };

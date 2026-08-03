@@ -1,92 +1,122 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { getProduct } from "../../services/productService";
 
 const ProductDetails = () => {
+    const { id } = useParams();
+
+    const [product, setProduct] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [quantity, setQuantity] = useState(1);
+    const addToCart = async (productId, quantity) => {
+    try {
+        console.log("Product:", productId);
+        console.log("Quantity:", quantity);
 
-    const product = {
-        id: 1,
-        name: "Chocolate Cake",
-        image: "https://via.placeholder.com/600x400",
-        description:
-            "Our delicious Chocolate Cake is freshly baked using premium cocoa and topped with rich chocolate frosting. Perfect for birthdays, celebrations, and everyday treats.",
-        price: 15.99,
-        stock: 25,
-        category: "Cake",
-        rating: 4.8,
-    };
+        // Later you will call the Cart API here
 
-    const reviews = [
-        {
-            id: 1,
-            name: "Sarah",
-            rating: 5,
-            comment: "Absolutely delicious! Highly recommended.",
-        },
-        {
-            id: 2,
-            name: "Ahmed",
-            rating: 4,
-            comment: "Fresh and tasty. Delivery was very fast.",
-        },
-        {
-            id: 3,
-            name: "John",
-            rating: 5,
-            comment: "One of the best chocolate cakes I've ever had.",
-        },
-    ];
+        alert("Product added to cart!");
+    } catch (error) {
+        console.log(error);
+    }
+};
+
+    useEffect(() => {
+        const loadProduct = async () => {
+            try {
+                const response = await getProduct(id);
+
+                setProduct(response.data);
+            } catch (error) {
+                console.log(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadProduct();
+    }, [id]);
+    
+    // Loading State
+    if (loading) {
+        return (
+            <div className="container py-5 text-center">
+                <h3>Loading Product Details...</h3>
+            </div>
+        );
+    }
+
+    // Product Not Found
+    if (!product) {
+        return (
+            <div className="container py-5 text-center">
+                <h3>Product Not Found.</h3>
+            </div>
+        );
+    }
 
     return (
         <div className="container py-5">
+
             <div className="row">
 
                 {/* Product Image */}
-                <div className="col-md-6 mb-4">
+                <div className="col-md-6">
+
                     <img
-                        src={product.image}
-                        alt={product.name}
-                        className="img-fluid rounded shadow"
-                    />
+                        src={
+                        product.image
+                      ? product.image
+                      : "https://placehold.co/300x300?text=No+Image"
+                      }
+                    alt={product.name}
+                   />
+
                 </div>
 
                 {/* Product Information */}
                 <div className="col-md-6">
 
+                    {/* Product Name */}
                     <h1 className="mb-3">
                         {product.name}
                     </h1>
 
-                    <p className="text-muted">
-                        Category: {product.category}
-                    </p>
+                    {/* Category */}
+                    <h5 className="text-muted">
+                       {product.category}
+                    </h5>
 
-                    <h3 className="text-success mb-3">
-                        £{product.price}
+                    {/* Price */}
+                    <h3 className="text-danger my-3">
+                        ৳ {Number(product.price).toFixed(2)}
                     </h3>
 
+                    {/* Stock Status */}
                     <p>
-                        Rating: {product.rating} / 5
+                        <strong>Availability:</strong>{" "}
+                       {product.stock_quantity > 0
+                               ? `${product.stock_quantity} Available`
+                               : "Out of Stock"}
                     </p>
 
+                    {/* Stock Quantity */}
                     <p>
                         <strong>Stock:</strong>{" "}
-                        {product.stock > 0
-                            ? `${product.stock} Available`
-                            : "Out of Stock"}
+                        {product.stock_quantity}
                     </p>
 
-                    <hr />
-
-                    <h5>Description</h5>
+                    {/* Description */}
+                    <h5 className="mt-4">
+                        Product Description
+                    </h5>
 
                     <p>
                         {product.description}
                     </p>
 
-                    <hr />
-
                     {/* Quantity */}
-                    <div className="mb-3">
+                    <div className="mb-4">
 
                         <label className="form-label">
                             Quantity
@@ -96,129 +126,39 @@ const ProductDetails = () => {
                             type="number"
                             min="1"
                             value={quantity}
+                            className="form-control"
+                            style={{ width: "120px" }}
                             onChange={(e) =>
                                 setQuantity(e.target.value)
                             }
-                            className="form-control"
-                            style={{ width: "120px" }}
                         />
 
                     </div>
 
                     {/* Buttons */}
-                    <button className="btn btn-primary me-3">
+                    <div className="d-flex gap-3">
+
+                        <button
+                        className="btn btn-primary"
+                     disabled={!product.is_available}
+                      onClick={() => addToCart(product.id, quantity)}
+                      >
                         Add to Cart
-                    </button>
+                      </button>
 
-                    <button className="btn btn-success">
-                        Buy Now
-                    </button>
-
-                </div>
-            </div>
-
-            {/* Customer Reviews */}
-            <div className="mt-5">
-
-                <h2 className="mb-4">
-                    Customer Reviews
-                </h2>
-
-                <div className="row">
-
-                    {reviews.map((review) => (
-                        <div
-                            className="col-md-4 mb-4"
-                            key={review.id}
+                        <button
+                            className="btn btn-success"
+                            disabled={!product.is_available}
                         >
-                            <div className="card shadow h-100">
+                            Buy Now
+                        </button>
 
-                                <div className="card-body">
-
-                                    <h5>
-                                        {review.name}
-                                    </h5>
-
-                                    <p>
-                                        Rating: {review.rating} / 5
-                                    </p>
-
-                                    <p>
-                                        {review.comment}
-                                    </p>
-
-                                </div>
-
-                            </div>
-                        </div>
-                    ))}
-
-                </div>
-            </div>
-
-            {/* Related Products */}
-            <div className="mt-5">
-
-                <h2 className="mb-4">
-                    You May Also Like
-                </h2>
-
-                <div className="row">
-
-                    <div className="col-md-4 mb-3">
-                        <div className="card shadow">
-
-                            <img
-                                src="https://via.placeholder.com/300"
-                                className="card-img-top"
-                                alt="Cup Cake"
-                            />
-
-                            <div className="card-body text-center">
-                                <h5>Cup Cake</h5>
-                                <p>£4.99</p>
-                            </div>
-
-                        </div>
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                        <div className="card shadow">
-
-                            <img
-                                src="https://via.placeholder.com/300"
-                                className="card-img-top"
-                                alt="Cookies"
-                            />
-
-                            <div className="card-body text-center">
-                                <h5>Cookies</h5>
-                                <p>£6.99</p>
-                            </div>
-
-                        </div>
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                        <div className="card shadow">
-
-                            <img
-                                src="https://via.placeholder.com/300"
-                                className="card-img-top"
-                                alt="Brownie"
-                            />
-
-                            <div className="card-body text-center">
-                                <h5>Brownie</h5>
-                                <p>£5.99</p>
-                            </div>
-
-                        </div>
                     </div>
 
                 </div>
 
             </div>
+
         </div>
     );
 };

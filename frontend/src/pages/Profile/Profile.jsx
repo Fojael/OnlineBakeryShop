@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "react-toastify";
 import {
     getProfile,
     changePassword,
@@ -22,21 +23,21 @@ const Profile = () => {
         newPassword: "",
     });
 
-    const fetchProfile = async () => {
-        try {
-            const response = await getProfile();
-
-            if (response?.data) {
-                setUser((prev) => ({ ...prev, ...response.data }));
-            } else {
-                console.warn("getProfile returned unexpected response:", response);
-            }
-        } catch (error) {
-            console.log(error?.response || error?.message || error);
-        }
-    };
-
     useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const response = await getProfile();
+
+                if (response?.data) {
+                    setUser((prev) => ({ ...prev, ...response.data }));
+                } else {
+                    console.warn("getProfile returned unexpected response:", response);
+                }
+            } catch (error) {
+                console.log(error?.response || error?.message || error);
+            }
+        };
+
         fetchProfile();
     }, []);
 
@@ -55,7 +56,7 @@ const Profile = () => {
     };
 
     const handleUpdateProfile = () => {
-        alert("Profile Updated Successfully!");
+       toast.success("Profile updated successfully!");
         setEditMode(false);
     };
 
@@ -73,7 +74,7 @@ const Profile = () => {
             });
         } catch (error) {
             console.log(error?.response || error?.message || error);
-            alert("Failed to change password.");
+            toast.error("Failed to change password.");
         }
     };
 

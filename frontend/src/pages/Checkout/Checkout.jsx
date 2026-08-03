@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "react-toastify";
 
 const Checkout = () => {
     const [shippingInfo, setShippingInfo] = useState({
@@ -47,7 +48,7 @@ const Checkout = () => {
     };
 
     const handlePlaceOrder = () => {
-        alert("Order placed successfully!");
+        toast.success("Order placed successfully!");
     };
 
     return (

@@ -24,6 +24,10 @@ import Reports from "../pages/Admin/Reports/Reports";
 import AIPrediction from "../pages/Admin/AIPrediction/AIPrediction";
 import Notifications from "../pages/Admin/Notifications/Notifications";
 import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
+import AddProduct from "../pages/Products/AddProduct";
+import EditProduct from "../pages/Products/EditProduct";
+import AddCategory from "../pages/Admin/Categories/AddCategory";
+import EditCategory from "../pages/Admin/Categories/EditCategory";
 
 
 // Components
@@ -88,7 +92,7 @@ const AppRoutes = () => {
                         path="/contact"
                         element={<Contact />}
                     />
-
+                    
                    
                    <Route
     path="/admin/dashboard"
@@ -175,6 +179,48 @@ const AppRoutes = () => {
     element={
         <ProtectedAdminRoute>
             <Notifications />
+        </ProtectedAdminRoute>
+    }
+/>
+<Route
+    path="/admin/products/add"
+    element={
+        <ProtectedAdminRoute>
+            <AddProduct />
+        </ProtectedAdminRoute>
+    }
+/>
+<Route
+    path="/admin/products/edit/:id"
+    element={
+        <ProtectedAdminRoute>
+            <EditProduct />
+        </ProtectedAdminRoute>
+    }
+/>
+<Route
+    path="/admin/categories"
+    element={
+        <ProtectedAdminRoute>
+            <Categories />
+        </ProtectedAdminRoute>
+    }
+/>
+
+<Route
+    path="/admin/categories/add"
+    element={
+        <ProtectedAdminRoute>
+            <AddCategory />
+        </ProtectedAdminRoute>
+    }
+/>
+
+<Route
+    path="/admin/categories/edit/:id"
+    element={
+        <ProtectedAdminRoute>
+            <EditCategory />
         </ProtectedAdminRoute>
     }
 />

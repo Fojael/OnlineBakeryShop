@@ -6,21 +6,21 @@ const Home = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        const loadProducts = async () => {
+            try {
+                const response = await getProducts();
+
+                // Display only the first 6 products
+                setProducts(response.data.slice(0, 6));
+            } catch (error) {
+                console.log(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         loadProducts();
     }, []);
-
-    const loadProducts = async () => {
-        try {
-            const response = await getProducts();
-
-            // Display only the first 6 products
-            setProducts(response.data.slice(0, 6));
-        } catch (error) {
-            console.log(error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -52,13 +52,13 @@ const Home = () => {
 
                                 {/* Product Image */}
                                 <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="card-img-top"
-                                    style={{
-                                        height: "250px",
-                                        objectFit: "cover",
-                                    }}
+                                    src={
+                                         product.image
+                                            ? product.image
+                                          : "https://placehold.co/300x300?text=No+Image"
+                                     }
+                                      alt={product.name}
+                                         
                                 />
 
                                 <div className="card-body">
@@ -76,7 +76,7 @@ const Home = () => {
                                     </p>
 
                                     <h5 className="text-danger">
-                                        ৳ {product.price}
+                                        ৳ {Number(product.price).toFixed(2)}
                                     </h5>
 
                                 </div>

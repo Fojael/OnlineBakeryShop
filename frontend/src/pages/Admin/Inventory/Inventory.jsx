@@ -1,82 +1,227 @@
-import DashboardLayout from "../../../layouts/DashboardLayout";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
+
+import { getInventory } from "../../../services/inventoryService";
 
 const Inventory = () => {
+    const [inventory, setInventory] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        const fetchInventory = async () => {
+            try {
+                setLoading(true);
+
+                const response = await getInventory();
+
+                setInventory(response.data);
+            } catch (error) {
+                console.log(error);
+                toast.error("Failed to load inventory.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchInventory();
+    }, []);
+
+    // Search Inventory
+    const filteredInventory = useMemo(() => {
+        return inventory.filter((item) =>
+            item.product_name
+                .toLowerCase()
+                .includes(search.toLowerCase())
+        );
+    }, [inventory, search]);
+
+    if (loading) {
+        return (
+            <div className="container py-5 text-center">
+
+                <div
+                    className="spinner-border text-primary"
+                    role="status"
+                >
+                    <span className="visually-hidden">
+                        Loading...
+                    </span>
+                </div>
+
+                <h4 className="mt-3">
+                    Loading Inventory...
+                </h4>
+
+            </div>
+        );
+    }
+
     return (
-        <DashboardLayout>
+        <div className="container py-4">
 
-            <h2>Inventory Management</h2>
+            {/* Header */}
 
-            <hr />
+            <div className="d-flex justify-content-between align-items-center mb-4">
 
-            {/* Update Stock Button */}
-            <button
-                className="btn btn-primary mb-3"
-            >
-                Update Inventory
-            </button>
+                <div>
+
+                    <h2 className="fw-bold">
+                        Inventory Management
+                    </h2>
+
+                    <p className="text-muted">
+                        Total Products :
+                        <strong>
+                            {" "}
+                            {filteredInventory.length}
+                        </strong>
+                    </p>
+
+                </div>
+
+            </div>
+
+            {/* Search */}
+
+            <div className="row mb-4">
+
+                <div className="col-md-4">
+
+                    <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Search Product..."
+                        value={search}
+                        onChange={(e) =>
+                            setSearch(e.target.value)
+                        }
+                    />
+
+                </div>
+
+            </div>
 
             {/* Inventory Table */}
-            <table className="table table-bordered table-striped">
 
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Product Name</th>
-                        <th>Available Stock</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
+            <div className="table-responsive shadow-sm">
 
-                <tbody>
+                <table className="table table-striped table-hover align-middle">
 
-                    <tr>
-                        <td>1</td>
-                        <td>Chocolate Cake</td>
-                        <td>25</td>
-                        <td>In Stock</td>
-                        <td>
-                            <button
-                                className="btn btn-warning btn-sm me-2"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
+                    <thead className="table-dark">
 
-                    <tr>
-                        <td>2</td>
-                        <td>Cup Cake</td>
-                        <td>5</td>
-                        <td>Low Stock</td>
-                        <td>
-                            <button
-                                className="btn btn-warning btn-sm me-2"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
+                        <tr>
+                            <th>ID</th>
+                            <th>Product</th>
+                            <th>Current Stock</th>
+                            <th>Minimum Stock</th>
+                            <th>Remaining Stock</th>
+                            <th>Status</th>
+                            <th width="170">
+                                Actions
+                            </th>
+                        </tr>
 
-                    <tr>
-                        <td>3</td>
-                        <td>Bread</td>
-                        <td>0</td>
-                        <td>Out of Stock</td>
-                        <td>
-                            <button
-                                className="btn btn-warning btn-sm me-2"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
+                    </thead>
 
-                </tbody>
+                    <tbody>
 
-            </table>
+                        {filteredInventory.length > 0 ? (
 
-        </DashboardLayout>
+                            filteredInventory.map((item) => (
+
+                                <tr key={item.id}>
+
+                                    <td>{item.id}</td>
+
+                                    <td className="fw-semibold">
+                                        {item.product_name}
+                                    </td>
+
+                                    <td>
+                                        {item.current_stock}
+                                    </td>
+
+                                    <td>
+                                        {item.minimum_stock}
+                                    </td>
+
+                                    <td>
+
+                                        <strong>
+                                            {item.remaining_stock}
+                                        </strong>
+
+                                    </td>
+
+                                    <td>
+
+                                        {item.status ===
+                                        "In Stock" ? (
+
+                                            <span className="badge bg-success">
+                                                In Stock
+                                            </span>
+
+                                        ) : item.status ===
+                                          "Low Stock" ? (
+
+                                            <span className="badge bg-warning text-dark">
+                                                Low Stock
+                                            </span>
+
+                                        ) : (
+
+                                            <span className="badge bg-danger">
+                                                Out of Stock
+                                            </span>
+
+                                        )}
+
+                                    </td>
+
+                                    <td>
+
+                                        <Link
+                                            to={`/admin/inventory/update/${item.id}`}
+                                            className="btn btn-primary btn-sm"
+                                        >
+                                            Update Stock
+                                        </Link>
+
+                                    </td>
+
+                                </tr>
+
+                            ))
+
+                        ) : (
+
+                            <tr>
+
+                                <td
+                                    colSpan="7"
+                                    className="text-center py-5"
+                                >
+
+                                    <h5>
+                                        No inventory records found.
+                                    </h5>
+
+                                </td>
+
+                            </tr>
+
+                        )}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
     );
 };
 

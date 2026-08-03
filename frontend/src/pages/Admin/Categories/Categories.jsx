@@ -1,77 +1,196 @@
-import DashboardLayout from "../../../layouts/DashboardLayout";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
+
+import {
+    getCategories,
+    deleteCategory,
+} from "../../../services/categoryService";
 
 const Categories = () => {
+    const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchCategories = async () => {
+        try {
+            const response = await getCategories();
+            setCategories(response.data);
+        } catch (error) {
+            console.log(error);
+            toast.error("Failed to load categories.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        (async () => {
+            await fetchCategories();
+        })();
+    }, []);
+
+    const handleDelete = async (id) => {
+        const confirmDelete = window.confirm(
+            "Delete this category?"
+        );
+
+        if (!confirmDelete) return;
+
+        try {
+            await deleteCategory(id);
+
+            toast.success(
+                "Category deleted successfully."
+            );
+
+            fetchCategories();
+        } catch (error) {
+            console.log(error);
+            toast.error(
+                "Unable to delete category."
+            );
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="container py-5 text-center">
+                <div
+                    className="spinner-border text-primary"
+                    role="status"
+                >
+                    <span className="visually-hidden">
+                        Loading...
+                    </span>
+                </div>
+
+                <p className="mt-3">
+                    Loading Categories...
+                </p>
+            </div>
+        );
+    }
+
     return (
-        <DashboardLayout>
+        <div className="container py-4">
 
-            <h2>Manage Categories</h2>
+            <div className="d-flex justify-content-between align-items-center mb-4">
 
-            <hr />
+                <h2>Category Management</h2>
 
-            {/* Add Category Button */}
-            <button
-                className="btn btn-primary mb-3"
-            >
-                Add Category
-            </button>
+                <Link
+                    to="/admin/categories/add"
+                    className="btn btn-success"
+                >
+                    + Add Category
+                </Link>
 
-            {/* Categories Table */}
-            <table className="table table-bordered table-striped">
+            </div>
 
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Category Name</th>
-                        <th>Description</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
+            <div className="card shadow">
 
-                <tbody>
+                <div className="card-body">
 
-                    <tr>
-                        <td>1</td>
-                        <td>Cakes</td>
-                        <td>All bakery cakes.</td>
-                        <td>
-                            <button
-                                className="btn btn-warning btn-sm me-2"
-                            >
-                                Edit
-                            </button>
+                    <div className="table-responsive">
 
-                            <button
-                                className="btn btn-danger btn-sm"
-                            >
-                                Delete
-                            </button>
-                        </td>
-                    </tr>
+                        <table className="table table-hover align-middle">
 
-                    <tr>
-                        <td>2</td>
-                        <td>Pastries</td>
-                        <td>Fresh pastries.</td>
-                        <td>
-                            <button
-                                className="btn btn-warning btn-sm me-2"
-                            >
-                                Edit
-                            </button>
+                            <thead className="table-dark">
 
-                            <button
-                                className="btn btn-danger btn-sm"
-                            >
-                                Delete
-                            </button>
-                        </td>
-                    </tr>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Description</th>
+                                    <th>Created</th>
+                                    <th width="180">
+                                        Actions
+                                    </th>
+                                </tr>
 
-                </tbody>
+                            </thead>
 
-            </table>
+                            <tbody>
 
-        </DashboardLayout>
+                                {categories.length > 0 ? (
+
+                                    categories.map((category) => (
+
+                                        <tr key={category.id}>
+
+                                            <td>
+                                                {category.id}
+                                            </td>
+
+                                            <td>
+                                                <strong>
+                                                    {category.name}
+                                                </strong>
+                                            </td>
+
+                                            <td>
+                                                {category.description}
+                                            </td>
+
+                                            <td>
+                                                {category.created_at
+                                                    ? new Date(
+                                                          category.created_at
+                                                      ).toLocaleDateString()
+                                                    : "-"}
+                                            </td>
+
+                                            <td>
+
+                                                <Link
+                                                    to={`/admin/categories/edit/${category.id}`}
+                                                    className="btn btn-warning btn-sm me-2"
+                                                >
+                                                    Edit
+                                                </Link>
+
+                                                <button
+                                                    className="btn btn-danger btn-sm"
+                                                    onClick={() =>
+                                                        handleDelete(
+                                                            category.id
+                                                        )
+                                                    }
+                                                >
+                                                    Delete
+                                                </button>
+
+                                            </td>
+
+                                        </tr>
+
+                                    ))
+
+                                ) : (
+
+                                    <tr>
+
+                                        <td
+                                            colSpan="5"
+                                            className="text-center py-4"
+                                        >
+                                            No Categories Found
+                                        </td>
+
+                                    </tr>
+
+                                )}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
     );
 };
 

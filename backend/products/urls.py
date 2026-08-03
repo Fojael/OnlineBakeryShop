@@ -6,15 +6,15 @@ from .views import (
 )
 
 urlpatterns = [
-
     path(
         "",
-        ProductListCreateView.as_view()
+        ProductListCreateView.as_view(),
+        name="product-list",
     ),
 
     path(
         "<int:pk>/",
-        ProductRetrieveUpdateDeleteView.as_view()
+        ProductRetrieveUpdateDeleteView.as_view(),
+        name="product-detail",
     ),
-
 ]

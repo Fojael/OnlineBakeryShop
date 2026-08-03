@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { register } from "../../services/authService";
+import { toast } from "react-toastify";
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -35,7 +36,7 @@ const Register = () => {
 
         console.log(response.data);
 
-        alert("Registration Successful!");
+       toast.success("Registration successful!");
 
         setFormData({
             username: "",
@@ -49,7 +50,7 @@ const Register = () => {
 
         console.log(error.response);
 
-        alert("Registration Failed!");
+        toast.error("Registration failed.");
 
     }
 };

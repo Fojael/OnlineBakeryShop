@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "../../services/authService";
+import { toast } from "react-toastify";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -55,7 +56,7 @@ const Login = () => {
 
             const role = response.data.user.role;
 
-            alert("Login Successful!");
+            toast.success("Login successful!");
 
             // Role-based redirection
             if (role === "ADMIN") {
@@ -73,7 +74,7 @@ const Login = () => {
         } catch (error) {
             console.log(error.response);
 
-            alert("Invalid Email or Password.");
+            toast.error("Invalid email or password.");
         }
     };
 
