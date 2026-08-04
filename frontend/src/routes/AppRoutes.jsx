@@ -28,6 +28,7 @@ import AddProduct from "../pages/Products/AddProduct";
 import EditProduct from "../pages/Products/EditProduct";
 import AddCategory from "../pages/Admin/Categories/AddCategory";
 import EditCategory from "../pages/Admin/Categories/EditCategory";
+import UpdateInventory from "../pages/Admin/Inventory/UpdateInventory";
 
 
 // Components
@@ -111,14 +112,7 @@ const AppRoutes = () => {
         </ProtectedAdminRoute>
     }
 />
-<Route
-    path="/admin/categories"
-    element={
-        <ProtectedAdminRoute>
-            <Categories />
-        </ProtectedAdminRoute>
-    }
-/>
+
 
 <Route
     path="/admin/inventory"
@@ -221,6 +215,14 @@ const AppRoutes = () => {
     element={
         <ProtectedAdminRoute>
             <EditCategory />
+        </ProtectedAdminRoute>
+    }
+/>
+<Route
+    path="/admin/inventory/update/:id"
+    element={
+        <ProtectedAdminRoute>
+            <UpdateInventory />
         </ProtectedAdminRoute>
     }
 />
