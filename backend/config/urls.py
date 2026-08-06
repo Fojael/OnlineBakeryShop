@@ -22,6 +22,7 @@ urlpatterns = [
         include("inventory.urls"),
     ),
     path("api/suppliers/", include("suppliers.urls")),
+    path("api/orders/", include("orders.urls")),
 ]
 
 if settings.DEBUG:

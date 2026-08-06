@@ -1,162 +1,208 @@
-const Orders = () => {
-    // Dummy data for now
-    const currentOrders = [
-        {
-            id: 1,
-            product: "Chocolate Cake",
-            total: 25.99,
-            status: "Preparing",
-        },
-        {
-            id: 2,
-            product: "Red Velvet Cake",
-            total: 18.50,
-            status: "Out for Delivery",
-        },
-    ];
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+import { toast } from "react-toastify";
 
-    const previousOrders = [
-        {
-            id: 3,
-            product: "Strawberry Cupcakes",
-            total: 15.75,
-            status: "Delivered",
-        },
-        {
-            id: 4,
-            product: "Blueberry Muffins",
-            total: 12.99,
-            status: "Delivered",
-        },
-    ];
+import { getOrders } from "../../services/orderService";
+
+const Orders = () => {
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+
+    const fetchOrders = useCallback(async () => {
+        try {
+            setLoading(true);
+
+            const response = await getOrders();
+
+            setOrders(response.data);
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to load orders.");
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void fetchOrders();
+        }, 0);
+
+        return () => window.clearTimeout(timer);
+    }, [fetchOrders]);
+
+    const filteredOrders = useMemo(() => {
+        return orders.filter((order) => {
+            const keyword = search.toLowerCase();
+
+            return (
+                String(order.id).includes(keyword) ||
+                order.status
+                    .toLowerCase()
+                    .includes(keyword)
+            );
+        });
+    }, [orders, search]);
+
+    const getStatusBadge = (status) => {
+        switch (status) {
+            case "Pending":
+                return "badge bg-warning text-dark";
+
+            case "Processing":
+                return "badge bg-info";
+
+            case "Delivered":
+                return "badge bg-success";
+
+            case "Cancelled":
+                return "badge bg-danger";
+
+            default:
+                return "badge bg-secondary";
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="container py-5 text-center">
+                <div
+                    className="spinner-border text-primary"
+                    role="status"
+                >
+                    <span className="visually-hidden">
+                        Loading...
+                    </span>
+                </div>
+
+                <h4 className="mt-3">
+                    Loading Orders...
+                </h4>
+            </div>
+        );
+    }
 
     return (
         <div className="container py-5">
 
-            <h1 className="text-center mb-5">
-                My Orders
-            </h1>
+            <div className="d-flex justify-content-between align-items-center mb-4">
 
-            {/* Current Orders */}
-            <div className="card shadow mb-5">
-                <div className="card-header">
-                    <h3 className="mb-0">
-                        Current Orders
-                    </h3>
-                </div>
+                <div>
+                    <h2>My Orders</h2>
 
-                <div className="card-body">
-
-                    {currentOrders.length === 0 ? (
-                        <p>No current orders.</p>
-                    ) : (
-                        <div className="table-responsive">
-                            <table className="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Order ID</th>
-                                        <th>Product</th>
-                                        <th>Total Price</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-
-                                <tbody>
-                                    {currentOrders.map((order) => (
-                                        <tr key={order.id}>
-                                            <td>#{order.id}</td>
-                                            <td>{order.product}</td>
-                                            <td>
-                                                ${order.total}
-                                            </td>
-                                            <td>
-                                                {order.status}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-
-                </div>
-            </div>
-
-
-            {/* Previous Orders */}
-            <div className="card shadow mb-5">
-                <div className="card-header">
-                    <h3 className="mb-0">
-                        Previous Orders
-                    </h3>
-                </div>
-
-                <div className="card-body">
-
-                    {previousOrders.length === 0 ? (
-                        <p>No previous orders.</p>
-                    ) : (
-                        <div className="table-responsive">
-                            <table className="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Order ID</th>
-                                        <th>Product</th>
-                                        <th>Total Price</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-
-                                <tbody>
-                                    {previousOrders.map((order) => (
-                                        <tr key={order.id}>
-                                            <td>#{order.id}</td>
-                                            <td>{order.product}</td>
-                                            <td>
-                                                ${order.total}
-                                            </td>
-                                            <td>
-                                                {order.status}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-
-                </div>
-            </div>
-
-
-            {/* Order Tracking */}
-            <div className="card shadow">
-                <div className="card-header">
-                    <h3 className="mb-0">
-                        Order Tracking
-                    </h3>
-                </div>
-
-                <div className="card-body">
-
-                    <p>
-                        Track the status of your current
-                        bakery orders.
+                    <p className="text-muted mb-0">
+                        Total Orders:
+                        <strong>
+                            {" "}
+                            {filteredOrders.length}
+                        </strong>
                     </p>
+                </div>
 
-                    <ul className="list-group">
+                <div style={{ width: "300px" }}>
+                    <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Search Order..."
+                        value={search}
+                        onChange={(e) =>
+                            setSearch(e.target.value)
+                        }
+                    />
+                </div>
 
-                        <li className="list-group-item">
-                            Order #1 - Preparing
-                        </li>
+            </div>
 
-                        <li className="list-group-item">
-                            Order #2 - Out for Delivery
-                        </li>
+            <div className="card shadow">
 
-                    </ul>
+                <div className="card-body">
+
+                    <div className="table-responsive">
+
+                        <table className="table table-bordered table-hover align-middle">
+
+                            <thead className="table-dark">
+
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Date</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                {filteredOrders.length > 0 ? (
+
+                                    filteredOrders.map((order) => (
+
+                                        <tr key={order.id}>
+
+                                            <td>
+                                                ORD
+                                                {String(order.id).padStart(
+                                                    3,
+                                                    "0"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                {new Date(
+                                                    order.created_at
+                                                ).toLocaleDateString()}
+                                            </td>
+
+                                            <td>
+                                                ৳
+                                                {Number(
+                                                    order.total_amount
+                                                ).toFixed(2)}
+                                            </td>
+
+                                            <td>
+                                                <span
+                                                    className={getStatusBadge(
+                                                        order.status
+                                                    )}
+                                                >
+                                                    {order.status}
+                                                </span>
+                                            </td>
+
+                                        </tr>
+
+                                    ))
+
+                                ) : (
+
+                                    <tr>
+
+                                        <td
+                                            colSpan="4"
+                                            className="text-center py-4"
+                                        >
+                                            No orders found.
+                                        </td>
+
+                                    </tr>
+
+                                )}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
 
                 </div>
+
             </div>
 
         </div>
