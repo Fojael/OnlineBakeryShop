@@ -4,14 +4,23 @@ import {
     useMemo,
     useState,
 } from "react";
+
 import { toast } from "react-toastify";
 
-import { getOrders } from "../../services/orderService";
+import {
+    getOrders,
+    cancelOrder,
+} from "../../services/orderService";
 
 const Orders = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [cancellingId, setCancellingId] = useState(null);
     const [search, setSearch] = useState("");
+
+    // =========================================================
+    // Fetch Customer Orders
+    // =========================================================
 
     const fetchOrders = useCallback(async () => {
         try {
@@ -19,35 +28,70 @@ const Orders = () => {
 
             const response = await getOrders();
 
-            setOrders(response.data);
+            setOrders(
+                Array.isArray(response.data)
+                    ? response.data
+                    : []
+            );
         } catch (error) {
             console.error(error);
+
             toast.error("Failed to load orders.");
         } finally {
             setLoading(false);
         }
     }, []);
 
+    // =========================================================
+    // Load Orders
+    // =========================================================
+
     useEffect(() => {
         const timer = window.setTimeout(() => {
             void fetchOrders();
         }, 0);
 
-        return () => window.clearTimeout(timer);
+        return () => {
+            window.clearTimeout(timer);
+        };
     }, [fetchOrders]);
 
+    // =========================================================
+    // Search Orders
+    // =========================================================
+
     const filteredOrders = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+
+        if (!keyword) {
+            return orders;
+        }
+
         return orders.filter((order) => {
-            const keyword = search.toLowerCase();
+            const orderNumber = `ORD${String(order.id).padStart(
+                3,
+                "0"
+            )}`;
+
+            const status = String(
+                order.status || ""
+            ).toLowerCase();
+
+            const orderId = String(order.id);
 
             return (
-                String(order.id).includes(keyword) ||
-                order.status
+                orderNumber
                     .toLowerCase()
-                    .includes(keyword)
+                    .includes(keyword) ||
+                orderId.includes(keyword) ||
+                status.includes(keyword)
             );
         });
     }, [orders, search]);
+
+    // =========================================================
+    // Status Badge
+    // =========================================================
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -68,6 +112,50 @@ const Orders = () => {
         }
     };
 
+    // =========================================================
+    // Cancel Order
+    // =========================================================
+
+    const handleCancelOrder = async (id) => {
+        const confirmCancel = window.confirm(
+            "Are you sure you want to cancel this order?"
+        );
+
+        if (!confirmCancel) {
+            return;
+        }
+
+        try {
+            setCancellingId(id);
+
+            // Backend changes:
+            // Pending -> Cancelled
+            //
+            // The order remains in the database.
+            await cancelOrder(id);
+
+            toast.success(
+                "Order cancelled successfully."
+            );
+
+            await fetchOrders();
+        } catch (error) {
+            console.error(error);
+
+            const message =
+                error?.response?.data?.detail ||
+                "Failed to cancel order.";
+
+            toast.error(message);
+        } finally {
+            setCancellingId(null);
+        }
+    };
+
+    // =========================================================
+    // Loading
+    // =========================================================
+
     if (loading) {
         return (
             <div className="container py-5 text-center">
@@ -87,13 +175,21 @@ const Orders = () => {
         );
     }
 
+    // =========================================================
+    // Page
+    // =========================================================
+
     return (
         <div className="container py-5">
 
-            <div className="d-flex justify-content-between align-items-center mb-4">
+            {/* Header */}
+
+            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
                 <div>
-                    <h2>My Orders</h2>
+                    <h2 className="mb-1">
+                        My Orders
+                    </h2>
 
                     <p className="text-muted mb-0">
                         Total Orders:
@@ -104,7 +200,12 @@ const Orders = () => {
                     </p>
                 </div>
 
-                <div style={{ width: "300px" }}>
+                {/* Search */}
+
+                <div
+                    className="w-100"
+                    style={{ maxWidth: "300px" }}
+                >
                     <input
                         type="text"
                         className="form-control"
@@ -115,10 +216,17 @@ const Orders = () => {
                         }
                     />
                 </div>
-
             </div>
 
+            {/* Orders Table */}
+
             <div className="card shadow">
+
+                <div className="card-header bg-primary text-white">
+                    <h5 className="mb-0">
+                        Order History
+                    </h5>
+                </div>
 
                 <div className="card-body">
 
@@ -127,72 +235,129 @@ const Orders = () => {
                         <table className="table table-bordered table-hover align-middle">
 
                             <thead className="table-dark">
-
                                 <tr>
                                     <th>Order</th>
                                     <th>Date</th>
                                     <th>Total</th>
                                     <th>Status</th>
+                                    <th>Action</th>
                                 </tr>
-
                             </thead>
 
                             <tbody>
 
                                 {filteredOrders.length > 0 ? (
+                                    filteredOrders.map((order) => {
+                                        const orderNumber =
+                                            `ORD${String(
+                                                order.id
+                                            ).padStart(
+                                                3,
+                                                "0"
+                                            )}`;
 
-                                    filteredOrders.map((order) => (
+                                        return (
+                                            <tr
+                                                key={order.id}
+                                            >
 
-                                        <tr key={order.id}>
+                                                {/* Order Number */}
 
-                                            <td>
-                                                ORD
-                                                {String(order.id).padStart(
-                                                    3,
-                                                    "0"
-                                                )}
-                                            </td>
+                                                <td>
+                                                    <strong>
+                                                        {orderNumber}
+                                                    </strong>
+                                                </td>
 
-                                            <td>
-                                                {new Date(
-                                                    order.created_at
-                                                ).toLocaleDateString()}
-                                            </td>
+                                                {/* Date */}
 
-                                            <td>
-                                                ৳
-                                                {Number(
-                                                    order.total_amount
-                                                ).toFixed(2)}
-                                            </td>
+                                                <td>
+                                                    {order.created_at
+                                                        ? new Date(
+                                                            order.created_at
+                                                        ).toLocaleDateString(
+                                                            "en-GB"
+                                                        )
+                                                        : "N/A"}
+                                                </td>
 
-                                            <td>
-                                                <span
-                                                    className={getStatusBadge(
-                                                        order.status
+                                                {/* Total */}
+
+                                                <td>
+                                                    ৳
+                                                    {Number(
+                                                        order.total_amount ||
+                                                        0
+                                                    ).toFixed(2)}
+                                                </td>
+
+                                                {/* Status */}
+
+                                                <td>
+                                                    <span
+                                                        className={getStatusBadge(
+                                                            order.status
+                                                        )}
+                                                    >
+                                                        {
+                                                            order.status
+                                                        }
+                                                    </span>
+                                                </td>
+
+                                                {/* Action */}
+
+                                                <td>
+                                                    {order.status ===
+                                                    "Pending" ? (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-danger btn-sm"
+                                                            disabled={
+                                                                cancellingId ===
+                                                                order.id
+                                                            }
+                                                            onClick={() =>
+                                                                handleCancelOrder(
+                                                                    order.id
+                                                                )
+                                                            }
+                                                        >
+                                                            {cancellingId ===
+                                                            order.id ? (
+                                                                <>
+                                                                    <span
+                                                                        className="spinner-border spinner-border-sm me-1"
+                                                                        role="status"
+                                                                    />
+
+                                                                    Cancelling...
+                                                                </>
+                                                            ) : (
+                                                                "Cancel"
+                                                            )}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-muted">
+                                                            —
+                                                        </span>
                                                     )}
-                                                >
-                                                    {order.status}
-                                                </span>
-                                            </td>
+                                                </td>
 
-                                        </tr>
-
-                                    ))
-
+                                            </tr>
+                                        );
+                                    })
                                 ) : (
-
                                     <tr>
-
                                         <td
-                                            colSpan="4"
+                                            colSpan="5"
                                             className="text-center py-4"
                                         >
-                                            No orders found.
+                                            {search
+                                                ? "No orders match your search."
+                                                : "No orders found."}
                                         </td>
-
                                     </tr>
-
                                 )}
 
                             </tbody>

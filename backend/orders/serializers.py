@@ -35,6 +35,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "customer_email",
             "created_at",
             "updated_at",
+            "status",
         ]
 
     def validate_total_amount(self, value):

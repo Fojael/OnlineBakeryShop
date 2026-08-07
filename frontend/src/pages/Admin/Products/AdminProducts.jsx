@@ -1,269 +1,497 @@
-import { useEffect, useState, useMemo } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
-import {
-    getProducts,
-    deleteProduct,
-} from "../../../services/productService";
 
-const AdminProducts = () => {
-    const [products, setProducts] = useState([]);
+import DashboardLayout from "../../../layouts/DashboardLayout";
+
+import { getAdminOrders } from "../../../services/orderService";
+
+const AdminOrders = () => {
+    const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
 
-    const fetchProducts = async () => {
+    // =========================================================
+    // Fetch All Orders
+    // =========================================================
+
+    const fetchOrders = useCallback(async () => {
         try {
             setLoading(true);
 
-            const response = await getProducts();
+            const response = await getAdminOrders();
 
-            setProducts(response.data);
-            
+            setOrders(
+                Array.isArray(response.data)
+                    ? response.data
+                    : []
+            );
         } catch (error) {
             console.error(error);
-           toast.error("Failed to load products.");
+
+            toast.error(
+                "Failed to load orders."
+            );
+
+            setOrders([]);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        (async () => {
-            await fetchProducts();
-        })();
     }, []);
 
-    const filteredProducts = useMemo(() => {
-        return products.filter((product) =>
-            product.name.toLowerCase().includes(search.toLowerCase())
-        );
-    }, [products, search]);
+    // =========================================================
+    // Load Orders
+    // =========================================================
 
-    const handleDelete = async (id) => {
-        const confirmDelete = window.confirm(
-            "Are you sure you want to delete this product?"
-        );
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void fetchOrders();
+        }, 0);
 
-        if (!confirmDelete) return;
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [fetchOrders]);
 
-        try {
-            await deleteProduct(id);
+    // =========================================================
+    // Search Orders
+    // =========================================================
 
-          toast.success("Product deleted successfully.");
+    const filteredOrders = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
 
-            fetchProducts();
-        } catch (error) {
-            console.error(error);
-            toast.error("Failed to delete product.");
+        if (!keyword) {
+            return orders;
+        }
+
+        return orders.filter((order) => {
+            const orderNumber =
+                `ORD${String(order.id).padStart(
+                    3,
+                    "0"
+                )}`;
+
+            const customerName =
+                getCustomerName(order).toLowerCase();
+
+            const status = String(
+                order.status || ""
+            ).toLowerCase();
+
+            const total = String(
+                order.total_amount || ""
+            );
+
+            return (
+                orderNumber
+                    .toLowerCase()
+                    .includes(keyword) ||
+                customerName.includes(keyword) ||
+                status.includes(keyword) ||
+                total.includes(keyword)
+            );
+        });
+    }, [orders, search]);
+
+    // =========================================================
+    // Customer Name
+    // =========================================================
+
+    function getCustomerName(order) {
+        if (order.customer_name) {
+            return order.customer_name;
+        }
+
+        if (order.customer?.username) {
+            return order.customer.username;
+        }
+
+        if (order.customer?.name) {
+            return order.customer.name;
+        }
+
+        if (order.customer?.email) {
+            return order.customer.email;
+        }
+
+        if (typeof order.customer === "string") {
+            return order.customer;
+        }
+
+        return "Unknown Customer";
+    }
+
+    // =========================================================
+    // Status Badge
+    // =========================================================
+
+    const getStatusBadge = (status) => {
+        switch (status) {
+            case "Pending":
+                return "badge bg-warning text-dark";
+
+            case "Processing":
+                return "badge bg-info";
+
+            case "Delivered":
+                return "badge bg-success";
+
+            case "Cancelled":
+                return "badge bg-danger";
+
+            default:
+                return "badge bg-secondary";
         }
     };
 
+    // =========================================================
+    // Format Date
+    // =========================================================
+
+    const formatDate = (date) => {
+        if (!date) {
+            return "N/A";
+        }
+
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return "N/A";
+        }
+
+        return parsedDate.toLocaleDateString(
+            "en-GB"
+        );
+    };
+
+    // =========================================================
+    // Format Amount
+    // =========================================================
+
+    const formatAmount = (amount) => {
+        const value = Number(amount);
+
+        if (Number.isNaN(value)) {
+            return "0.00";
+        }
+
+        return value.toFixed(2);
+    };
+
+    // =========================================================
+    // Loading
+    // =========================================================
+
     if (loading) {
         return (
-            <div className="container py-5 text-center">
+            <DashboardLayout>
 
-                <div
-                    className="spinner-border text-primary"
-                    role="status"
-                >
-                    <span className="visually-hidden">
-                        Loading...
-                    </span>
+                <div className="container py-5 text-center">
+
+                    <div
+                        className="spinner-border text-primary"
+                        role="status"
+                    >
+                        <span className="visually-hidden">
+                            Loading...
+                        </span>
+                    </div>
+
+                    <h4 className="mt-3">
+                        Loading Orders...
+                    </h4>
+
                 </div>
 
-                <h4 className="mt-3">
-                    Loading Products...
-                </h4>
-
-            </div>
+            </DashboardLayout>
         );
     }
 
+    // =========================================================
+    // Page
+    // =========================================================
+
     return (
-        <div className="container py-4">
+        <DashboardLayout>
 
-            {/* Header */}
-            <div className="d-flex justify-content-between align-items-center mb-4">
+            <div className="container-fluid py-4">
 
-                <div>
-                    <h2 className="fw-bold">
-                        Product Management
-                    </h2>
+                {/* =================================================
+                    HEADER
+                ================================================= */}
 
-                    <p className="text-muted">
-                        Total Products:
-                        <strong>
-                            {" "}
-                            {filteredProducts.length}
-                        </strong>
-                    </p>
-                </div>
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
-                <Link
-                    to="/admin/products/add"
-                    className="btn btn-success"
-                >
-                    + Add Product
-                </Link>
+                    <div>
 
-            </div>
+                        <h2 className="mb-1">
+                            Order Management
+                        </h2>
 
-            {/* Search */}
+                        <p className="text-muted mb-0">
+                            Manage all customer orders.
+                        </p>
 
-            <div className="row mb-3">
+                    </div>
 
-                <div className="col-md-4">
-
-                    <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Search products..."
-                        value={search}
-                        onChange={(e) =>
-                            setSearch(e.target.value)
-                        }
-                    />
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={fetchOrders}
+                    >
+                        Refresh Orders
+                    </button>
 
                 </div>
 
-            </div>
+                {/* =================================================
+                    SEARCH
+                ================================================= */}
 
-            {/* Table */}
+                <div className="card shadow-sm mb-4">
 
-            <div className="table-responsive shadow-sm">
+                    <div className="card-body">
 
-                <table className="table table-striped table-hover align-middle">
+                        <div className="row align-items-end">
 
-                    <thead className="table-dark">
+                            <div className="col-md-6">
 
-                        <tr>
-                            <th>ID</th>
-                            <th>Image</th>
-                            <th>Name</th>
-                            <th>Category</th>
-                            <th>Price</th>
-                            <th>Stock</th>
-                            <th>Status</th>
-                            <th width="170">
-                                Actions
-                            </th>
-                        </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                        {filteredProducts.length > 0 ? (
-
-                            filteredProducts.map((product) => (
-
-                                <tr key={product.id}>
-
-                                    <td>{product.id}</td>
-
-                                    <td>
-
-                                      <img
-                                          src={
-                                               product.image
-                                              ? product.image
-                                            : "https://placehold.co/300x300?text=No+Image"
-                                                }
-                                              alt={product.name}
-                                        />
-
-                                    </td>
-
-                                    <td className="fw-semibold">
-                                        {product.name}
-                                    </td>
-
-                                    <td>
-                                        {product.category}
-                                    </td>
-
-                                    <td>
-                                        ৳
-                                        {Number(
-                                            product.price
-                                        ).toFixed(2)}
-                                    </td>
-
-                                    <td>
-                                        {product.stock_quantity}
-                                    </td>
-
-                                    <td>
-
-                                        {product.is_available ? (
-
-                                            <span className="badge bg-success">
-                                                In Stock
-                                            </span>
-
-                                        ) : (
-
-                                            <span className="badge bg-danger">
-                                                Out of Stock
-                                            </span>
-
-                                        )}
-
-                                    </td>
-
-                                    <td>
-
-                                        <Link
-                                            to={`/admin/products/edit/${product.id}`}
-                                            className="btn btn-warning btn-sm me-2"
-                                        >
-                                            Edit
-                                        </Link>
-
-                                        <button
-                                            className="btn btn-danger btn-sm"
-                                            onClick={() =>
-                                                handleDelete(
-                                                    product.id
-                                                )
-                                            }
-                                        >
-                                            Delete
-                                        </button>
-
-                                    </td>
-
-                                </tr>
-
-                            ))
-
-                        ) : (
-
-                            <tr>
-
-                                <td
-                                    colSpan="8"
-                                    className="text-center py-5"
+                                <label
+                                    htmlFor="orderSearch"
+                                    className="form-label"
                                 >
+                                    Search Orders
+                                </label>
 
-                                    <h5>
-                                        No products found
-                                    </h5>
+                                <input
+                                    id="orderSearch"
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Search by order, customer, status..."
+                                    value={search}
+                                    onChange={(e) =>
+                                        setSearch(
+                                            e.target.value
+                                        )
+                                    }
+                                />
 
-                                </td>
+                            </div>
 
-                            </tr>
+                            <div className="col-md-6 mt-3 mt-md-0">
 
-                        )}
+                                <div className="text-md-end">
 
-                    </tbody>
+                                    <span className="text-muted">
+                                        Total Orders:{" "}
+                                    </span>
 
-                </table>
+                                    <strong>
+                                        {
+                                            filteredOrders.length
+                                        }
+                                    </strong>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                {/* =================================================
+                    ORDERS TABLE
+                ================================================= */}
+
+                <div className="card shadow">
+
+                    <div className="card-header bg-primary text-white">
+
+                        <h4 className="mb-0">
+                            All Orders
+                        </h4>
+
+                    </div>
+
+                    <div className="card-body p-0">
+
+                        <div className="table-responsive">
+
+                            <table className="table table-bordered table-hover align-middle mb-0">
+
+                                <thead className="table-dark">
+
+                                    <tr>
+
+                                        <th>
+                                            Order
+                                        </th>
+
+                                        <th>
+                                            Customer
+                                        </th>
+
+                                        <th>
+                                            Date
+                                        </th>
+
+                                        <th>
+                                            Total
+                                        </th>
+
+                                        <th>
+                                            Status
+                                        </th>
+
+                                        <th>
+                                            Action
+                                        </th>
+
+                                    </tr>
+
+                                </thead>
+
+                                <tbody>
+
+                                    {filteredOrders.length > 0 ? (
+
+                                        filteredOrders.map(
+                                            (order) => (
+                                                <tr
+                                                    key={
+                                                        order.id
+                                                    }
+                                                >
+
+                                                    {/* Order Number */}
+
+                                                    <td>
+
+                                                        <strong>
+                                                            ORD
+                                                            {String(
+                                                                order.id
+                                                            ).padStart(
+                                                                3,
+                                                                "0"
+                                                            )}
+                                                        </strong>
+
+                                                    </td>
+
+                                                    {/* Customer */}
+
+                                                    <td>
+                                                        {
+                                                            getCustomerName(
+                                                                order
+                                                            )
+                                                        }
+                                                    </td>
+
+                                                    {/* Date */}
+
+                                                    <td>
+                                                        {formatDate(
+                                                            order.created_at
+                                                        )}
+                                                    </td>
+
+                                                    {/* Total */}
+
+                                                    <td>
+
+                                                        <strong>
+                                                            ৳
+                                                            {formatAmount(
+                                                                order.total_amount
+                                                            )}
+                                                        </strong>
+
+                                                    </td>
+
+                                                    {/* Status */}
+
+                                                    <td>
+
+                                                        <span
+                                                            className={getStatusBadge(
+                                                                order.status
+                                                            )}
+                                                        >
+                                                            {
+                                                                order.status
+                                                            }
+                                                        </span>
+
+                                                    </td>
+
+                                                    {/* Action */}
+
+                                                    <td>
+
+                                                        <Link
+                                                            to={`/admin/orders/update/${order.id}`}
+                                                            className="btn btn-warning btn-sm"
+                                                        >
+                                                            Update
+                                                        </Link>
+
+                                                    </td>
+
+                                                </tr>
+                                            )
+                                        )
+
+                                    ) : (
+
+                                        <tr>
+
+                                            <td
+                                                colSpan="6"
+                                                className="text-center py-5"
+                                            >
+
+                                                <h5>
+                                                    No Orders Found
+                                                </h5>
+
+                                                <p className="text-muted mb-0">
+
+                                                    {search
+                                                        ? "No orders match your search."
+                                                        : "There are no orders yet."}
+
+                                                </p>
+
+                                            </td>
+
+                                        </tr>
+
+                                    )}
+
+                                </tbody>
+
+                            </table>
+
+                        </div>
+
+                    </div>
+
+                </div>
 
             </div>
 
-        </div>
+        </DashboardLayout>
     );
 };
 
-export default AdminProducts;
+export default AdminOrders;

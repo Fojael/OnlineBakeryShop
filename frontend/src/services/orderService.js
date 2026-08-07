@@ -1,21 +1,39 @@
 import api from "./api";
 
-// Customer
-export const getOrders = () =>
-    api.get("/orders/");
+// =========================================================
+// CUSTOMER ORDERS
+// =========================================================
 
-export const getOrder = (id) =>
-    api.get(`/orders/${id}/`);
+export const getOrders = () => {
+    return api.get("/orders/");
+};
 
-export const createOrder = (data) =>
-    api.post("/orders/", data);
+export const getOrder = (id) => {
+    return api.get(`/orders/${id}/`);
+};
 
-// Admin
-export const getAdminOrders = () =>
-    api.get("/orders/admin/");
+export const createOrder = (orderData) => {
+    return api.post("/orders/", orderData);
+};
 
-export const updateOrder = (id, data) =>
-    api.put(`/orders/admin/${id}/`, data);
+export const cancelOrder = (id) => {
+    return api.patch(`/orders/${id}/cancel/`);
+};
 
-export const deleteOrder = (id) =>
-    api.delete(`/orders/admin/${id}/`);
+// =========================================================
+// ADMIN ORDERS
+// =========================================================
+
+export const getAdminOrders = () => {
+    return api.get("/orders/admin/");
+};
+
+// Admin gets one order
+export const getAdminOrder = (id) => {
+    return api.get(`/orders/admin/${id}/`);
+};
+
+// Admin updates order status
+export const updateOrder = (id, data) => {
+    return api.put(`/orders/admin/${id}/`, data);
+};
