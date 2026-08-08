@@ -4,36 +4,26 @@ import api from "./api";
 // CUSTOMER ORDERS
 // =========================================================
 
+// Get logged-in customer's orders
 export const getOrders = () => {
     return api.get("/orders/");
 };
 
-export const getOrder = (id) => {
-    return api.get(`/orders/${id}/`);
+// Get single order
+export const getOrder = (orderId) => {
+    return api.get("/orders/" + orderId + "/");
 };
 
+// Create order from cart
+// Django calculates total_amount from the customer's cart.
 export const createOrder = (orderData) => {
-    return api.post("/orders/", orderData);
+    return api.post("/orders/", {
+        shipping_address: orderData.shipping_address,
+        payment_method: orderData.payment_method,
+    });
 };
 
-export const cancelOrder = (id) => {
-    return api.patch(`/orders/${id}/cancel/`);
-};
-
-// =========================================================
-// ADMIN ORDERS
-// =========================================================
-
-export const getAdminOrders = () => {
-    return api.get("/orders/admin/");
-};
-
-// Admin gets one order
-export const getAdminOrder = (id) => {
-    return api.get(`/orders/admin/${id}/`);
-};
-
-// Admin updates order status
-export const updateOrder = (id, data) => {
-    return api.put(`/orders/admin/${id}/`, data);
+// Cancel order
+export const cancelOrder = (orderId) => {
+    return api.patch("/orders/" + orderId + "/cancel/");
 };

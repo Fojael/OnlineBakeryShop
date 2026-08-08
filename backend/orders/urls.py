@@ -3,52 +3,42 @@ from django.urls import path
 from .views import (
     OrderListCreateView,
     OrderDetailView,
-    OrderCancelView,
+    CancelOrderView,
     AdminOrderListView,
     AdminOrderUpdateView,
 )
 
 
 urlpatterns = [
-
-    # =====================================================
-    # CUSTOMER ORDERS
-    # =====================================================
-
-    # GET  -> Customer's orders
-    # POST -> Create new order
+    # Customer orders
     path(
         "",
         OrderListCreateView.as_view(),
-        name="order-list-create",
+        name="orders",
     ),
 
-    # GET -> Customer views one order
+    # Customer single order
     path(
         "<int:pk>/",
         OrderDetailView.as_view(),
         name="order-detail",
     ),
 
-    # PATCH -> Cancel pending order
+    # Customer cancel order
     path(
         "<int:pk>/cancel/",
-        OrderCancelView.as_view(),
-        name="order-cancel",
+        CancelOrderView.as_view(),
+        name="cancel-order",
     ),
 
-    # =====================================================
-    # ADMIN ORDERS
-    # =====================================================
-
-    # GET -> Admin sees ALL orders
+    # Admin orders
     path(
         "admin/",
         AdminOrderListView.as_view(),
-        name="admin-order-list",
+        name="admin-orders",
     ),
 
-    # GET/PUT/PATCH -> Admin updates order
+    # Admin update order
     path(
         "admin/<int:pk>/",
         AdminOrderUpdateView.as_view(),
