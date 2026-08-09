@@ -1,49 +1,41 @@
 import api from "./api";
 
-// Get Categories
+// ============================================================
+// GET ALL CATEGORIES
+// ============================================================
+
 export const getCategories = () => {
     return api.get("categories/");
 };
 
-// Get Category
+// ============================================================
+// GET ONE CATEGORY
+// ============================================================
+
 export const getCategory = (id) => {
     return api.get(`categories/${id}/`);
 };
 
-// Create Category
-export const createCategory = (formData) => {
-    return api.post(
-        "categories/",
-        formData,
-        {
-            headers: {
-                "Content-Type":
-                    "multipart/form-data",
-            },
-        }
-    );
+// ============================================================
+// CREATE CATEGORY
+// ============================================================
+
+export const createCategory = (data) => {
+    return api.post("categories/", data);
 };
 
-// Update Category
-export const updateCategory = (
-    id,
-    formData
-) => {
-    return api.put(
-        `categories/${id}/`,
-        formData,
-        {
-            headers: {
-                "Content-Type":
-                    "multipart/form-data",
-            },
-        }
-    );
+// ============================================================
+// UPDATE CATEGORY
+// ============================================================
+
+export const updateCategory = (id, data) => {
+    return api.put(`categories/${id}/`, data);
 };
 
-// Delete Category
+// ============================================================
+// DELETE CATEGORY
+// ============================================================
+
 export const deleteCategory = (id) => {
-    return api.delete(
-        `categories/${id}/`
-    );
+    return api.delete(`categories/${id}/`);
 };

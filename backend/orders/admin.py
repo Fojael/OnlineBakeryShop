@@ -14,7 +14,8 @@ class OrderAdmin(admin.ModelAdmin):
     )
 
     search_fields = (
-        "customer__username",
+    "customer__username",
+    "customer__email",
     )
 
     list_filter = (

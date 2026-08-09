@@ -10,38 +10,41 @@ from .views import (
 
 
 urlpatterns = [
-    # Customer orders
-    path(
-        "",
-        OrderListCreateView.as_view(),
-        name="orders",
-    ),
+    # =========================================================
+    # ADMIN ORDERS
+    # =========================================================
 
-    # Customer single order
-    path(
-        "<int:pk>/",
-        OrderDetailView.as_view(),
-        name="order-detail",
-    ),
-
-    # Customer cancel order
-    path(
-        "<int:pk>/cancel/",
-        CancelOrderView.as_view(),
-        name="cancel-order",
-    ),
-
-    # Admin orders
     path(
         "admin/",
         AdminOrderListView.as_view(),
         name="admin-orders",
     ),
 
-    # Admin update order
     path(
         "admin/<int:pk>/",
         AdminOrderUpdateView.as_view(),
         name="admin-order-update",
+    ),
+
+    # =========================================================
+    # CUSTOMER ORDERS
+    # =========================================================
+
+    path(
+        "",
+        OrderListCreateView.as_view(),
+        name="orders",
+    ),
+
+    path(
+        "<int:pk>/",
+        OrderDetailView.as_view(),
+        name="order-detail",
+    ),
+
+    path(
+        "<int:pk>/cancel/",
+        CancelOrderView.as_view(),
+        name="cancel-order",
     ),
 ]

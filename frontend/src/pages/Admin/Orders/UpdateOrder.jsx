@@ -91,33 +91,17 @@ const UpdateOrder = () => {
     // Customer Name
     // =========================================================
 
-    const getCustomerName = () => {
-        if (!order) {
-            return "Unknown Customer";
-        }
+   const getCustomerName = () => {
+    if (!order) {
+        return "N/A";
+    }
 
-        if (order.customer_name) {
-            return order.customer_name;
-        }
-
-        if (order.customer?.username) {
-            return order.customer.username;
-        }
-
-        if (order.customer?.name) {
-            return order.customer.name;
-        }
-
-        if (order.customer?.email) {
-            return order.customer.email;
-        }
-
-        if (typeof order.customer === "string") {
-            return order.customer;
-        }
-
-        return "Unknown Customer";
-    };
+    return (
+        order.customer_name ||
+        order.customer_email ||
+        "N/A"
+    );
+  };
 
     // =========================================================
     // Format Date

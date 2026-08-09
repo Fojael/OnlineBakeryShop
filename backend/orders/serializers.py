@@ -45,6 +45,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
 
+    customer_name = serializers.CharField(
+        source="customer.username",
+        read_only=True,
+    )
+
     customer_email = serializers.EmailField(
         source="customer.email",
         read_only=True,
@@ -62,6 +67,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
         fields = [
             "id",
+            "customer_name",
             "customer_email",
             "shipping_address",
             "payment_method",
@@ -75,6 +81,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "customer_name",
             "customer_email",
             "total_amount",
             "status",

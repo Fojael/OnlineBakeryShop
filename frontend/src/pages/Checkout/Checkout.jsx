@@ -1,4 +1,3 @@
-```jsx
 import {
     useCallback,
     useEffect,
@@ -8,13 +7,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-import {
-    getCart,
-} from "../../services/cartService";
+import { getCart } from "../../services/cartService";
 
-import {
-    createOrder,
-} from "../../services/orderService";
+import { createOrder } from "../../services/orderService";
 
 
 const Checkout = () => {
@@ -51,10 +46,11 @@ const Checkout = () => {
                 error
             );
 
-            toast.error(
-                error.response?.data?.detail ||
-                "Failed to load cart."
-            );
+            const message =
+                error?.response?.data?.detail ||
+                "Failed to load cart.";
+
+            toast.error(message);
 
             setCart(null);
 
@@ -83,11 +79,11 @@ const Checkout = () => {
     // FORM CHANGE
     // =========================================================
 
-    const handleChange = (e) => {
+    const handleChange = (event) => {
         const {
             name,
             value,
-        } = e.target;
+        } = event.target;
 
         setFormData((previous) => ({
             ...previous,
@@ -100,8 +96,8 @@ const Checkout = () => {
     // PLACE ORDER
     // =========================================================
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    const handleSubmit = async (event) => {
+        event.preventDefault();
 
 
         // -----------------------------------------------------
@@ -155,9 +151,10 @@ const Checkout = () => {
 
         // -----------------------------------------------------
         // IMPORTANT:
-        // Do NOT send total_amount.
         //
-        // Django calculates the real total
+        // Do NOT send total_amount from frontend.
+        //
+        // Django should calculate the actual order total
         // from the customer's cart.
         // -----------------------------------------------------
 
@@ -169,6 +166,10 @@ const Checkout = () => {
                 formData.payment_method,
         };
 
+
+        // -----------------------------------------------------
+        // CREATE ORDER
+        // -----------------------------------------------------
 
         try {
             setPlacingOrder(true);
@@ -188,7 +189,7 @@ const Checkout = () => {
             );
 
             const message =
-                error.response?.data?.detail ||
+                error?.response?.data?.detail ||
                 "Failed to place order.";
 
             toast.error(message);
@@ -316,9 +317,9 @@ const Checkout = () => {
 
                                     <textarea
                                         id="shipping_address"
+                                        name="shipping_address"
                                         className="form-control"
                                         rows="4"
-                                        name="shipping_address"
                                         value={
                                             formData.shipping_address
                                         }
@@ -327,6 +328,9 @@ const Checkout = () => {
                                         }
                                         placeholder="Enter your complete delivery address"
                                         required
+                                        disabled={
+                                            placingOrder
+                                        }
                                     />
 
                                 </div>
@@ -347,13 +351,16 @@ const Checkout = () => {
 
                                     <select
                                         id="payment_method"
-                                        className="form-select"
                                         name="payment_method"
+                                        className="form-select"
                                         value={
                                             formData.payment_method
                                         }
                                         onChange={
                                             handleChange
+                                        }
+                                        disabled={
+                                            placingOrder
                                         }
                                     >
 
@@ -395,7 +402,7 @@ const Checkout = () => {
                                     <div className="form-control bg-light">
 
                                         <strong>
-                                            ৳
+                                            ৳{" "}
                                             {Number(
                                                 cart.total_amount || 0
                                             ).toFixed(2)}
@@ -417,6 +424,8 @@ const Checkout = () => {
 
                                 <div className="d-flex gap-2">
 
+                                    {/* PLACE ORDER */}
+
                                     <button
                                         type="submit"
                                         className="btn btn-success"
@@ -430,6 +439,7 @@ const Checkout = () => {
                                                 <span
                                                     className="spinner-border spinner-border-sm me-2"
                                                     role="status"
+                                                    aria-hidden="true"
                                                 />
 
                                                 Placing Order...
@@ -440,6 +450,8 @@ const Checkout = () => {
 
                                     </button>
 
+
+                                    {/* BACK TO CART */}
 
                                     <button
                                         type="button"
@@ -484,6 +496,10 @@ const Checkout = () => {
 
                         <div className="card-body">
 
+                            {/* =====================================
+                                CART ITEMS
+                            ===================================== */}
+
                             {cart.items.map(
                                 (item) => (
 
@@ -496,7 +512,8 @@ const Checkout = () => {
 
                                             <strong>
                                                 {
-                                                    item.product?.name
+                                                    item.product?.name ||
+                                                    "Product"
                                                 }
                                             </strong>
 
@@ -507,12 +524,21 @@ const Checkout = () => {
                                                 }
                                             </div>
 
+                                            {/* Product Price */}
+
+                                            <div className="text-muted small">
+                                                Unit Price: ৳{" "}
+                                                {Number(
+                                                    item.price || 0
+                                                ).toFixed(2)}
+                                            </div>
+
                                         </div>
 
 
                                         <div className="fw-semibold">
 
-                                            ৳
+                                            ৳{" "}
                                             {Number(
                                                 item.subtotal || 0
                                             ).toFixed(2)}
@@ -520,13 +546,14 @@ const Checkout = () => {
                                         </div>
 
                                     </div>
+
                                 )
                             )}
 
 
-                            {/* =================================
+                            {/* =====================================
                                 TOTAL
-                            ================================= */}
+                            ===================================== */}
 
                             <div className="d-flex justify-content-between mt-4">
 
@@ -536,7 +563,7 @@ const Checkout = () => {
 
                                 <h5 className="text-primary">
 
-                                    ৳
+                                    ৳{" "}
                                     {Number(
                                         cart.total_amount || 0
                                     ).toFixed(2)}
@@ -559,4 +586,3 @@ const Checkout = () => {
 
 
 export default Checkout;
-```

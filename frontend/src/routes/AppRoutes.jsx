@@ -105,7 +105,6 @@ const AppRoutes = () => {
                         element={<Register />}
                     />
 
-                    {/* Customer Orders */}
                     <Route
                         path="/orders"
                         element={<Orders />}
@@ -126,7 +125,6 @@ const AppRoutes = () => {
                         element={<Contact />}
                     />
 
-
                     {/* ==================================================
                         ADMIN DASHBOARD
                     ================================================== */}
@@ -139,7 +137,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-
 
                     {/* ==================================================
                         ADMIN PRODUCTS
@@ -172,7 +169,6 @@ const AppRoutes = () => {
                         }
                     />
 
-
                     {/* ==================================================
                         ADMIN CATEGORIES
                     ================================================== */}
@@ -204,7 +200,6 @@ const AppRoutes = () => {
                         }
                     />
 
-
                     {/* ==================================================
                         ADMIN INVENTORY
                     ================================================== */}
@@ -226,7 +221,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-
 
                     {/* ==================================================
                         ADMIN SUPPLIERS
@@ -259,12 +253,10 @@ const AppRoutes = () => {
                         }
                     />
 
-
                     {/* ==================================================
                         ADMIN ORDERS
                     ================================================== */}
 
-                    {/* Admin Orders List */}
                     <Route
                         path="/admin/orders"
                         element={
@@ -274,7 +266,6 @@ const AppRoutes = () => {
                         }
                     />
 
-                    {/* Admin Update Order Status */}
                     <Route
                         path="/admin/orders/update/:id"
                         element={
@@ -283,7 +274,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-
 
                     {/* ==================================================
                         ADMIN CUSTOMERS
@@ -298,7 +288,6 @@ const AppRoutes = () => {
                         }
                     />
 
-
                     {/* ==================================================
                         ADMIN REPORTS
                     ================================================== */}
@@ -311,7 +300,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-
 
                     {/* ==================================================
                         ADMIN AI PREDICTION
@@ -326,7 +314,6 @@ const AppRoutes = () => {
                         }
                     />
 
-
                     {/* ==================================================
                         ADMIN NOTIFICATIONS
                     ================================================== */}
@@ -339,7 +326,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-
 
                     {/* ==================================================
                         404

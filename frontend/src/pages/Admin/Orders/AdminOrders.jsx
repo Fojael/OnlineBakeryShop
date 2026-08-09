@@ -1,98 +1,688 @@
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+
 import DashboardLayout from "../../../layouts/DashboardLayout";
 
+import {
+    getAdminOrders,
+} from "../../../services/orderService";
+
+
 const AdminOrders = () => {
+    const navigate = useNavigate();
+
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("All");
+
+
+    // =========================================================
+    // FETCH ORDERS
+    // =========================================================
+
+    const fetchOrders = useCallback(async () => {
+        try {
+            setLoading(true);
+
+            const response = await getAdminOrders();
+
+            const data = response?.data;
+
+            setOrders(
+                Array.isArray(data)
+                    ? data
+                    : []
+            );
+
+        } catch (error) {
+            console.error(
+                "Failed to load admin orders:",
+                error
+            );
+
+            const message =
+                error?.response?.data?.detail ||
+                "Failed to load orders.";
+
+            toast.error(message);
+
+            setOrders([]);
+
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+
+    // =========================================================
+    // LOAD ORDERS
+    // =========================================================
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void fetchOrders();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [fetchOrders]);
+
+
+    // =========================================================
+    // FILTER ORDERS
+    // =========================================================
+
+    const filteredOrders = useMemo(() => {
+        const keyword = search
+            .trim()
+            .toLowerCase();
+
+        return orders.filter((order) => {
+
+            const orderId =
+                String(order.id || "");
+
+            const orderNumber =
+                `ORD${String(order.id).padStart(3, "0")}`;
+
+            const customerName =
+                String(
+                    order.customer_name || ""
+                ).toLowerCase();
+
+            const customerEmail =
+                String(
+                    order.customer_email || ""
+                ).toLowerCase();
+
+            const status =
+                String(
+                    order.status || ""
+                ).toLowerCase();
+
+            const paymentMethod =
+                String(
+                    order.payment_method || ""
+                ).toLowerCase();
+
+
+            const matchesSearch =
+                !keyword ||
+                orderId.includes(keyword) ||
+                orderNumber
+                    .toLowerCase()
+                    .includes(keyword) ||
+                customerName.includes(keyword) ||
+                customerEmail.includes(keyword) ||
+                status.includes(keyword) ||
+                paymentMethod.includes(keyword);
+
+
+            const matchesStatus =
+                statusFilter === "All" ||
+                order.status === statusFilter;
+
+
+            return (
+                matchesSearch &&
+                matchesStatus
+            );
+        });
+
+    }, [
+        orders,
+        search,
+        statusFilter,
+    ]);
+
+
+    // =========================================================
+    // STATUS BADGE
+    // =========================================================
+
+    const getStatusBadge = (status) => {
+
+        switch (status) {
+
+            case "Pending":
+                return "badge bg-warning text-dark";
+
+            case "Processing":
+                return "badge bg-info text-dark";
+
+            case "Delivered":
+                return "badge bg-success";
+
+            case "Cancelled":
+                return "badge bg-danger";
+
+            default:
+                return "badge bg-secondary";
+        }
+    };
+
+
+    // =========================================================
+    // PAYMENT METHOD
+    // =========================================================
+
+    const getPaymentMethod = (order) => {
+
+        return (
+            order.payment_method ||
+            "N/A"
+        );
+    };
+
+
+    // =========================================================
+    // FORMAT DATE
+    // =========================================================
+
+    const formatDate = (date) => {
+
+        if (!date) {
+            return "N/A";
+        }
+
+        const parsedDate =
+            new Date(date);
+
+        if (
+            Number.isNaN(
+                parsedDate.getTime()
+            )
+        ) {
+            return "N/A";
+        }
+
+        return parsedDate.toLocaleDateString(
+            "en-GB",
+            {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            }
+        );
+    };
+
+
+    // =========================================================
+    // FORMAT AMOUNT
+    // =========================================================
+
+    const formatAmount = (amount) => {
+
+        const value =
+            Number(amount);
+
+        if (
+            Number.isNaN(value)
+        ) {
+            return "0.00";
+        }
+
+        return value.toFixed(2);
+    };
+
+
+    // =========================================================
+    // UPDATE ORDER
+    // =========================================================
+
+    const handleUpdateOrder = (id) => {
+
+        navigate(
+            `/admin/orders/update/${id}`
+        );
+    };
+
+
+    // =========================================================
+    // LOADING
+    // =========================================================
+
+    if (loading) {
+
+        return (
+            <DashboardLayout>
+
+                <div className="container-fluid py-5 text-center">
+
+                    <div
+                        className="spinner-border text-primary"
+                        role="status"
+                    >
+                        <span className="visually-hidden">
+                            Loading...
+                        </span>
+                    </div>
+
+                    <h5 className="mt-3">
+                        Loading Orders...
+                    </h5>
+
+                </div>
+
+            </DashboardLayout>
+        );
+    }
+
+
+    // =========================================================
+    // PAGE
+    // =========================================================
+
     return (
         <DashboardLayout>
 
-            <h2>Order Management</h2>
+            <div className="container-fluid py-4">
 
-            <hr />
+                {/* =================================================
+                    HEADER
+                ================================================= */}
 
-            {/* Orders Table */}
-            <table className="table table-bordered table-striped">
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Customer Name</th>
-                        <th>Total Amount</th>
-                        <th>Payment Status</th>
-                        <th>Order Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
+                    <div>
 
-                <tbody>
+                        <h2 className="mb-1">
+                            Order Management
+                        </h2>
 
-                    <tr>
-                        <td>#1001</td>
-                        <td>John Doe</td>
-                        <td>৳850</td>
-                        <td>Paid</td>
-                        <td>Delivered</td>
-                        <td>
-                            <button
-                                className="btn btn-primary btn-sm me-2"
-                            >
-                                View
-                            </button>
+                        <p className="text-muted mb-0">
+                            Manage customer orders
+                            from the database.
+                        </p>
 
-                            <button
-                                className="btn btn-warning btn-sm"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
+                    </div>
 
-                    <tr>
-                        <td>#1002</td>
-                        <td>Sarah Khan</td>
-                        <td>৳450</td>
-                        <td>Pending</td>
-                        <td>Processing</td>
-                        <td>
-                            <button
-                                className="btn btn-primary btn-sm me-2"
-                            >
-                                View
-                            </button>
 
-                            <button
-                                className="btn btn-warning btn-sm"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={fetchOrders}
+                    >
+                        Refresh Orders
+                    </button>
 
-                    <tr>
-                        <td>#1003</td>
-                        <td>Ahmed Ali</td>
-                        <td>৳1200</td>
-                        <td>Paid</td>
-                        <td>Pending</td>
-                        <td>
-                            <button
-                                className="btn btn-primary btn-sm me-2"
-                            >
-                                View
-                            </button>
+                </div>
 
-                            <button
-                                className="btn btn-warning btn-sm"
-                            >
-                                Update
-                            </button>
-                        </td>
-                    </tr>
 
-                </tbody>
+                {/* =================================================
+                    FILTERS
+                ================================================= */}
 
-            </table>
+                <div className="card shadow-sm mb-4">
+
+                    <div className="card-body">
+
+                        <div className="row g-3">
+
+                            {/* SEARCH */}
+
+                            <div className="col-md-7">
+
+                                <label
+                                    htmlFor="order-search"
+                                    className="form-label fw-semibold"
+                                >
+                                    Search Orders
+                                </label>
+
+                                <input
+                                    id="order-search"
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Search by order ID, customer, email, status..."
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(
+                                            event.target.value
+                                        )
+                                    }
+                                />
+
+                            </div>
+
+
+                            {/* STATUS FILTER */}
+
+                            <div className="col-md-5">
+
+                                <label
+                                    htmlFor="status-filter"
+                                    className="form-label fw-semibold"
+                                >
+                                    Filter by Status
+                                </label>
+
+                                <select
+                                    id="status-filter"
+                                    className="form-select"
+                                    value={statusFilter}
+                                    onChange={(event) =>
+                                        setStatusFilter(
+                                            event.target.value
+                                        )
+                                    }
+                                >
+
+                                    <option value="All">
+                                        All Orders
+                                    </option>
+
+                                    <option value="Pending">
+                                        Pending
+                                    </option>
+
+                                    <option value="Processing">
+                                        Processing
+                                    </option>
+
+                                    <option value="Delivered">
+                                        Delivered
+                                    </option>
+
+                                    <option value="Cancelled">
+                                        Cancelled
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                {/* =================================================
+                    ORDER COUNT
+                ================================================= */}
+
+                <div className="mb-3">
+
+                    <strong>
+                        Total Orders:
+                    </strong>{" "}
+
+                    {filteredOrders.length}
+
+                </div>
+
+
+                {/* =================================================
+                    ORDERS TABLE
+                ================================================= */}
+
+                <div className="card shadow">
+
+                    <div className="card-header bg-primary text-white">
+
+                        <h5 className="mb-0">
+                            Customer Orders
+                        </h5>
+
+                    </div>
+
+
+                    <div className="card-body p-0">
+
+                        <div className="table-responsive">
+
+                            <table className="table table-bordered table-hover align-middle mb-0">
+
+                                <thead className="table-dark">
+
+                                    <tr>
+
+                                        <th>
+                                            Order ID
+                                        </th>
+
+                                        <th>
+                                            Customer
+                                        </th>
+
+                                        <th>
+                                            Date
+                                        </th>
+
+                                        <th>
+                                            Items
+                                        </th>
+
+                                        <th>
+                                            Total
+                                        </th>
+
+                                        <th>
+                                            Payment
+                                        </th>
+
+                                        <th>
+                                            Status
+                                        </th>
+
+                                        <th>
+                                            Action
+                                        </th>
+
+                                    </tr>
+
+                                </thead>
+
+
+                                <tbody>
+
+                                    {filteredOrders.length > 0 ? (
+
+                                        filteredOrders.map(
+                                            (order) => {
+
+                                                const orderNumber =
+                                                    `ORD${String(
+                                                        order.id
+                                                    ).padStart(
+                                                        3,
+                                                        "0"
+                                                    )}`;
+
+                                                return (
+
+                                                    <tr
+                                                        key={
+                                                            order.id
+                                                        }
+                                                    >
+
+                                                        {/* ORDER */}
+
+                                                        <td>
+
+                                                            <strong>
+                                                                {
+                                                                    orderNumber
+                                                                }
+                                                            </strong>
+
+                                                        </td>
+
+
+                                                        {/* CUSTOMER */}
+
+                                                        <td>
+
+                                                            <div>
+                                                                <strong>
+                                                                    {
+                                                                        order.customer_name ||
+                                                                        "Unknown Customer"
+                                                                    }
+                                                                </strong>
+                                                            </div>
+
+                                                            <small className="text-muted">
+                                                                {
+                                                                    order.customer_email ||
+                                                                    "N/A"
+                                                                }
+                                                            </small>
+
+                                                        </td>
+
+
+                                                        {/* DATE */}
+
+                                                        <td>
+
+                                                            {
+                                                                formatDate(
+                                                                    order.created_at
+                                                                )
+                                                            }
+
+                                                        </td>
+
+
+                                                        {/* ITEMS */}
+
+                                                        <td>
+
+                                                            {
+                                                                order.item_count ??
+                                                                0
+                                                            }
+
+                                                        </td>
+
+
+                                                        {/* TOTAL */}
+
+                                                        <td>
+
+                                                            <strong>
+                                                                ৳
+                                                                {
+                                                                    formatAmount(
+                                                                        order.total_amount
+                                                                    )
+                                                                }
+                                                            </strong>
+
+                                                        </td>
+
+
+                                                        {/* PAYMENT */}
+
+                                                        <td>
+
+                                                            {
+                                                                getPaymentMethod(
+                                                                    order
+                                                                )
+                                                            }
+
+                                                        </td>
+
+
+                                                        {/* STATUS */}
+
+                                                        <td>
+
+                                                            <span
+                                                                className={getStatusBadge(
+                                                                    order.status
+                                                                )}
+                                                            >
+                                                                {
+                                                                    order.status ||
+                                                                    "N/A"
+                                                                }
+                                                            </span>
+
+                                                        </td>
+
+
+                                                        {/* ACTION */}
+
+                                                        <td>
+
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-warning btn-sm"
+                                                                onClick={() =>
+                                                                    handleUpdateOrder(
+                                                                        order.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                Update
+                                                            </button>
+
+                                                        </td>
+
+                                                    </tr>
+
+                                                );
+                                            }
+                                        )
+
+                                    ) : (
+
+                                        <tr>
+
+                                            <td
+                                                colSpan="8"
+                                                className="text-center py-5"
+                                            >
+
+                                                <h5>
+                                                    No Orders Found
+                                                </h5>
+
+                                                <p className="text-muted mb-0">
+
+                                                    {search ||
+                                                    statusFilter !== "All"
+                                                        ? "No orders match your search or filter."
+                                                        : "There are no orders yet."}
+
+                                                </p>
+
+                                            </td>
+
+                                        </tr>
+
+                                    )}
+
+                                </tbody>
+
+                            </table>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
 
         </DashboardLayout>
     );
 };
+
 
 export default AdminOrders;

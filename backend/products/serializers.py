@@ -5,10 +5,6 @@ from .models import Product
 
 class ProductSerializer(serializers.ModelSerializer):
 
-    # =========================================================
-    # PRICE VALIDATION
-    # =========================================================
-
     def validate_price(self, value):
 
         if value <= 0:
@@ -18,9 +14,6 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
-    # =========================================================
-    # STOCK VALIDATION
-    # =========================================================
 
     def validate_stock_quantity(self, value):
 
@@ -31,9 +24,6 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
-    # =========================================================
-    # PRODUCT NAME VALIDATION
-    # =========================================================
 
     def validate_name(self, value):
 
@@ -46,52 +36,56 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
-    # =========================================================
-    # DESCRIPTION VALIDATION
-    # =========================================================
 
     def validate_description(self, value):
 
         return value.strip()
 
-    # =========================================================
-    # CREATE
-    # =========================================================
 
     def create(self, validated_data):
 
-        # Automatically make unavailable when stock is zero
-        if validated_data.get("stock_quantity", 0) == 0:
+        stock_quantity = validated_data.get(
+            "stock_quantity",
+            0
+        )
+
+        if stock_quantity == 0:
+
             validated_data["is_available"] = False
 
-        return super().create(validated_data)
+        return super().create(
+            validated_data
+        )
 
-    # =========================================================
-    # UPDATE
-    # =========================================================
 
-    def update(self, instance, validated_data):
+    def update(
+        self,
+        instance,
+        validated_data
+    ):
 
         stock_quantity = validated_data.get(
             "stock_quantity",
             instance.stock_quantity
         )
 
-        # Automatically update availability
         if stock_quantity == 0:
-            validated_data["is_available"] = False
+
+            validated_data[
+                "is_available"
+            ] = False
 
         elif stock_quantity > 0:
-            validated_data["is_available"] = True
+
+            validated_data[
+                "is_available"
+            ] = True
 
         return super().update(
             instance,
             validated_data
         )
 
-    # =========================================================
-    # META
-    # =========================================================
 
     class Meta:
 

@@ -1,298 +1,773 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
-import { createProduct } from "../../services/productService";
+import {
+    useState,
+} from "react";
+
+import {
+    useNavigate,
+} from "react-router-dom";
+
+import {
+    toast,
+} from "react-toastify";
+
+import DashboardLayout from "../../layouts/DashboardLayout";
+
+import {
+    createProduct,
+} from "../../services/productService";
+
 
 const AddProduct = () => {
+
     const navigate = useNavigate();
 
-    const [name, setName] = useState("");
-    const [category, setCategory] = useState("Cake");
-    const [description, setDescription] = useState("");
-    const [price, setPrice] = useState("");
-    const [stockQuantity, setStockQuantity] = useState("");
-    const [isAvailable, setIsAvailable] = useState(true);
-    const [featured, setFeatured] = useState(false);
+    // =========================================================
+    // CATEGORY CHOICES
+    // These MUST match Django Product.CATEGORY_CHOICES
+    // =========================================================
+
+    const categories = [
+        "Cake",
+        "Bread",
+        "Pastry",
+        "Cookies",
+        "Donut",
+        "Cup Cake",
+        "Muffin",
+        "Brownie",
+    ];
+
+
+    // =========================================================
+    // FORM DATA
+    // =========================================================
+
+    const [formData, setFormData] = useState({
+        name: "",
+        category: "",
+        description: "",
+        price: "",
+        stock_quantity: "",
+        is_available: true,
+        featured: false,
+    });
+
+
+    // =========================================================
+    // IMAGE
+    // =========================================================
 
     const [image, setImage] = useState(null);
-    const [preview, setPreview] = useState(null);
+
+
+    // =========================================================
+    // SAVING
+    // =========================================================
 
     const [saving, setSaving] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
 
-        // Validation
-        if (
-            !name ||
-            !description ||
-            !price ||
-            !stockQuantity
-        ) {
-           toast.warning("Please fill all required fields.");
+    // =========================================================
+    // HANDLE INPUT CHANGE
+    // =========================================================
+
+    const handleChange = (event) => {
+
+        const {
+            name,
+            value,
+            type,
+            checked,
+        } = event.target;
+
+
+        setFormData((previous) => ({
+            ...previous,
+
+            [name]:
+                type === "checkbox"
+                    ? checked
+                    : value,
+        }));
+    };
+
+
+    // =========================================================
+    // HANDLE IMAGE
+    // =========================================================
+
+    const handleImageChange = (event) => {
+
+        const file =
+            event.target.files?.[0] || null;
+
+        setImage(file);
+    };
+
+
+    // =========================================================
+    // SUBMIT PRODUCT
+    // =========================================================
+
+    const handleSubmit = async (event) => {
+
+        event.preventDefault();
+
+
+        // -----------------------------------------------------
+        // CLEAN DATA
+        // -----------------------------------------------------
+
+        const productName =
+            formData.name.trim();
+
+        const description =
+            formData.description.trim();
+
+        const price =
+            Number(formData.price);
+
+        const stockQuantity =
+            Number(formData.stock_quantity);
+
+
+        // -----------------------------------------------------
+        // VALIDATION
+        // -----------------------------------------------------
+
+        if (!productName) {
+
+            toast.warning(
+                "Product name is required."
+            );
+
             return;
         }
 
-        setSaving(true);
+
+        if (!formData.category) {
+
+            toast.warning(
+                "Please select a category."
+            );
+
+            return;
+        }
+
+
+        if (!description) {
+
+            toast.warning(
+                "Product description is required."
+            );
+
+            return;
+        }
+
+
+        if (
+            formData.price === "" ||
+            Number.isNaN(price) ||
+            price <= 0
+        ) {
+
+            toast.warning(
+                "Please enter a valid product price."
+            );
+
+            return;
+        }
+
+
+        if (
+            formData.stock_quantity === "" ||
+            Number.isNaN(stockQuantity) ||
+            stockQuantity < 0
+        ) {
+
+            toast.warning(
+                "Please enter a valid stock quantity."
+            );
+
+            return;
+        }
+
+
+        // -----------------------------------------------------
+        // CREATE FORM DATA
+        // -----------------------------------------------------
+
+        const productData =
+            new FormData();
+
+
+        productData.append(
+            "name",
+            productName
+        );
+
+
+        // IMPORTANT:
+        // Django expects "Cake", "Bread", etc.
+        // NOT category ID such as 1.
+        productData.append(
+            "category",
+            formData.category
+        );
+
+
+        productData.append(
+            "description",
+            description
+        );
+
+
+        productData.append(
+            "price",
+            price.toString()
+        );
+
+
+        productData.append(
+            "stock_quantity",
+            stockQuantity.toString()
+        );
+
+
+        // IMPORTANT:
+        // Django field = is_available
+        productData.append(
+            "is_available",
+            formData.is_available
+                ? "true"
+                : "false"
+        );
+
+
+        // IMPORTANT:
+        // Django field = featured
+        productData.append(
+            "featured",
+            formData.featured
+                ? "true"
+                : "false"
+        );
+
+
+        // -----------------------------------------------------
+        // IMAGE
+        // -----------------------------------------------------
+
+        if (image) {
+
+            productData.append(
+                "image",
+                image
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // SEND TO DJANGO
+        // -----------------------------------------------------
 
         try {
-            const formData = new FormData();
 
-            formData.append("name", name);
-            formData.append("category", category);
-            formData.append("description", description);
-            formData.append("price", price);
-            formData.append("stock_quantity", stockQuantity);
-            formData.append("is_available", isAvailable);
-            formData.append("featured", featured);
+            setSaving(true);
 
-            if (image) {
-                formData.append("image", image);
-            }
 
-            await createProduct(formData);
+            await createProduct(
+                productData
+            );
 
-            // Later replace with toast.success(...)
-            toast.success("Product added successfully!");
-            navigate("/admin/products");
+
+            toast.success(
+                "Product added successfully."
+            );
+
+
+            navigate(
+                "/admin/products"
+            );
+
+
         } catch (error) {
-            console.log(error);
 
-            if (error.response?.data) {
-                console.log(error.response.data);
+            console.error(
+                "Failed to create product:",
+                error
+            );
+
+
+            // -------------------------------------------------
+            // DJANGO ERROR
+            // -------------------------------------------------
+
+            const responseData =
+                error?.response?.data;
+
+
+            if (
+                responseData &&
+                typeof responseData === "object"
+            ) {
+
+                const messages = [];
+
+
+                Object.entries(
+                    responseData
+                ).forEach(
+                    ([field, errors]) => {
+
+                        if (
+                            Array.isArray(errors)
+                        ) {
+
+                            errors.forEach(
+                                (message) => {
+
+                                    messages.push(
+                                        `${field}: ${message}`
+                                    );
+                                }
+                            );
+
+                        } else {
+
+                            messages.push(
+                                `${field}: ${errors}`
+                            );
+                        }
+                    }
+                );
+
+
+                if (
+                    messages.length > 0
+                ) {
+
+                    messages.forEach(
+                        (message) => {
+
+                            toast.error(
+                                message
+                            );
+                        }
+                    );
+
+                } else {
+
+                    toast.error(
+                        "Failed to add product."
+                    );
+                }
+
+            } else {
+
+                toast.error(
+                    "Failed to add product."
+                );
             }
 
-           toast.error("Failed to add product.");
         } finally {
+
             setSaving(false);
         }
     };
 
+
+    // =========================================================
+    // PAGE
+    // =========================================================
+
     return (
-        <div className="container py-5">
 
-            <div className="card shadow">
+        <DashboardLayout>
 
-                <div className="card-header bg-success text-white">
-                    <h3 className="mb-0">
-                        Add New Product
-                    </h3>
-                </div>
+            <div className="container-fluid py-4">
 
-                <div className="card-body">
+                <div className="card shadow">
 
-                    <form onSubmit={handleSubmit}>
+                    {/* =================================================
+                        HEADER
+                    ================================================= */}
 
-                        {/* Product Name */}
+                    <div className="card-header bg-success text-white">
 
-                        <div className="mb-3">
-                            <label className="form-label">
-                                Product Name
-                            </label>
+                        <h2 className="mb-0">
+                            Add New Product
+                        </h2>
 
-                            <input
-                                type="text"
-                                className="form-control"
-                                value={name}
-                                onChange={(e) =>
-                                    setName(e.target.value)
-                                }
-                            />
-                        </div>
+                    </div>
 
-                        {/* Category */}
 
-                        <div className="mb-3">
+                    {/* =================================================
+                        FORM
+                    ================================================= */}
 
-                            <label className="form-label">
-                                Category
-                            </label>
+                    <div className="card-body">
 
-                            <select
-                                className="form-select"
-                                value={category}
-                                onChange={(e) =>
-                                    setCategory(e.target.value)
-                                }
-                            >
-                                <option value="Cake">Cake</option>
-                                <option value="Bread">Bread</option>
-                                <option value="Pastry">Pastry</option>
-                                <option value="Cookies">Cookies</option>
-                                <option value="Donut">Donut</option>
-                                <option value="Cup Cake">Cup Cake</option>
-                                <option value="Muffin">Muffin</option>
-                                <option value="Brownie">Brownie</option>
-                            </select>
+                        <form
+                            onSubmit={handleSubmit}
+                        >
 
-                        </div>
+                            {/* =========================================
+                                PRODUCT NAME
+                            ========================================= */}
 
-                        {/* Description */}
+                            <div className="mb-4">
 
-                        <div className="mb-3">
+                                <label
+                                    htmlFor="product-name"
+                                    className="form-label"
+                                >
+                                    Product Name
+                                </label>
 
-                            <label className="form-label">
-                                Description
-                            </label>
 
-                            <textarea
-                                rows="4"
-                                className="form-control"
-                                value={description}
-                                onChange={(e) =>
-                                    setDescription(e.target.value)
-                                }
-                            />
-
-                        </div>
-
-                        {/* Price */}
-
-                        <div className="mb-3">
-
-                            <label className="form-label">
-                                Price (৳)
-                            </label>
-
-                            <input
-                                type="number"
-                                className="form-control"
-                                value={price}
-                                onChange={(e) =>
-                                    setPrice(e.target.value)
-                                }
-                            />
-
-                        </div>
-
-                        {/* Stock */}
-
-                        <div className="mb-3">
-
-                            <label className="form-label">
-                                Stock Quantity
-                            </label>
-
-                            <input
-                                type="number"
-                                className="form-control"
-                                value={stockQuantity}
-                                onChange={(e) =>
-                                    setStockQuantity(e.target.value)
-                                }
-                            />
-
-                        </div>
-
-                        {/* Image */}
-
-                        <div className="mb-3">
-
-                            <label className="form-label">
-                                Product Image
-                            </label>
-
-                            <input
-                                type="file"
-                                accept="image/*"
-                                className="form-control"
-                                onChange={(e) => {
-
-                                    const file =
-                                        e.target.files[0];
-
-                                    setImage(file);
-
-                                    if (file) {
-                                        setPreview(
-                                            URL.createObjectURL(file)
-                                        );
+                                <input
+                                    id="product-name"
+                                    type="text"
+                                    name="name"
+                                    className="form-control"
+                                    value={
+                                        formData.name
                                     }
-                                }}
-                            />
-
-                            {preview && (
-
-                                <img
-                                    src={preview}
-                                    alt="Preview"
-                                    className="img-thumbnail mt-3"
-                                    width="220"
+                                    onChange={
+                                        handleChange
+                                    }
+                                    placeholder="Enter product name"
+                                    required
                                 />
 
-                            )}
+                            </div>
 
-                        </div>
 
-                        {/* Checkboxes */}
+                            {/* =========================================
+                                CATEGORY
+                            ========================================= */}
 
-                        <div className="form-check mb-2">
+                            <div className="mb-4">
 
-                            <input
-                                type="checkbox"
-                                className="form-check-input"
-                                checked={isAvailable}
-                                onChange={(e) =>
-                                    setIsAvailable(
-                                        e.target.checked
-                                    )
-                                }
-                            />
+                                <label
+                                    htmlFor="product-category"
+                                    className="form-label"
+                                >
+                                    Category
+                                </label>
 
-                            <label className="form-check-label">
-                                Available
-                            </label>
 
-                        </div>
+                                <select
+                                    id="product-category"
+                                    name="category"
+                                    className="form-select"
+                                    value={
+                                        formData.category
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                    required
+                                >
 
-                        <div className="form-check mb-4">
+                                    <option value="">
+                                        Select Category
+                                    </option>
 
-                            <input
-                                type="checkbox"
-                                className="form-check-input"
-                                checked={featured}
-                                onChange={(e) =>
-                                    setFeatured(
-                                        e.target.checked
-                                    )
-                                }
-                            />
 
-                            <label className="form-check-label">
-                                Featured Product
-                            </label>
+                                    {categories.map(
+                                        (category) => (
 
-                        </div>
+                                            <option
+                                                key={
+                                                    category
+                                                }
+                                                value={
+                                                    category
+                                                }
+                                            >
+                                                {
+                                                    category
+                                                }
+                                            </option>
 
-                        {/* Buttons */}
+                                        )
+                                    )}
 
-                        <button
-                            className="btn btn-success"
-                            disabled={saving}
-                        >
-                            {saving
-                                ? "Saving..."
-                                : "Save Product"}
-                        </button>
+                                </select>
 
-                        <button
-                            type="button"
-                            className="btn btn-secondary ms-2"
-                            onClick={() =>
-                                navigate("/admin/products")
-                            }
-                        >
-                            Cancel
-                        </button>
+                            </div>
 
-                    </form>
+
+                            {/* =========================================
+                                DESCRIPTION
+                            ========================================= */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    htmlFor="product-description"
+                                    className="form-label"
+                                >
+                                    Description
+                                </label>
+
+
+                                <textarea
+                                    id="product-description"
+                                    name="description"
+                                    className="form-control"
+                                    rows="5"
+                                    value={
+                                        formData.description
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                    placeholder="Enter product description"
+                                    required
+                                />
+
+                            </div>
+
+
+                            {/* =========================================
+                                PRICE
+                            ========================================= */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    htmlFor="product-price"
+                                    className="form-label"
+                                >
+                                    Price (৳)
+                                </label>
+
+
+                                <input
+                                    id="product-price"
+                                    type="number"
+                                    name="price"
+                                    className="form-control"
+                                    value={
+                                        formData.price
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                    placeholder="Enter price"
+                                    min="0.01"
+                                    step="0.01"
+                                    required
+                                />
+
+                            </div>
+
+
+                            {/* =========================================
+                                STOCK QUANTITY
+                            ========================================= */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    htmlFor="product-stock"
+                                    className="form-label"
+                                >
+                                    Stock Quantity
+                                </label>
+
+
+                                <input
+                                    id="product-stock"
+                                    type="number"
+                                    name="stock_quantity"
+                                    className="form-control"
+                                    value={
+                                        formData.stock_quantity
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                    placeholder="Enter stock quantity"
+                                    min="0"
+                                    step="1"
+                                    required
+                                />
+
+                            </div>
+
+
+                            {/* =========================================
+                                PRODUCT IMAGE
+                            ========================================= */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    htmlFor="product-image"
+                                    className="form-label"
+                                >
+                                    Product Image
+                                </label>
+
+
+                                <input
+                                    id="product-image"
+                                    type="file"
+                                    name="image"
+                                    className="form-control"
+                                    accept="image/*"
+                                    onChange={
+                                        handleImageChange
+                                    }
+                                />
+
+
+                                {image && (
+
+                                    <div className="mt-2">
+
+                                        <small className="text-muted">
+
+                                            Selected file:{" "}
+
+                                            {
+                                                image.name
+                                            }
+
+                                        </small>
+
+                                    </div>
+
+                                )}
+
+                            </div>
+
+
+                            {/* =========================================
+                                AVAILABLE
+                            ========================================= */}
+
+                            <div className="form-check mb-3">
+
+                                <input
+                                    id="product-available"
+                                    type="checkbox"
+                                    name="is_available"
+                                    className="form-check-input"
+                                    checked={
+                                        formData.is_available
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                />
+
+
+                                <label
+                                    htmlFor="product-available"
+                                    className="form-check-label"
+                                >
+                                    Available
+                                </label>
+
+                            </div>
+
+
+                            {/* =========================================
+                                FEATURED
+                            ========================================= */}
+
+                            <div className="form-check mb-4">
+
+                                <input
+                                    id="product-featured"
+                                    type="checkbox"
+                                    name="featured"
+                                    className="form-check-input"
+                                    checked={
+                                        formData.featured
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                />
+
+
+                                <label
+                                    htmlFor="product-featured"
+                                    className="form-check-label"
+                                >
+                                    Featured Product
+                                </label>
+
+                            </div>
+
+
+                            {/* =========================================
+                                BUTTONS
+                            ========================================= */}
+
+                            <div className="d-flex gap-2">
+
+                                <button
+                                    type="submit"
+                                    className="btn btn-success"
+                                    disabled={saving}
+                                >
+
+                                    {saving ? (
+
+                                        <>
+
+                                            <span
+                                                className="spinner-border spinner-border-sm me-2"
+                                                role="status"
+                                                aria-hidden="true"
+                                            />
+
+                                            Saving Product...
+
+                                        </>
+
+                                    ) : (
+
+                                        "Add Product"
+
+                                    )}
+
+                                </button>
+
+
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={saving}
+                                    onClick={() =>
+                                        navigate(
+                                            "/admin/products"
+                                        )
+                                    }
+                                >
+                                    Cancel
+                                </button>
+
+                            </div>
+
+                        </form>
+
+                    </div>
 
                 </div>
 
             </div>
 
-        </div>
+        </DashboardLayout>
     );
 };
+
 
 export default AddProduct;
