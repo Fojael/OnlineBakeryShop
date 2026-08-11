@@ -16,11 +16,34 @@ import {
 } from "../../services/productService";
 
 
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+
 const Home = () => {
 
     const [products, setProducts] = useState([]);
 
     const [loading, setLoading] = useState(true);
+
+
+    // =========================================================
+    // PRODUCT IMAGE URL
+    // =========================================================
+
+    const getProductImage = (product) => {
+
+        if (!product?.image) {
+            return "https://placehold.co/600x400?text=Bakery+Product";
+        }
+
+        const image = String(product.image);
+
+        if (image.startsWith("http://") || image.startsWith("https://")) {
+            return image;
+        }
+
+        return `${API_BASE_URL}${image}`;
+    };
 
 
     // =========================================================
@@ -33,8 +56,7 @@ const Home = () => {
 
             try {
 
-                const response =
-                    await getProducts();
+                const response = await getProducts();
 
                 console.log(
                     "Products API response:",
@@ -42,34 +64,67 @@ const Home = () => {
                 );
 
 
-                // -------------------------------------------------
-                // Make sure response is an array
-                // -------------------------------------------------
+                const data = response.data;
 
-                if (Array.isArray(response.data)) {
 
-                    setProducts(
-                        response.data
-                            .filter(
-                                (product) =>
-                                    product.is_available !== false
-                            )
-                            .slice(0, 6)
-                    );
+                // =================================================
+                // SUPPORT BOTH:
+                //
+                // [
+                //    {...}
+                // ]
+                //
+                // AND:
+                //
+                // {
+                //    results: [...]
+                // }
+                // =================================================
+
+                let productList = [];
+
+                if (Array.isArray(data)) {
+
+                    productList = data;
+
+                } else if (
+                    data &&
+                    Array.isArray(data.results)
+                ) {
+
+                    productList = data.results;
 
                 } else {
 
                     console.error(
                         "Unexpected products response:",
-                        response.data
+                        data
                     );
-
-                    setProducts([]);
 
                     toast.error(
                         "Invalid product data received."
                     );
+
+                    setProducts([]);
+
+                    return;
                 }
+
+
+                // =================================================
+                // ONLY AVAILABLE PRODUCTS
+                // =================================================
+
+                const availableProducts = productList
+                    .filter(
+                        (product) =>
+                            product.is_available !== false
+                    )
+                    .slice(0, 6);
+
+
+                setProducts(availableProducts);
+
 
             } catch (error) {
 
@@ -79,18 +134,30 @@ const Home = () => {
                 );
 
                 console.error(
-                    "API URL:",
-                    error.config?.url
+                    "Request URL:",
+                    error?.config?.url
                 );
 
                 console.error(
-                    "API response:",
-                    error.response?.data
+                    "Response:",
+                    error?.response?.data
                 );
 
-                toast.error(
-                    "Unable to load products."
-                );
+
+                if (!error?.response) {
+
+                    toast.error(
+                        "Unable to connect to Django API."
+                    );
+
+                } else {
+
+                    toast.error(
+                        error?.response?.data?.detail ||
+                        "Unable to load products."
+                    );
+                }
+
 
                 setProducts([]);
 
@@ -142,7 +209,6 @@ const Home = () => {
 
         <div>
 
-
             {/* =================================================
                 HERO SECTION
             ================================================= */}
@@ -180,7 +246,7 @@ const Home = () => {
                             </p>
 
 
-                            <div className="d-flex gap-2 mt-4">
+                            <div className="d-flex flex-wrap gap-2 mt-4">
 
                                 <Link
                                     to="/products"
@@ -263,105 +329,107 @@ const Home = () => {
 
 
                     {/* =================================================
-                        PRODUCTS EXIST
+                        PRODUCTS
                     ================================================= */}
 
                     {products.length > 0 ? (
 
                         <div className="row">
 
-                            {products.map(
-                                (product) => (
+                            {products.map((product) => (
 
-                                    <div
-                                        className="col-lg-4 col-md-6 mb-4"
-                                        key={product.id}
-                                    >
+                                <div
+                                    className="col-lg-4 col-md-6 mb-4"
+                                    key={product.id}
+                                >
 
-                                        <div className="card shadow-sm h-100">
+                                    <div className="card shadow-sm h-100">
 
+                                        {/* IMAGE */}
 
-                                            {/* IMAGE */}
-
-                                            <img
-                                                src={
-                                                    product.image ||
-                                                    "https://placehold.co/600x400?text=Bakery+Product"
-                                                }
-                                                className="card-img-top"
-                                                alt={product.name}
-                                                style={{
-                                                    height: "250px",
-                                                    objectFit: "cover",
-                                                }}
-                                            />
-
-
-                                            {/* BODY */}
-
-                                            <div className="card-body">
-
-                                                <h5 className="card-title fw-bold">
-                                                    {product.name}
-                                                </h5>
+                                        <img
+                                            src={getProductImage(product)}
+                                            className="card-img-top"
+                                            alt={product.name || "Bakery Product"}
+                                            style={{
+                                                height: "250px",
+                                                objectFit: "cover",
+                                            }}
+                                            onError={(event) => {
+                                                event.currentTarget.src =
+                                                    "https://placehold.co/600x400?text=Bakery+Product";
+                                            }}
+                                        />
 
 
-                                                <span className="badge bg-secondary mb-2">
-                                                    {product.category}
-                                                </span>
+                                        {/* BODY */}
+
+                                        <div className="card-body">
+
+                                            <h5 className="card-title fw-bold">
+                                                {product.name}
+                                            </h5>
 
 
-                                                <p className="text-muted">
-
-                                                    {product.description}
-
-                                                </p>
+                                            <span className="badge bg-secondary mb-2">
+                                                {product.category || "Bakery"}
+                                            </span>
 
 
-                                                <h5 className="text-primary fw-bold">
-
-                                                    ৳{" "}
-                                                    {Number(
-                                                        product.price
-                                                    ).toFixed(2)}
-
-                                                </h5>
-
-                                            </div>
+                                            <p className="text-muted">
+                                                {product.description ||
+                                                    "Delicious bakery product."}
+                                            </p>
 
 
-                                            {/* FOOTER */}
+                                            <h5 className="text-primary fw-bold">
 
-                                            <div className="card-footer bg-white border-0 pb-3">
+                                                ৳{" "}
 
-                                                <Link
-                                                    to={`/products/${product.id}`}
-                                                    className="btn btn-primary w-100"
-                                                >
-                                                    View Product
-                                                </Link>
+                                                {Number(
+                                                    product.price || 0
+                                                ).toFixed(2)}
 
-                                            </div>
+                                            </h5>
+
+
+                                            <p className="small text-muted mb-0">
+
+                                                Stock:{" "}
+                                                {product.stock_quantity ?? 0}
+
+                                            </p>
+
+                                        </div>
+
+
+                                        {/* FOOTER */}
+
+                                        <div className="card-footer bg-white border-0 pb-3">
+
+                                            <Link
+                                                to={`/products/${product.id}`}
+                                                className="btn btn-primary w-100"
+                                            >
+                                                View Product
+                                            </Link>
 
                                         </div>
 
                                     </div>
 
-                                )
-                            )}
+                                </div>
+
+                            ))}
 
                         </div>
 
                     ) : (
 
-                        /* =================================================
-                           NO PRODUCTS
-                        ================================================= */
-
                         <div className="text-center py-5">
 
                             <h4>
-                                No Featured Products Available
+                                No Products Available
                             </h4>
 
                             <p className="text-muted">

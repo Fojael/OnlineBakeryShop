@@ -10,20 +10,20 @@ import {
     toast,
 } from "react-toastify";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../../layouts/DashboardLayout";
 
 import {
     createProduct,
-} from "../../services/productService";
+} from "../../../services/productService";
 
 
 const AddProduct = () => {
 
     const navigate = useNavigate();
 
+
     // =========================================================
     // CATEGORY CHOICES
-    // These MUST match Django Product.CATEGORY_CHOICES
     // =========================================================
 
     const categories = [
@@ -68,7 +68,7 @@ const AddProduct = () => {
 
 
     // =========================================================
-    // HANDLE INPUT CHANGE
+    // HANDLE INPUT
     // =========================================================
 
     const handleChange = (event) => {
@@ -82,13 +82,16 @@ const AddProduct = () => {
 
 
         setFormData((previous) => ({
+
             ...previous,
 
             [name]:
                 type === "checkbox"
                     ? checked
                     : value,
+
         }));
+
     };
 
 
@@ -101,12 +104,14 @@ const AddProduct = () => {
         const file =
             event.target.files?.[0] || null;
 
+
         setImage(file);
+
     };
 
 
     // =========================================================
-    // SUBMIT PRODUCT
+    // SUBMIT
     // =========================================================
 
     const handleSubmit = async (event) => {
@@ -114,26 +119,29 @@ const AddProduct = () => {
         event.preventDefault();
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // CLEAN DATA
-        // -----------------------------------------------------
+        // =====================================================
 
         const productName =
             formData.name.trim();
 
+
         const description =
             formData.description.trim();
 
+
         const price =
             Number(formData.price);
+
 
         const stockQuantity =
             Number(formData.stock_quantity);
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // VALIDATION
-        // -----------------------------------------------------
+        // =====================================================
 
         if (!productName) {
 
@@ -193,9 +201,9 @@ const AddProduct = () => {
         }
 
 
-        // -----------------------------------------------------
-        // CREATE FORM DATA
-        // -----------------------------------------------------
+        // =====================================================
+        // FORM DATA
+        // =====================================================
 
         const productData =
             new FormData();
@@ -207,9 +215,6 @@ const AddProduct = () => {
         );
 
 
-        // IMPORTANT:
-        // Django expects "Cake", "Bread", etc.
-        // NOT category ID such as 1.
         productData.append(
             "category",
             formData.category
@@ -234,8 +239,6 @@ const AddProduct = () => {
         );
 
 
-        // IMPORTANT:
-        // Django field = is_available
         productData.append(
             "is_available",
             formData.is_available
@@ -244,8 +247,6 @@ const AddProduct = () => {
         );
 
 
-        // IMPORTANT:
-        // Django field = featured
         productData.append(
             "featured",
             formData.featured
@@ -254,9 +255,9 @@ const AddProduct = () => {
         );
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // IMAGE
-        // -----------------------------------------------------
+        // =====================================================
 
         if (image) {
 
@@ -264,20 +265,28 @@ const AddProduct = () => {
                 "image",
                 image
             );
+
         }
 
 
-        // -----------------------------------------------------
-        // SEND TO DJANGO
-        // -----------------------------------------------------
+        // =====================================================
+        // SEND
+        // =====================================================
 
         try {
 
             setSaving(true);
 
 
-            await createProduct(
-                productData
+            const response =
+                await createProduct(
+                    productData
+                );
+
+
+            console.log(
+                "Created product:",
+                response.data
             );
 
 
@@ -299,13 +308,19 @@ const AddProduct = () => {
             );
 
 
-            // -------------------------------------------------
-            // DJANGO ERROR
-            // -------------------------------------------------
+            console.error(
+                "Response:",
+                error?.response?.data
+            );
+
 
             const responseData =
                 error?.response?.data;
 
+
+            // =================================================
+            // DJANGO VALIDATION ERRORS
+            // =================================================
 
             if (
                 responseData &&
@@ -330,6 +345,7 @@ const AddProduct = () => {
                                     messages.push(
                                         `${field}: ${message}`
                                     );
+
                                 }
                             );
 
@@ -338,7 +354,9 @@ const AddProduct = () => {
                             messages.push(
                                 `${field}: ${errors}`
                             );
+
                         }
+
                     }
                 );
 
@@ -353,6 +371,7 @@ const AddProduct = () => {
                             toast.error(
                                 message
                             );
+
                         }
                     );
 
@@ -361,6 +380,7 @@ const AddProduct = () => {
                     toast.error(
                         "Failed to add product."
                     );
+
                 }
 
             } else {
@@ -368,12 +388,15 @@ const AddProduct = () => {
                 toast.error(
                     "Failed to add product."
                 );
+
             }
 
         } finally {
 
             setSaving(false);
+
         }
+
     };
 
 
@@ -389,9 +412,8 @@ const AddProduct = () => {
 
                 <div className="card shadow">
 
-                    {/* =================================================
-                        HEADER
-                    ================================================= */}
+
+                    {/* HEADER */}
 
                     <div className="card-header bg-success text-white">
 
@@ -402,9 +424,7 @@ const AddProduct = () => {
                     </div>
 
 
-                    {/* =================================================
-                        FORM
-                    ================================================= */}
+                    {/* FORM */}
 
                     <div className="card-body">
 
@@ -412,15 +432,14 @@ const AddProduct = () => {
                             onSubmit={handleSubmit}
                         >
 
-                            {/* =========================================
-                                PRODUCT NAME
-                            ========================================= */}
+
+                            {/* PRODUCT NAME */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-name"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Product Name
                                 </label>
@@ -444,15 +463,13 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                CATEGORY
-                            ========================================= */}
+                            {/* CATEGORY */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-category"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Category
                                 </label>
@@ -500,15 +517,13 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                DESCRIPTION
-                            ========================================= */}
+                            {/* DESCRIPTION */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-description"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Description
                                 </label>
@@ -532,15 +547,13 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                PRICE
-                            ========================================= */}
+                            {/* PRICE */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-price"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Price (৳)
                                 </label>
@@ -566,15 +579,13 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                STOCK QUANTITY
-                            ========================================= */}
+                            {/* STOCK */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-stock"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Stock Quantity
                                 </label>
@@ -600,15 +611,13 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                PRODUCT IMAGE
-                            ========================================= */}
+                            {/* IMAGE */}
 
                             <div className="mb-4">
 
                                 <label
                                     htmlFor="product-image"
-                                    className="form-label"
+                                    className="form-label fw-semibold"
                                 >
                                     Product Image
                                 </label>
@@ -647,9 +656,7 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                AVAILABLE
-                            ========================================= */}
+                            {/* AVAILABLE */}
 
                             <div className="form-check mb-3">
 
@@ -677,9 +684,7 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                FEATURED
-                            ========================================= */}
+                            {/* FEATURED */}
 
                             <div className="form-check mb-4">
 
@@ -707,9 +712,7 @@ const AddProduct = () => {
                             </div>
 
 
-                            {/* =========================================
-                                BUTTONS
-                            ========================================= */}
+                            {/* BUTTONS */}
 
                             <div className="d-flex gap-2">
 
@@ -766,6 +769,7 @@ const AddProduct = () => {
             </div>
 
         </DashboardLayout>
+
     );
 };
 

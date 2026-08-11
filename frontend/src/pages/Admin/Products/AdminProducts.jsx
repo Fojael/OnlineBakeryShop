@@ -21,6 +21,17 @@ import {
 } from "../../../services/productService";
 
 
+// ============================================================
+// BACKEND BASE URL
+// ============================================================
+
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+
+// ============================================================
+// ADMIN PRODUCTS
+// ============================================================
+
 const AdminProducts = () => {
 
     // =========================================================
@@ -35,6 +46,31 @@ const AdminProducts = () => {
 
 
     // =========================================================
+    // PRODUCT IMAGE URL
+    // =========================================================
+
+    const getProductImage = (product) => {
+
+        if (!product?.image) {
+            return null;
+        }
+
+        const image = String(product.image);
+
+        // Already a complete URL
+        if (
+            image.startsWith("http://") ||
+            image.startsWith("https://")
+        ) {
+            return image;
+        }
+
+        // Django relative media path
+        return `${API_BASE_URL}${image}`;
+    };
+
+
+    // =========================================================
     // FETCH PRODUCTS
     // =========================================================
 
@@ -42,42 +78,73 @@ const AdminProducts = () => {
 
         try {
 
-            setLoading(true);
-
             const response = await getProducts();
+
+            console.log(
+                "Admin Products API Response:",
+                response.data
+            );
 
             const data = response.data;
 
-            /*
-             * Django REST Framework normally returns
-             * an array when pagination is disabled.
-             *
-             * If pagination is enabled, products may be
-             * inside data.results.
-             */
+
+            // -------------------------------------------------
+            // Normal DRF response
+            // -------------------------------------------------
 
             if (Array.isArray(data)) {
 
                 setProducts(data);
 
-            } else if (
+                return;
+            }
+
+
+            // -------------------------------------------------
+            // DRF paginated response
+            // -------------------------------------------------
+
+            if (
                 data &&
                 Array.isArray(data.results)
             ) {
 
                 setProducts(data.results);
 
-            } else {
-
-                setProducts([]);
-
+                return;
             }
+
+
+            // -------------------------------------------------
+            // Invalid response
+            // -------------------------------------------------
+
+            console.error(
+                "Invalid product response:",
+                data
+            );
+
+            setProducts([]);
+
+            toast.error(
+                "Invalid product data received."
+            );
 
         } catch (error) {
 
             console.error(
                 "Failed to load products:",
                 error
+            );
+
+            console.error(
+                "Request URL:",
+                error?.config?.url
+            );
+
+            console.error(
+                "Response:",
+                error?.response?.data
             );
 
             toast.error(
@@ -87,34 +154,132 @@ const AdminProducts = () => {
 
             setProducts([]);
 
-        } finally {
-
-            setLoading(false);
-
         }
 
     }, []);
 
 
     // =========================================================
-    // LOAD PRODUCTS
+    // INITIAL LOAD
+    // IMPORTANT:
+    // Do not call fetchProducts() directly from the effect
+    // because the React Hooks ESLint rule detects synchronous
+    // setState calls inside the effect.
     // =========================================================
 
     useEffect(() => {
 
-        const timer = window.setTimeout(() => {
+        let cancelled = false;
 
-            void fetchProducts();
+        const loadProducts = async () => {
 
-        }, 0);
+            try {
 
-        return () => {
+                const response = await getProducts();
 
-            window.clearTimeout(timer);
+                console.log(
+                    "Initial Products API Response:",
+                    response.data
+                );
+
+                const data = response.data;
+
+                if (cancelled) {
+                    return;
+                }
+
+
+                // -------------------------------------------------
+                // Normal DRF array
+                // -------------------------------------------------
+
+                if (Array.isArray(data)) {
+
+                    setProducts(data);
+
+                    return;
+                }
+
+
+                // -------------------------------------------------
+                // Paginated DRF response
+                // -------------------------------------------------
+
+                if (
+                    data &&
+                    Array.isArray(data.results)
+                ) {
+
+                    setProducts(data.results);
+
+                    return;
+                }
+
+
+                // -------------------------------------------------
+                // Invalid response
+                // -------------------------------------------------
+
+                console.error(
+                    "Invalid product response:",
+                    data
+                );
+
+                setProducts([]);
+
+                toast.error(
+                    "Invalid product data received."
+                );
+
+            } catch (error) {
+
+                if (cancelled) {
+                    return;
+                }
+
+                console.error(
+                    "Failed to load products:",
+                    error
+                );
+
+                console.error(
+                    "Request URL:",
+                    error?.config?.url
+                );
+
+                console.error(
+                    "Response:",
+                    error?.response?.data
+                );
+
+                toast.error(
+                    error?.response?.data?.detail ||
+                    "Unable to load products."
+                );
+
+                setProducts([]);
+
+            } finally {
+
+                if (!cancelled) {
+                    setLoading(false);
+                }
+
+            }
 
         };
 
-    }, [fetchProducts]);
+
+        loadProducts();
+
+
+        return () => {
+
+            cancelled = true;
+
+        };
+
+    }, []);
 
 
     // =========================================================
@@ -131,6 +296,7 @@ const AdminProducts = () => {
             return;
         }
 
+
         try {
 
             await deleteProduct(id);
@@ -139,6 +305,8 @@ const AdminProducts = () => {
                 "Product deleted successfully."
             );
 
+
+            // Refresh product list
             await fetchProducts();
 
         } catch (error) {
@@ -146,6 +314,11 @@ const AdminProducts = () => {
             console.error(
                 "Failed to delete product:",
                 error
+            );
+
+            console.error(
+                "Response:",
+                error?.response?.data
             );
 
             toast.error(
@@ -168,31 +341,36 @@ const AdminProducts = () => {
             .trim()
             .toLowerCase();
 
+
         if (!keyword) {
-
             return products;
-
         }
+
 
         return products.filter((product) => {
 
             const name = String(
-                product.name || ""
+                product?.name || ""
             ).toLowerCase();
 
+
             const category = String(
-                product.category_name ||
-                product.category?.name ||
+                product?.category ||
+                product?.category_name ||
+                product?.category?.name ||
                 ""
             ).toLowerCase();
 
+
             const price = String(
-                product.price || ""
+                product?.price || ""
             ).toLowerCase();
 
+
             const description = String(
-                product.description || ""
+                product?.description || ""
             ).toLowerCase();
+
 
             return (
                 name.includes(keyword) ||
@@ -210,31 +388,6 @@ const AdminProducts = () => {
 
 
     // =========================================================
-    // PRODUCT IMAGE
-    // =========================================================
-
-    const getProductImage = (product) => {
-
-        if (!product.image) {
-
-            return null;
-
-        }
-
-        if (
-            String(product.image).startsWith("http")
-        ) {
-
-            return product.image;
-
-        }
-
-        return `http://127.0.0.1:8000${product.image}`;
-
-    };
-
-
-    // =========================================================
     // FORMAT PRICE
     // =========================================================
 
@@ -243,18 +396,15 @@ const AdminProducts = () => {
         const value = Number(price);
 
         if (Number.isNaN(value)) {
-
             return "0.00";
-
         }
 
         return value.toFixed(2);
-
     };
 
 
     // =========================================================
-    // LOADING
+    // LOADING SCREEN
     // =========================================================
 
     if (loading) {
@@ -275,6 +425,7 @@ const AdminProducts = () => {
                         </span>
 
                     </div>
+
 
                     <h5 className="mt-3">
                         Loading Products...
@@ -370,14 +521,12 @@ const AdminProducts = () => {
                                     Search Products
                                 </label>
 
+
                                 <input
                                     id="productSearch"
                                     type="text"
                                     className="form-control"
-                                    placeholder="
-                                        Search by product name,
-                                        category or price...
-                                    "
+                                    placeholder="Search by product name, category or price..."
                                     value={search}
                                     onChange={(event) =>
                                         setSearch(
@@ -492,6 +641,7 @@ const AdminProducts = () => {
                                                         product
                                                     );
 
+
                                                 return (
 
                                                     <tr
@@ -521,10 +671,8 @@ const AdminProducts = () => {
                                                                     style={{
                                                                         width: "70px",
                                                                         height: "70px",
-                                                                        objectFit:
-                                                                            "cover",
-                                                                        borderRadius:
-                                                                            "8px",
+                                                                        objectFit: "cover",
+                                                                        borderRadius: "8px",
                                                                     }}
                                                                     onError={(
                                                                         event
@@ -549,8 +697,7 @@ const AdminProducts = () => {
                                                                     style={{
                                                                         width: "70px",
                                                                         height: "70px",
-                                                                        borderRadius:
-                                                                            "8px",
+                                                                        borderRadius: "8px",
                                                                     }}
                                                                 >
                                                                     No Image
@@ -596,6 +743,7 @@ const AdminProducts = () => {
                                                         <td>
 
                                                             {
+                                                                product.category ||
                                                                 product.category_name ||
                                                                 product.category?.name ||
                                                                 "N/A"
@@ -609,10 +757,13 @@ const AdminProducts = () => {
                                                         <td>
 
                                                             <strong>
-                                                                ৳
+
+                                                                ৳{" "}
+
                                                                 {formatPrice(
                                                                     product.price
                                                                 )}
+
                                                             </strong>
 
                                                         </td>
@@ -623,8 +774,7 @@ const AdminProducts = () => {
                                                         <td>
 
                                                             {
-                                                                product.stock ??
-                                                                product.quantity ??
+                                                                product.stock_quantity ??
                                                                 0
                                                             }
 
@@ -635,20 +785,23 @@ const AdminProducts = () => {
 
                                                         <td>
 
-                                                            {product.is_available !==
-                                                            false ? (
+                                                            {
+                                                                product.is_available !== false
+                                                                    ? (
 
-                                                                <span className="badge bg-success">
-                                                                    Available
-                                                                </span>
+                                                                        <span className="badge bg-success">
+                                                                            Available
+                                                                        </span>
 
-                                                            ) : (
+                                                                    )
+                                                                    : (
 
-                                                                <span className="badge bg-danger">
-                                                                    Unavailable
-                                                                </span>
+                                                                        <span className="badge bg-danger">
+                                                                            Unavailable
+                                                                        </span>
 
-                                                            )}
+                                                                    )
+                                                            }
 
                                                         </td>
 
@@ -703,6 +856,7 @@ const AdminProducts = () => {
                                                     No Products Found
                                                 </h5>
 
+
                                                 <p className="text-muted mb-0">
 
                                                     {search
@@ -710,6 +864,7 @@ const AdminProducts = () => {
                                                         : "There are no products yet."}
 
                                                 </p>
+
 
                                                 {!search && (
 
@@ -743,7 +898,6 @@ const AdminProducts = () => {
         </DashboardLayout>
 
     );
-
 };
 
 
