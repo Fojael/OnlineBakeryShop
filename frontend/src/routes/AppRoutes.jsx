@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import ProtectedRoute from "../components/ProtectedRoute/ProtectedRoute";
 
 // ============================================================
 // Public Pages
@@ -86,14 +87,23 @@ const AppRoutes = () => {
                     />
 
                     <Route
-                        path="/cart"
-                        element={<Cart />}
-                    />
+    path="/cart"
+    element={
+        <ProtectedRoute>
+            <Cart />
+        </ProtectedRoute>
+    }
+/>
 
-                    <Route
-                        path="/checkout"
-                        element={<Checkout />}
-                    />
+<Route
+    path="/checkout"
+    element={
+        <ProtectedRoute>
+            <Checkout />
+        </ProtectedRoute>
+    }
+/>
+
 
                     <Route
                         path="/login"
@@ -106,14 +116,22 @@ const AppRoutes = () => {
                     />
 
                     <Route
-                        path="/orders"
-                        element={<Orders />}
-                    />
+    path="/orders"
+    element={
+        <ProtectedRoute>
+            <Orders />
+        </ProtectedRoute>
+    }
+/>
 
-                    <Route
-                        path="/profile"
-                        element={<Profile />}
-                    />
+<Route
+    path="/profile"
+    element={
+        <ProtectedRoute>
+            <Profile />
+        </ProtectedRoute>
+    }
+/>
 
                     <Route
                         path="/about"
