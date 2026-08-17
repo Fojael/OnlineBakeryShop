@@ -1,33 +1,70 @@
 import api from "./api";
 
-// =========================================================
-// CUSTOMER CART
-// =========================================================
+// ============================================================
+// GET CUSTOMER CART
+// GET /api/cart/
+// ============================================================
 
-// GET logged-in customer's cart
-export const getCart = () => {
-    return api.get("/cart/");
+export const getCart = async () => {
+    return await api.get("cart/");
 };
 
+// ============================================================
+// ADD PRODUCT TO CART
+// POST /api/cart/
+// ============================================================
 
-// POST add product to cart
-export const addToCart = (productId, quantity = 1) => {
-    return api.post("/cart/", {
+export const addToCart = async (
+    productId,
+    quantity = 1
+) => {
+    return await api.post("cart/", {
         product: productId,
         quantity,
     });
 };
 
+// ============================================================
+// UPDATE CART ITEM QUANTITY
+// PUT /api/cart/items/<item_id>/
+// ============================================================
 
-// PUT update cart item quantity
-export const updateCartItem = (itemId, quantity) => {
-    return api.put(`/cart/items/${itemId}/`, {
-        quantity,
-    });
+export const updateCartItem = async (
+    itemId,
+    quantity
+) => {
+    return await api.put(
+        `cart/items/${itemId}/`,
+        {
+            quantity,
+        }
+    );
 };
 
+// ============================================================
+// REMOVE CART ITEM
+// DELETE /api/cart/items/<item_id>/
+// ============================================================
 
-// DELETE remove cart item
-export const removeCartItem = (itemId) => {
-    return api.delete(`/cart/items/${itemId}/`);
+export const removeCartItem = async (
+    itemId
+) => {
+    return await api.delete(
+        `cart/items/${itemId}/`
+    );
+};
+
+// ============================================================
+// CLEAR CART
+// (Removes all items one by one)
+// ============================================================
+
+export const clearCart = async (
+    cartItems = []
+) => {
+    await Promise.all(
+        cartItems.map((item) =>
+            removeCartItem(item.id)
+        )
+    );
 };

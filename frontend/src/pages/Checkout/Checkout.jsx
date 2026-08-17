@@ -4,16 +4,24 @@ import {
     useState,
 } from "react";
 
-import { useNavigate } from "react-router-dom";
+import {
+    Link,
+    useNavigate,
+} from "react-router-dom";
+
 import { toast } from "react-toastify";
 
 import { getCart } from "../../services/cartService";
-
 import { createOrder } from "../../services/orderService";
 
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 const Checkout = () => {
     const navigate = useNavigate();
+
+    // =========================================================
+    // STATE
+    // =========================================================
 
     const [cart, setCart] = useState(null);
 
@@ -27,9 +35,8 @@ const Checkout = () => {
         payment_method: "Cash on Delivery",
     });
 
-
     // =========================================================
-    // GET REAL CART
+    // LOAD CART
     // =========================================================
 
     const fetchCart = useCallback(async () => {
@@ -39,30 +46,32 @@ const Checkout = () => {
             const response = await getCart();
 
             setCart(response.data);
-
         } catch (error) {
-            console.error(
-                "Failed to load cart:",
-                error
+            console.error(error);
+
+            if (error?.response?.status === 401) {
+                localStorage.removeItem("access");
+                localStorage.removeItem("refresh");
+
+                toast.info(
+                    "Please login to continue."
+                );
+
+                navigate("/login");
+
+                return;
+            }
+
+            toast.error(
+                error?.response?.data?.detail ||
+                    "Failed to load cart."
             );
 
-            const message =
-                error?.response?.data?.detail ||
-                "Failed to load cart.";
-
-            toast.error(message);
-
             setCart(null);
-
         } finally {
             setLoading(false);
         }
-    }, []);
-
-
-    // =========================================================
-    // LOAD CART
-    // =========================================================
+    }, [navigate]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -74,23 +83,18 @@ const Checkout = () => {
         };
     }, [fetchCart]);
 
-
     // =========================================================
     // FORM CHANGE
     // =========================================================
 
     const handleChange = (event) => {
-        const {
-            name,
-            value,
-        } = event.target;
+        const { name, value } = event.target;
 
-        setFormData((previous) => ({
-            ...previous,
+        setFormData((prev) => ({
+            ...prev,
             [name]: value,
         }));
     };
-
 
     // =========================================================
     // PLACE ORDER
@@ -98,11 +102,6 @@ const Checkout = () => {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-
-
-        // -----------------------------------------------------
-        // Validate shipping address
-        // -----------------------------------------------------
 
         if (!formData.shipping_address.trim()) {
             toast.warning(
@@ -112,93 +111,58 @@ const Checkout = () => {
             return;
         }
 
-
-        // -----------------------------------------------------
-        // Validate cart
-        // -----------------------------------------------------
-
         if (
             !cart ||
             !Array.isArray(cart.items) ||
             cart.items.length === 0
         ) {
-            toast.warning(
-                "Your cart is empty."
-            );
+            toast.warning("Your cart is empty.");
 
             navigate("/cart");
 
             return;
         }
 
-
-        // -----------------------------------------------------
-        // Validate cart total
-        // -----------------------------------------------------
-
-        const totalAmount = Number(
-            cart.total_amount || 0
-        );
-
-        if (totalAmount <= 0) {
-            toast.warning(
-                "Cart total must be greater than zero."
-            );
-
-            return;
-        }
-
-
-        // -----------------------------------------------------
-        // IMPORTANT:
-        //
-        // Do NOT send total_amount from frontend.
-        //
-        // Django should calculate the actual order total
-        // from the customer's cart.
-        // -----------------------------------------------------
-
-        const orderData = {
-            shipping_address:
-                formData.shipping_address.trim(),
-
-            payment_method:
-                formData.payment_method,
-        };
-
-
-        // -----------------------------------------------------
-        // CREATE ORDER
-        // -----------------------------------------------------
-
         try {
             setPlacingOrder(true);
 
-            await createOrder(orderData);
+            const response = await createOrder({
+                shipping_address:
+                    formData.shipping_address.trim(),
+                payment_method:
+                    formData.payment_method,
+            });
 
             toast.success(
-                "Order placed successfully."
+                response.data.message ||
+                    "Order placed successfully."
             );
 
             navigate("/orders");
-
         } catch (error) {
-            console.error(
-                "Failed to place order:",
-                error
-            );
+            console.error(error);
 
-            const message =
+            if (error?.response?.status === 401) {
+                localStorage.removeItem("access");
+                localStorage.removeItem("refresh");
+
+                toast.info(
+                    "Please login again."
+                );
+
+                navigate("/login");
+
+                return;
+            }
+
+            toast.error(
                 error?.response?.data?.detail ||
-                "Failed to place order.";
-
-            toast.error(message);
-
+                    "Failed to place order."
+            );
         } finally {
             setPlacingOrder(false);
         }
     };
-
 
     // =========================================================
     // LOADING
@@ -207,7 +171,6 @@ const Checkout = () => {
     if (loading) {
         return (
             <div className="container py-5 text-center">
-
                 <div
                     className="spinner-border text-primary"
                     role="status"
@@ -220,11 +183,9 @@ const Checkout = () => {
                 <h5 className="mt-3">
                     Loading Checkout...
                 </h5>
-
             </div>
         );
     }
-
 
     // =========================================================
     // EMPTY CART
@@ -237,77 +198,45 @@ const Checkout = () => {
     ) {
         return (
             <div className="container py-5">
-
                 <div className="card shadow">
-
                     <div className="card-body text-center py-5">
-
-                        <h3>
-                            Your Cart is Empty
-                        </h3>
+                        <h3>Your Cart is Empty</h3>
 
                         <p className="text-muted">
                             Add products before
                             proceeding to checkout.
                         </p>
 
-                        <button
-                            type="button"
+                        <Link
+                            to="/products"
                             className="btn btn-primary"
-                            onClick={() =>
-                                navigate("/products")
-                            }
                         >
                             Continue Shopping
-                        </button>
-
+                        </Link>
                     </div>
-
                 </div>
-
             </div>
         );
     }
 
-
-    // =========================================================
-    // CHECKOUT PAGE
-    // =========================================================
-
     return (
         <div className="container py-5">
-
             <div className="row g-4">
-
-                {/* =================================================
-                    CHECKOUT FORM
-                ================================================= */}
+                {/* ================================================= */}
+                {/* CHECKOUT FORM */}
+                {/* ================================================= */}
 
                 <div className="col-lg-7">
-
                     <div className="card shadow">
-
                         <div className="card-header bg-primary text-white">
-
-                            <h3 className="mb-0">
-                                Checkout
-                            </h3>
-
+                            <h3 className="mb-0">Checkout</h3>
                         </div>
 
-
                         <div className="card-body">
-
-                            <form
-                                onSubmit={handleSubmit}
-                            >
-
-                                {/* =================================
-                                    SHIPPING ADDRESS
-                                ================================= */}
+                            <form onSubmit={handleSubmit}>
+                                {/* Shipping Address */}
 
                                 <div className="mb-4">
-
                                     <label
                                         htmlFor="shipping_address"
                                         className="form-label fw-semibold"
@@ -319,29 +248,18 @@ const Checkout = () => {
                                         id="shipping_address"
                                         name="shipping_address"
                                         className="form-control"
-                                        rows="4"
-                                        value={
-                                            formData.shipping_address
-                                        }
-                                        onChange={
-                                            handleChange
-                                        }
+                                        rows={4}
                                         placeholder="Enter your complete delivery address"
+                                        value={formData.shipping_address}
+                                        onChange={handleChange}
+                                        disabled={placingOrder}
                                         required
-                                        disabled={
-                                            placingOrder
-                                        }
                                     />
-
                                 </div>
 
-
-                                {/* =================================
-                                    PAYMENT METHOD
-                                ================================= */}
+                                {/* Payment Method */}
 
                                 <div className="mb-4">
-
                                     <label
                                         htmlFor="payment_method"
                                         className="form-label fw-semibold"
@@ -353,17 +271,10 @@ const Checkout = () => {
                                         id="payment_method"
                                         name="payment_method"
                                         className="form-select"
-                                        value={
-                                            formData.payment_method
-                                        }
-                                        onChange={
-                                            handleChange
-                                        }
-                                        disabled={
-                                            placingOrder
-                                        }
+                                        value={formData.payment_method}
+                                        onChange={handleChange}
+                                        disabled={placingOrder}
                                     >
-
                                         <option value="Cash on Delivery">
                                             Cash on Delivery
                                         </option>
@@ -383,206 +294,181 @@ const Checkout = () => {
                                         <option value="Credit Card">
                                             Credit Card
                                         </option>
-
                                     </select>
-
                                 </div>
 
-
-                                {/* =================================
-                                    REAL CART TOTAL
-                                ================================= */}
+                                {/* Order Total */}
 
                                 <div className="mb-4">
-
                                     <label className="form-label fw-semibold">
                                         Order Total
                                     </label>
 
                                     <div className="form-control bg-light">
-
                                         <strong>
-                                            ৳{" "}
+                                            ৳ {" "}
                                             {Number(
                                                 cart.total_amount || 0
                                             ).toFixed(2)}
                                         </strong>
-
                                     </div>
 
                                     <small className="text-muted">
-                                        Calculated from your
-                                        current cart.
+                                        Calculated from your current cart.
                                     </small>
-
                                 </div>
 
-
-                                {/* =================================
-                                    BUTTONS
-                                ================================= */}
+                                {/* Buttons */}
 
                                 <div className="d-flex gap-2">
-
-                                    {/* PLACE ORDER */}
-
                                     <button
                                         type="submit"
                                         className="btn btn-success"
-                                        disabled={
-                                            placingOrder
-                                        }
+                                        disabled={placingOrder}
                                     >
-
                                         {placingOrder ? (
                                             <>
                                                 <span
                                                     className="spinner-border spinner-border-sm me-2"
                                                     role="status"
-                                                    aria-hidden="true"
                                                 />
-
                                                 Placing Order...
                                             </>
                                         ) : (
                                             "Place Order"
                                         )}
-
                                     </button>
-
-
-                                    {/* BACK TO CART */}
 
                                     <button
                                         type="button"
                                         className="btn btn-secondary"
-                                        disabled={
-                                            placingOrder
-                                        }
-                                        onClick={() =>
-                                            navigate("/cart")
-                                        }
+                                        disabled={placingOrder}
+                                        onClick={() => navigate("/cart")}
                                     >
                                         Back to Cart
                                     </button>
-
                                 </div>
-
                             </form>
-
                         </div>
-
                     </div>
-
                 </div>
 
-
-                {/* =================================================
-                    ORDER SUMMARY
-                ================================================= */}
+                {/* ================================================= */}
+                {/* ORDER SUMMARY */}
+                {/* ================================================= */}
 
                 <div className="col-lg-5">
-
                     <div className="card shadow">
-
                         <div className="card-header bg-dark text-white">
-
-                            <h5 className="mb-0">
-                                Order Summary
-                            </h5>
-
+                            <h5 className="mb-0">Order Summary</h5>
                         </div>
 
-
                         <div className="card-body">
+                            {cart.items.map((item) => {
+                                const imageUrl =
+                                    item.product?.image
+                                        ? item.product.image.startsWith("http")
+                                            ? item.product.image
+                                            : `${API_BASE_URL}${item.product.image}`
+                                        : "https://placehold.co/80x80?text=No+Image";
 
-                            {/* =====================================
-                                CART ITEMS
-                            ===================================== */}
-
-                            {cart.items.map(
-                                (item) => (
-
+                                return (
                                     <div
                                         key={item.id}
-                                        className="d-flex justify-content-between border-bottom py-3"
+                                        className="d-flex justify-content-between align-items-center border-bottom py-3"
                                     >
+                                        <div className="d-flex">
+                                            <img
+                                                src={imageUrl}
+                                                alt={item.product?.name}
+                                                width="70"
+                                                height="70"
+                                                className="rounded me-3"
+                                                style={{
+                                                    objectFit: "cover",
+                                                }}
+                                                onError={(e) => {
+                                                    e.currentTarget.src =
+                                                        "https://placehold.co/80x80?text=No+Image";
+                                                }}
+                                            />
 
-                                        <div>
+                                            <div>
+                                                <strong>
+                                                    {item.product?.name}
+                                                </strong>
 
-                                            <strong>
-                                                {
-                                                    item.product?.name ||
-                                                    "Product"
-                                                }
-                                            </strong>
+                                                <div className="text-muted small">
+                                                    Qty: {item.quantity}
+                                                </div>
 
-                                            <div className="text-muted small">
-                                                Qty:{" "}
-                                                {
-                                                    item.quantity
-                                                }
+                                                <div className="text-muted small">
+                                                    Unit Price: ৳ {" "}
+                                                    {Number(
+                                                        item.product?.price || 0
+                                                    ).toFixed(2)}
+                                                </div>
                                             </div>
-
-                                            {/* Product Price */}
-
-                                            <div className="text-muted small">
-                                                Unit Price: ৳{" "}
-                                                {Number(
-                                                    item.price || 0
-                                                ).toFixed(2)}
-                                            </div>
-
                                         </div>
 
-
-                                        <div className="fw-semibold">
-
-                                            ৳{" "}
+                                        <div className="fw-bold">
+                                            ৳ {" "}
                                             {Number(
                                                 item.subtotal || 0
                                             ).toFixed(2)}
-
                                         </div>
-
                                     </div>
+                                );
+                            })}
 
-                                )
-                            )}
+                            <div className="mt-4">
+                                <div className="d-flex justify-content-between mb-2">
+                                    <span>Items</span>
 
+                                    <strong>{cart.items.length}</strong>
+                                </div>
 
-                            {/* =====================================
-                                TOTAL
-                            ===================================== */}
+                                <div className="d-flex justify-content-between mb-2">
+                                    <span>Subtotal</span>
 
-                            <div className="d-flex justify-content-between mt-4">
+                                    <strong>
+                                        ৳ {" "}
+                                        {Number(
+                                            cart.total_amount || 0
+                                        ).toFixed(2)}
+                                    </strong>
+                                </div>
 
-                                <h5>
-                                    Total
-                                </h5>
+                                <div className="d-flex justify-content-between mb-2">
+                                    <span>Shipping</span>
 
-                                <h5 className="text-primary">
+                                    <strong>Free</strong>
+                                </div>
 
-                                    ৳{" "}
-                                    {Number(
-                                        cart.total_amount || 0
-                                    ).toFixed(2)}
+                                <hr />
 
-                                </h5>
+                                <div className="d-flex justify-content-between">
+                                    <h5>Total</h5>
 
+                                    <h5 className="text-primary">
+                                        ৳ {" "}
+                                        {Number(
+                                            cart.total_amount || 0
+                                        ).toFixed(2)}
+                                    </h5>
+                                </div>
+
+                                <small className="text-muted">
+                                    Your order total is calculated from the
+                                    latest prices in your cart.
+                                </small>
                             </div>
-
                         </div>
-
                     </div>
-
                 </div>
-
             </div>
-
         </div>
     );
 };
-
 
 export default Checkout;

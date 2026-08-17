@@ -1,5 +1,5 @@
 from rest_framework import generics
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny
 
 from accounts.permissions import IsAdmin
 
@@ -7,23 +7,44 @@ from .models import Product
 from .serializers import ProductSerializer
 
 
-class ProductListCreateView(generics.ListCreateAPIView):
+# ============================================================
+# PRODUCT LIST + CREATE
+#
+# GET  -> Anyone can browse products
+# POST -> Admin only
+# ============================================================
 
-    queryset = Product.objects.all()
+class ProductListCreateView(generics.ListCreateAPIView):
     serializer_class = ProductSerializer
 
-    def get_permissions(self):
+    def get_queryset(self):
+        if (
+            self.request.user.is_authenticated
+            and getattr(self.request.user, "role", None) == "ADMIN"
+        ):
+            return Product.objects.all()
 
+        return Product.objects.filter(is_available=True)
+
+    def get_permissions(self):
         if self.request.method == "POST":
             return [IsAdmin()]
 
-        return [IsAuthenticatedOrReadOnly()]
+        return [AllowAny()]
 
     def get_serializer_context(self):
         return {
             "request": self.request
         }
 
+
+# ============================================================
+# PRODUCT DETAILS
+#
+# GET             -> Anyone
+# PUT / PATCH     -> Admin
+# DELETE          -> Admin
+# ============================================================
 
 class ProductRetrieveUpdateDeleteView(
     generics.RetrieveUpdateDestroyAPIView
@@ -34,12 +55,18 @@ class ProductRetrieveUpdateDeleteView(
 
     def get_permissions(self):
 
-        if self.request.method in ["PUT", "PATCH", "DELETE"]:
+        if self.request.method in [
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ]:
             return [IsAdmin()]
 
-        return [IsAuthenticatedOrReadOnly()]
+        # GET
+        return [AllowAny()]
 
     def get_serializer_context(self):
+
         return {
             "request": self.request
         }

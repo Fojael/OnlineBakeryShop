@@ -13,13 +13,22 @@ import {
 } from "../../services/orderService";
 
 const Orders = () => {
+    // =========================================================
+    // STATE
+    // =========================================================
+
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [cancellingId, setCancellingId] = useState(null);
+    const [cancellingId, setCancellingId] =
+        useState(null);
+
+    const [expandedOrder, setExpandedOrder] =
+        useState(null);
+
     const [search, setSearch] = useState("");
 
     // =========================================================
-    // Fetch Customer Orders
+    // FETCH ORDERS
     // =========================================================
 
     const fetchOrders = useCallback(async () => {
@@ -36,14 +45,31 @@ const Orders = () => {
         } catch (error) {
             console.error(error);
 
-            toast.error("Failed to load orders.");
+            if (
+                error?.response?.status === 401
+            ) {
+                localStorage.removeItem("access");
+                localStorage.removeItem("refresh");
+
+                toast.info(
+                    "Please login again."
+                );
+
+                window.location.href = "/login";
+                return;
+            }
+
+            toast.error(
+                error?.response?.data?.detail ||
+                    "Failed to load orders."
+            );
         } finally {
             setLoading(false);
         }
     }, []);
 
     // =========================================================
-    // Load Orders
+    // LOAD ORDERS
     // =========================================================
 
     useEffect(() => {
@@ -57,40 +83,46 @@ const Orders = () => {
     }, [fetchOrders]);
 
     // =========================================================
-    // Search Orders
+    // SEARCH
     // =========================================================
 
     const filteredOrders = useMemo(() => {
-        const keyword = search.trim().toLowerCase();
+        const keyword = search
+            .trim()
+            .toLowerCase();
 
         if (!keyword) {
             return orders;
         }
 
         return orders.filter((order) => {
-            const orderNumber = `ORD${String(order.id).padStart(
-                3,
-                "0"
-            )}`;
-
-            const status = String(
-                order.status || ""
-            ).toLowerCase();
-
-            const orderId = String(order.id);
+            const orderNumber = `ORD${String(
+                order.id
+            ).padStart(3, "0")}`;
 
             return (
                 orderNumber
                     .toLowerCase()
                     .includes(keyword) ||
-                orderId.includes(keyword) ||
-                status.includes(keyword)
+                String(order.id).includes(
+                    keyword
+                ) ||
+                String(
+                    order.status || ""
+                )
+                    .toLowerCase()
+                    .includes(keyword) ||
+                String(
+                    order.payment_method || ""
+                )
+                    .toLowerCase()
+                    .includes(keyword)
             );
         });
     }, [orders, search]);
 
     // =========================================================
-    // Status Badge
+    // STATUS BADGE
     // =========================================================
 
     const getStatusBadge = (status) => {
@@ -113,26 +145,25 @@ const Orders = () => {
     };
 
     // =========================================================
-    // Cancel Order
+    // CANCEL ORDER
     // =========================================================
 
-    const handleCancelOrder = async (id) => {
-        const confirmCancel = window.confirm(
-            "Are you sure you want to cancel this order?"
-        );
+    const handleCancelOrder = async (
+        orderId
+    ) => {
+        const confirmed =
+            window.confirm(
+                "Are you sure you want to cancel this order?"
+            );
 
-        if (!confirmCancel) {
+        if (!confirmed) {
             return;
         }
 
         try {
-            setCancellingId(id);
+            setCancellingId(orderId);
 
-            // Backend changes:
-            // Pending -> Cancelled
-            //
-            // The order remains in the database.
-            await cancelOrder(id);
+            await cancelOrder(orderId);
 
             toast.success(
                 "Order cancelled successfully."
@@ -142,18 +173,17 @@ const Orders = () => {
         } catch (error) {
             console.error(error);
 
-            const message =
+            toast.error(
                 error?.response?.data?.detail ||
-                "Failed to cancel order.";
-
-            toast.error(message);
+                    "Failed to cancel order."
+            );
         } finally {
             setCancellingId(null);
         }
     };
 
     // =========================================================
-    // Loading
+    // LOADING
     // =========================================================
 
     if (loading) {
@@ -175,16 +205,14 @@ const Orders = () => {
         );
     }
 
-    // =========================================================
-    // Page
-    // =========================================================
-
     return (
         <div className="container py-5">
 
-            {/* Header */}
+            {/* ================================================
+                HEADER
+            ================================================ */}
 
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
 
                 <div>
                     <h2 className="mb-1">
@@ -200,25 +228,25 @@ const Orders = () => {
                     </p>
                 </div>
 
-                {/* Search */}
-
                 <div
-                    className="w-100"
-                    style={{ maxWidth: "300px" }}
+                    style={{
+                        maxWidth: "320px",
+                        width: "100%",
+                    }}
                 >
                     <input
                         type="text"
                         className="form-control"
-                        placeholder="Search Order..."
+                        placeholder="Search order..."
                         value={search}
                         onChange={(e) =>
-                            setSearch(e.target.value)
+                            setSearch(
+                                e.target.value
+                            )
                         }
                     />
                 </div>
             </div>
-
-            {/* Orders Table */}
 
             <div className="card shadow">
 
@@ -229,147 +257,260 @@ const Orders = () => {
                 </div>
 
                 <div className="card-body">
+                                        {filteredOrders.length === 0 ? (
 
-                    <div className="table-responsive">
+                        <div className="text-center py-5">
+                            <h5>No orders found.</h5>
 
-                        <table className="table table-bordered table-hover align-middle">
+                            <p className="text-muted mb-0">
+                                {search
+                                    ? "No orders match your search."
+                                    : "You haven't placed any orders yet."}
+                            </p>
+                        </div>
 
-                            <thead className="table-dark">
-                                <tr>
-                                    <th>Order</th>
-                                    <th>Date</th>
-                                    <th>Total</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
+                    ) : (
 
-                            <tbody>
+                        filteredOrders.map((order) => {
 
-                                {filteredOrders.length > 0 ? (
-                                    filteredOrders.map((order) => {
-                                        const orderNumber =
-                                            `ORD${String(
-                                                order.id
-                                            ).padStart(
-                                                3,
-                                                "0"
-                                            )}`;
+                            const orderNumber =
+                                `ORD${String(order.id).padStart(3, "0")}`;
 
-                                        return (
-                                            <tr
-                                                key={order.id}
-                                            >
+                            const isExpanded =
+                                expandedOrder === order.id;
 
-                                                {/* Order Number */}
+                            return (
+                                <div
+                                    key={order.id}
+                                    className="card mb-4 border"
+                                >
 
-                                                <td>
-                                                    <strong>
-                                                        {orderNumber}
-                                                    </strong>
-                                                </td>
+                                    {/* =====================================
+                                        ORDER HEADER
+                                    ====================================== */}
 
-                                                {/* Date */}
+                                    <div className="card-header bg-light">
 
-                                                <td>
+                                        <div className="row align-items-center">
+
+                                            <div className="col-lg-3">
+                                                <strong>
+                                                    {orderNumber}
+                                                </strong>
+
+                                                <div className="small text-muted">
                                                     {order.created_at
                                                         ? new Date(
-                                                            order.created_at
-                                                        ).toLocaleDateString(
-                                                            "en-GB"
-                                                        )
+                                                              order.created_at
+                                                          ).toLocaleString(
+                                                              "en-GB"
+                                                          )
                                                         : "N/A"}
-                                                </td>
+                                                </div>
+                                            </div>
 
-                                                {/* Total */}
+                                            <div className="col-lg-2 mt-2 mt-lg-0">
+                                                <span
+                                                    className={getStatusBadge(
+                                                        order.status
+                                                    )}
+                                                >
+                                                    {order.status}
+                                                </span>
+                                            </div>
 
-                                                <td>
+                                            <div className="col-lg-2 mt-2 mt-lg-0">
+                                                <strong>
+                                                    {order.item_count}
+                                                </strong>
+                                                <div className="small text-muted">
+                                                    Items
+                                                </div>
+                                            </div>
+
+                                            <div className="col-lg-2 mt-2 mt-lg-0">
+                                                <strong>
                                                     ৳
                                                     {Number(
-                                                        order.total_amount ||
-                                                        0
+                                                        order.total_amount || 0
                                                     ).toFixed(2)}
-                                                </td>
+                                                </strong>
+                                                <div className="small text-muted">
+                                                    Total
+                                                </div>
+                                            </div>
 
-                                                {/* Status */}
+                                            <div className="col-lg-3 text-lg-end mt-3 mt-lg-0">
 
-                                                <td>
-                                                    <span
-                                                        className={getStatusBadge(
-                                                            order.status
-                                                        )}
-                                                    >
-                                                        {
-                                                            order.status
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-primary btn-sm me-2"
+                                                    onClick={() =>
+                                                        setExpandedOrder(
+                                                            isExpanded
+                                                                ? null
+                                                                : order.id
+                                                        )
+                                                    }
+                                                >
+                                                    {isExpanded
+                                                        ? "Hide Details"
+                                                        : "View Details"}
+                                                </button>
+
+                                                {order.status ===
+                                                "Pending" && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-danger btn-sm"
+                                                        disabled={
+                                                            cancellingId ===
+                                                            order.id
                                                         }
-                                                    </span>
-                                                </td>
-
-                                                {/* Action */}
-
-                                                <td>
-                                                    {order.status ===
-                                                    "Pending" ? (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-danger btn-sm"
-                                                            disabled={
-                                                                cancellingId ===
+                                                        onClick={() =>
+                                                            handleCancelOrder(
                                                                 order.id
-                                                            }
-                                                            onClick={() =>
-                                                                handleCancelOrder(
-                                                                    order.id
-                                                                )
-                                                            }
-                                                        >
-                                                            {cancellingId ===
-                                                            order.id ? (
-                                                                <>
-                                                                    <span
-                                                                        className="spinner-border spinner-border-sm me-1"
-                                                                        role="status"
-                                                                    />
+                                                            )
+                                                        }
+                                                    >
+                                                        {cancellingId ===
+                                                        order.id ? (
+                                                            <>
+                                                                <span className="spinner-border spinner-border-sm me-1" />
+                                                                Cancelling...
+                                                            </>
+                                                        ) : (
+                                                            "Cancel"
+                                                        )}
+                                                    </button>
+                                                )}
 
-                                                                    Cancelling...
-                                                                </>
-                                                            ) : (
-                                                                "Cancel"
-                                                            )}
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-muted">
-                                                            —
-                                                        </span>
-                                                    )}
-                                                </td>
+                                            </div>
 
-                                            </tr>
-                                        );
-                                    })
-                                ) : (
-                                    <tr>
-                                        <td
-                                            colSpan="5"
-                                            className="text-center py-4"
-                                        >
-                                            {search
-                                                ? "No orders match your search."
-                                                : "No orders found."}
-                                        </td>
-                                    </tr>
-                                )}
+                                        </div>
 
-                            </tbody>
+                                    </div>
 
-                        </table>
+                                    {/* =====================================
+                                        ORDER DETAILS
+                                    ====================================== */}
 
-                    </div>
+                                    {isExpanded && (
 
+                                        <div className="card-body">
+
+                                            <div className="row mb-4">
+
+                                                <div className="col-md-6">
+
+                                                    <h6>
+                                                        Shipping Address
+                                                    </h6>
+
+                                                    <p className="text-muted mb-3">
+                                                        {
+                                                            order.shipping_address
+                                                        }
+                                                    </p>
+
+                                                </div>
+
+                                                <div className="col-md-6">
+
+                                                    <h6>
+                                                        Payment Method
+                                                    </h6>
+
+                                                    <p className="text-muted mb-3">
+                                                        {
+                                                            order.payment_method
+                                                        }
+                                                    </p>
+
+                                                </div>
+
+                                            </div>
+
+                                            <div className="table-responsive">
+
+                                                <table className="table table-bordered align-middle">
+
+                                                    <thead className="table-light">
+
+                                                        <tr>
+                                                            <th>
+                                                                Product
+                                                            </th>
+
+                                                            <th>
+                                                                Qty
+                                                            </th>
+
+                                                            <th>
+                                                                Unit Price
+                                                            </th>
+
+                                                            <th>
+                                                                Subtotal
+                                                            </th>
+                                                        </tr>
+
+                                                    </thead>
+
+                                                    <tbody>
+
+                                                        {order.items.map(
+                                                            (
+                                                                item
+                                                            ) => (
+                                                                <tr
+                                                                    key={
+                                                                        item.id
+                                                                    }
+                                                                >
+                                                                    <td>
+                                                                        {
+                                                                            item.product_name
+                                                                        }
+                                                                    </td>
+
+                                                                    <td>
+                                                                        {
+                                                                            item.quantity
+                                                                        }
+                                                                    </td>
+
+                                                                    <td>
+                                                                        ৳
+                                                                        {Number(
+                                                                            item.price
+                                                                        ).toFixed(
+                                                                            2
+                                                                        )}
+                                                                    </td>
+
+                                                                    <td>
+                                                                        ৳
+                                                                        {Number(
+                                                                            item.subtotal
+                                                                        ).toFixed(
+                                                                            2
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            )
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
-
             </div>
-
         </div>
     );
 };
