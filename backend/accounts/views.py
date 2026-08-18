@@ -1,31 +1,37 @@
-from rest_framework import generics
-from rest_framework.permissions import AllowAny
-
-from .models import User
-from .serializers import RegisterSerializer
+from rest_framework import generics, status
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+)
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .serializers import LoginSerializer
-from rest_framework.permissions import IsAuthenticated
-from .serializers import UserSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .serializers import ChangePasswordSerializer
+from .models import User
 from .permissions import IsAdmin
+from .serializers import (
+    RegisterSerializer,
+    LoginSerializer,
+    UserSerializer,
+    ChangePasswordSerializer,
+)
 
 
-from accounts.permissions import IsAdmin
-
+# ==========================================================
+# REGISTER
+# ==========================================================
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
-    
+
+
+# ==========================================================
+# LOGIN
+# ==========================================================
+
 class LoginView(APIView):
 
     permission_classes = [AllowAny]
@@ -51,50 +57,64 @@ class LoginView(APIView):
             "refresh": str(refresh),
 
             "user": {
-    "id": user.id,
-    "username": user.username,
-    "email": user.email,
-    "role": user.role,
-    "profile_image": (
-        user.profile_image.url
-        if user.profile_image
-        else None
-    ),
-    }
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "phone": user.phone,
+                "role": user.role,
+                "profile_image": (
+                    request.build_absolute_uri(
+                        user.profile_image.url
+                    )
+                    if user.profile_image
+                    else None
+                ),
+            }
 
         })
+
+
+# ==========================================================
+# PROFILE
+# ==========================================================
+
 class ProfileView(generics.RetrieveUpdateAPIView):
 
     serializer_class = UserSerializer
+
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
         return self.request.user
-class LogoutView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    def update(self, request, *args, **kwargs):
 
-    def post(self, request):
+        user = self.get_object()
 
-        try:
+        serializer = self.get_serializer(
+            user,
+            data=request.data,
+            partial=True,
+        )
 
-            refresh_token = request.data["refresh"]
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-            token = RefreshToken(refresh_token)
+        serializer.save()
 
-            token.blacklist()
+        return Response({
+            "message":
+                "Profile updated successfully.",
+            "user":
+                serializer.data,
+        })
 
-            return Response(
-                {"message": "Logout successful"},
-                status=status.HTTP_205_RESET_CONTENT
-            )
 
-        except Exception:
+# ==========================================================
+# CHANGE PASSWORD
+# ==========================================================
 
-            return Response(
-                {"error": "Invalid token"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 class ChangePasswordView(APIView):
 
     permission_classes = [IsAuthenticated]
@@ -112,27 +132,109 @@ class ChangePasswordView(APIView):
         user = request.user
 
         if not user.check_password(
-            serializer.validated_data["old_password"]
+            serializer.validated_data[
+                "old_password"
+            ]
         ):
             return Response(
-                {"error":"Old password incorrect"},
-                status=400
+                {
+                    "old_password":
+                        [
+                            "Old password is incorrect."
+                        ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user.set_password(
-            serializer.validated_data["new_password"]
+            serializer.validated_data[
+                "new_password"
+            ]
         )
 
         user.save()
 
         return Response(
-            {"message":"Password changed successfully"}
+            {
+                "message":
+                    "Password changed successfully."
+            },
+            status=status.HTTP_200_OK,
         )
+
+
+# ==========================================================
+# LOGOUT
+# ==========================================================
+
+class LogoutView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+
+        refresh_token = request.data.get(
+            "refresh"
+        )
+
+        if not refresh_token:
+            return Response(
+                {
+                    "detail":
+                        "Refresh token is required."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+
+            token = RefreshToken(
+                refresh_token
+            )
+
+            token.blacklist()
+
+            return Response(
+                {
+                    "message":
+                        "Logout successful."
+                },
+                status=status.HTTP_205_RESET_CONTENT,
+            )
+
+        except Exception:
+
+            return Response(
+                {
+                    "detail":
+                        "Invalid or expired refresh token."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+# ==========================================================
+# ADMIN DASHBOARD
+# ==========================================================
+
 class AdminDashboardView(APIView):
 
-    permission_classes = [IsAdmin]
+    permission_classes = [
+        IsAuthenticated,
+        IsAdmin,
+    ]
 
     def get(self, request):
+
         return Response({
-            "message": "Welcome Admin"
+
+            "message":
+                "Welcome Admin",
+
+            "admin": {
+                "id": request.user.id,
+                "username": request.user.username,
+                "email": request.user.email,
+            }
+
         })

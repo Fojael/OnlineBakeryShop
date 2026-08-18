@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // ============================================================
-// CONFIG
+// CONFIGURATION
 // ============================================================
 
 const BASE_URL = "http://127.0.0.1:8000/api/";
@@ -17,23 +17,42 @@ const api = axios.create({
 // TOKEN HELPERS
 // ============================================================
 
-const getAccessToken = () =>
-    localStorage.getItem("access");
+const getAccessToken = () => {
+    return localStorage.getItem("access");
+};
 
-const getRefreshToken = () =>
-    localStorage.getItem("refresh");
+const getRefreshToken = () => {
+    return localStorage.getItem("refresh");
+};
 
 const saveAccessToken = (token) => {
-    localStorage.setItem("access", token);
+    if (token) {
+        localStorage.setItem("access", token);
+    }
 };
+
+// ============================================================
+// CLEAR AUTHENTICATION
+// ============================================================
 
 const clearTokens = () => {
     localStorage.removeItem("access");
     localStorage.removeItem("refresh");
+    localStorage.removeItem("user");
+    localStorage.removeItem("role");
+    localStorage.removeItem("username");
+    localStorage.removeItem("email");
 };
 
+// ============================================================
+// REDIRECT TO LOGIN
+// ============================================================
+
 const redirectToLogin = () => {
-    window.location.href = "/login";
+    // Avoid repeatedly redirecting if already on login page
+    if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+    }
 };
 
 // ============================================================
@@ -55,25 +74,36 @@ api.interceptors.request.use(
 
         return config;
     },
-    (error) => Promise.reject(error)
+    (error) => {
+        return Promise.reject(error);
+    }
 );
 
 // ============================================================
-// REFRESH TOKEN STATE
-// Prevent multiple refresh requests
+// REFRESH TOKEN MANAGEMENT
 // ============================================================
 
+// Prevent multiple refresh requests at the same time.
 let isRefreshing = false;
+
 let refreshSubscribers = [];
+
+// ============================================================
+// ADD REQUEST TO WAITING QUEUE
+// ============================================================
 
 const subscribeTokenRefresh = (callback) => {
     refreshSubscribers.push(callback);
 };
 
-const onRefreshed = (token) => {
-    refreshSubscribers.forEach((callback) =>
-        callback(token)
-    );
+// ============================================================
+// SEND NEW TOKEN TO WAITING REQUESTS
+// ============================================================
+
+const onRefreshed = (newToken) => {
+    refreshSubscribers.forEach((callback) => {
+        callback(newToken);
+    });
 
     refreshSubscribers = [];
 };
@@ -83,24 +113,47 @@ const onRefreshed = (token) => {
 // ============================================================
 
 api.interceptors.response.use(
-    (response) => response,
+    // --------------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------------
+
+    (response) => {
+        return response;
+    },
+
+    // --------------------------------------------------------
+    // ERROR
+    // --------------------------------------------------------
 
     async (error) => {
         const originalRequest = error.config;
 
+        // No request configuration
         if (!originalRequest) {
             return Promise.reject(error);
         }
 
-        if (originalRequest._retry) {
-            return Promise.reject(error);
-        }
+        // ----------------------------------------------------
+        // Only handle 401 Unauthorized
+        // ----------------------------------------------------
 
         if (error.response?.status !== 401) {
             return Promise.reject(error);
         }
 
+        // ----------------------------------------------------
+        // Never retry the same request repeatedly
+        // ----------------------------------------------------
+
+        if (originalRequest._retry) {
+            return Promise.reject(error);
+        }
+
         originalRequest._retry = true;
+
+        // ----------------------------------------------------
+        // Get refresh token
+        // ----------------------------------------------------
 
         const refreshToken = getRefreshToken();
 
@@ -112,40 +165,88 @@ api.interceptors.response.use(
         }
 
         // ----------------------------------------------------
-        // Wait if another refresh request is already running
+        // If another request is already refreshing,
+        // wait for the new access token.
         // ----------------------------------------------------
 
         if (isRefreshing) {
-            return new Promise((resolve) => {
-                subscribeTokenRefresh((token) => {
+            return new Promise((resolve, reject) => {
+                subscribeTokenRefresh((newToken) => {
+                    if (!newToken) {
+                        reject(error);
+                        return;
+                    }
+
                     if (!originalRequest.headers) {
                         originalRequest.headers = {};
                     }
 
                     originalRequest.headers.Authorization =
-                        `Bearer ${token}`;
+                        `Bearer ${newToken}`;
 
                     resolve(api(originalRequest));
                 });
             });
         }
 
+        // ----------------------------------------------------
+        // Start token refresh
+        // ----------------------------------------------------
+
         isRefreshing = true;
 
         try {
-            const response = await axios.post(
+            /*
+             * IMPORTANT:
+             *
+             * Do NOT use `api.post()` here.
+             *
+             * We use axios.post() directly so this request
+             * does not trigger our own interceptor again.
+             */
+
+            const refreshResponse = await axios.post(
                 `${BASE_URL}token/refresh/`,
                 {
                     refresh: refreshToken,
+                },
+                {
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type":
+                            "application/json",
+                    },
                 }
             );
 
             const newAccessToken =
-                response.data.access;
+                refreshResponse.data?.access;
+
+            // ------------------------------------------------
+            // Validate new token
+            // ------------------------------------------------
+
+            if (!newAccessToken) {
+                throw new Error(
+                    "No access token returned from refresh endpoint."
+                );
+            }
+
+            // ------------------------------------------------
+            // Save new access token
+            // ------------------------------------------------
 
             saveAccessToken(newAccessToken);
 
+            // ------------------------------------------------
+            // Notify waiting requests
+            // ------------------------------------------------
+
             onRefreshed(newAccessToken);
+
+            // ------------------------------------------------
+            // Retry original request
+            // ------------------------------------------------
 
             if (!originalRequest.headers) {
                 originalRequest.headers = {};
@@ -155,15 +256,40 @@ api.interceptors.response.use(
                 `Bearer ${newAccessToken}`;
 
             return api(originalRequest);
+
         } catch (refreshError) {
+
+            // ------------------------------------------------
+            // Refresh failed
+            // ------------------------------------------------
+
+            console.error(
+                "JWT refresh failed:",
+                refreshError
+            );
+
+            // Reject all waiting requests
+            refreshSubscribers.forEach(
+                (callback) => {
+                    callback(null);
+                }
+            );
+
+            refreshSubscribers = [];
+
             clearTokens();
             redirectToLogin();
 
             return Promise.reject(refreshError);
+
         } finally {
             isRefreshing = false;
         }
     }
 );
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 export default api;

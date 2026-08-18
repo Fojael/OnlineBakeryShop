@@ -1,40 +1,83 @@
 from django.urls import path
-from .views import ProfileView, RegisterView
-from .views import RegisterView, LoginView
-from rest_framework_simplejwt.views import TokenRefreshView
-from .views import LogoutView
-from .views import ChangePasswordView
-from .views import AdminDashboardView
+from rest_framework_simplejwt.views import (
+    TokenRefreshView,
+    TokenVerifyView,
+)
 
+from .views import (
+    RegisterView,
+    LoginView,
+    ProfileView,
+    ChangePasswordView,
+    LogoutView,
+    AdminDashboardView,
+)
+
+app_name = "accounts"
 
 urlpatterns = [
-    path("register/", RegisterView.as_view()),
-    
-    path("login/", LoginView.as_view()),
+
+    # ==========================================================
+    # Authentication
+    # ==========================================================
+
     path(
-    "profile/",
-    ProfileView.as_view(),
-),
+        "register/",
+        RegisterView.as_view(),
+        name="register",
+    ),
+
+    path(
+        "login/",
+        LoginView.as_view(),
+        name="login",
+    ),
+
+    path(
+        "logout/",
+        LogoutView.as_view(),
+        name="logout",
+    ),
+
+    # ==========================================================
+    # JWT
+    # ==========================================================
 
     path(
         "refresh/",
         TokenRefreshView.as_view(),
-        name="token_refresh"
+        name="token_refresh",
     ),
+
     path(
-        "logout/",
-        LogoutView.as_view(),
-        name="auth_logout"
+        "verify/",
+        TokenVerifyView.as_view(),
+        name="token_verify",
     ),
+
+    # ==========================================================
+    # User Profile
+    # ==========================================================
+
+    path(
+        "profile/",
+        ProfileView.as_view(),
+        name="profile",
+    ),
+
     path(
         "change-password/",
         ChangePasswordView.as_view(),
-        name="change_password"
+        name="change_password",
     ),
+
+    # ==========================================================
+    # Admin
+    # ==========================================================
+
     path(
-    "admin-dashboard/",
-    AdminDashboardView.as_view(),
-    name="admin_dashboard"
-),
- 
+        "admin-dashboard/",
+        AdminDashboardView.as_view(),
+        name="admin_dashboard",
+    ),
 ]

@@ -4,29 +4,85 @@ from django.contrib.auth.models import AbstractUser
 
 class User(AbstractUser):
 
+    # ==========================================================
+    # USER ROLES
+    # ==========================================================
+
     ROLE_CHOICES = (
-        ('ADMIN', 'Admin'),
-        ('CUSTOMER', 'Customer'),
-        ('SUPPLIER', 'Supplier'),
-        ('DELIVERY', 'Delivery Rider'),
+        ("ADMIN", "Admin"),
+        ("CUSTOMER", "Customer"),
+        ("SUPPLIER", "Supplier"),
+        ("DELIVERY", "Delivery Rider"),
     )
 
-    email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20, blank=True)
-    profile_image = models.ImageField(
-        upload_to='profiles/',
+    # ==========================================================
+    # AUTHENTICATION
+    # ==========================================================
+
+    email = models.EmailField(
+        unique=True,
+    )
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
+
+    # ==========================================================
+    # PROFILE
+    # ==========================================================
+
+    phone = models.CharField(
+        max_length=20,
         blank=True,
-        null=True
+    )
+
+    profile_image = models.ImageField(
+        upload_to="profiles/",
+        blank=True,
+        null=True,
     )
 
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='CUSTOMER'
+        default="CUSTOMER",
     )
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
+    # ==========================================================
+    # ACCOUNT STATUS
+    # ==========================================================
+
+    is_email_verified = models.BooleanField(
+        default=False,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+    )
+
+    # ==========================================================
+    # TIMESTAMPS
+    # ==========================================================
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    # ==========================================================
+    # MODEL CONFIGURATION
+    # ==========================================================
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "User"
+        verbose_name_plural = "Users"
+
+    # ==========================================================
+    # STRING REPRESENTATION
+    # ==========================================================
 
     def __str__(self):
-        return self.email
+        return f"{self.username} ({self.email})"

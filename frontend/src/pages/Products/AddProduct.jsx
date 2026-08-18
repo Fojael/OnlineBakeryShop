@@ -10,11 +10,8 @@ import {
     toast,
 } from "react-toastify";
 
-import DashboardLayout from "../../../layouts/DashboardLayout";
-
-import {
-    createProduct,
-} from "../../../services/productService";
+import DashboardLayout from "../../layouts/DashboardLayout";
+import { createProduct } from "../../services/productService";
 
 
 const AddProduct = () => {
