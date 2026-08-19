@@ -1,21 +1,98 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 const ProtectedAdminRoute = ({ children }) => {
+    const location = useLocation();
 
-    const token = localStorage.getItem("access");
-    const role = localStorage.getItem("role");
+    // ============================================================
+    // GET AUTHENTICATION DATA
+    // ============================================================
 
-    // User is not logged in
-    if (!token) {
-        return <Navigate to="/login" />;
+    const accessToken =
+        localStorage.getItem("access") ||
+        sessionStorage.getItem("access");
+
+    const refreshToken =
+        localStorage.getItem("refresh") ||
+        sessionStorage.getItem("refresh");
+
+    const storedUser =
+        localStorage.getItem("user") ||
+        sessionStorage.getItem("user");
+
+    // ============================================================
+    // CHECK LOGIN
+    // ============================================================
+
+    if (!accessToken || !refreshToken) {
+        return (
+            <Navigate
+                to="/login"
+                replace
+                state={{
+                    from: location,
+                }}
+            />
+        );
     }
 
-    // User is not an admin
-    if (role !== "ADMIN") {
-        return <Navigate to="/" />;
+    // ============================================================
+    // CHECK USER DATA
+    // ============================================================
+
+    if (!storedUser) {
+        return (
+            <Navigate
+                to="/login"
+                replace
+                state={{
+                    from: location,
+                }}
+            />
+        );
     }
 
-    // Allow access
+    // ============================================================
+    // PARSE USER
+    // ============================================================
+
+    let user;
+
+    try {
+        user = JSON.parse(storedUser);
+    } catch (error) {
+        console.error(
+            "Invalid stored user data:",
+            error
+        );
+
+        return (
+            <Navigate
+                to="/login"
+                replace
+                state={{
+                    from: location,
+                }}
+            />
+        );
+    }
+
+    // ============================================================
+    // ADMIN ROLE CHECK
+    // ============================================================
+
+    if (user?.role !== "ADMIN") {
+        return (
+            <Navigate
+                to="/"
+                replace
+            />
+        );
+    }
+
+    // ============================================================
+    // ADMIN AUTHORIZED
+    // ============================================================
+
     return children;
 };
 

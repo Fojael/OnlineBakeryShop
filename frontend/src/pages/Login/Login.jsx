@@ -212,7 +212,7 @@ const Login = () => {
 
             if (userRole === "CUSTOMER") {
                 navigate(
-                    "/",
+                    "/customer/dashboard",
                     { replace: true }
                 );
                 return;

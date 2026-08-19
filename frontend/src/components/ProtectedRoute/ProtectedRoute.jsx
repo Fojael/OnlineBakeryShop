@@ -4,27 +4,29 @@ const ProtectedRoute = ({
     children,
     allowedRoles = [],
 }) => {
-
     const location = useLocation();
 
     // =========================================================
-    // GET TOKEN
+    // GET AUTH DATA
     // =========================================================
 
     const accessToken =
-        localStorage.getItem("access") ||
-        sessionStorage.getItem("access");
+        localStorage.getItem("access");
 
     const refreshToken =
-        localStorage.getItem("refresh") ||
-        sessionStorage.getItem("refresh");
+        localStorage.getItem("refresh");
+
+    const userData =
+        localStorage.getItem("user");
+
+    const storedRole =
+        localStorage.getItem("role");
 
     // =========================================================
-    // NOT LOGGED IN
+    // NOT AUTHENTICATED
     // =========================================================
 
     if (!accessToken || !refreshToken) {
-
         return (
             <Navigate
                 to="/login"
@@ -37,115 +39,51 @@ const ProtectedRoute = ({
     }
 
     // =========================================================
-    // GET USER
+    // GET USER ROLE
     // =========================================================
 
-    const storedUser =
-        localStorage.getItem("user") ||
-        sessionStorage.getItem("user");
+    let userRole = storedRole;
 
-    let user = null;
+    // If role is not separately stored, try to get it
+    // from the stored user object.
 
-    try {
+    if (!userRole && userData) {
+        try {
+            const user = JSON.parse(userData);
 
-        if (storedUser) {
-            user = JSON.parse(storedUser);
+            userRole = user?.role || null;
+        } catch (error) {
+            console.error(
+                "Failed to parse stored user:",
+                error
+            );
         }
-
-    } catch (error) {
-
-        console.error(
-            "Invalid user data:",
-            error
-        );
-
-        localStorage.removeItem("user");
-        sessionStorage.removeItem("user");
-
-        return (
-            <Navigate
-                to="/login"
-                replace
-            />
-        );
-    }
-
-    // =========================================================
-    // USER DATA MISSING
-    // =========================================================
-
-    if (!user) {
-
-        return (
-            <Navigate
-                to="/login"
-                replace
-            />
-        );
     }
 
     // =========================================================
     // NORMALIZE ROLE
     // =========================================================
 
-    const role =
-        String(user.role || "")
-            .trim()
-            .toUpperCase();
+    userRole = String(userRole || "")
+        .trim()
+        .toUpperCase();
 
     // =========================================================
-    // ROLE CHECK
+    // ROLE PROTECTION
     // =========================================================
 
     if (
         allowedRoles.length > 0 &&
-        !allowedRoles.includes(role)
+        !allowedRoles
+            .map((role) =>
+                String(role)
+                    .trim()
+                    .toUpperCase()
+            )
+            .includes(userRole)
     ) {
-
-        console.error(
-            "Unauthorized role:",
-            role
-        );
-
-        // Send user to their appropriate home
-        if (role === "ADMIN") {
-            return (
-                <Navigate
-                    to="/admin/dashboard"
-                    replace
-                />
-            );
-        }
-
-        if (role === "CUSTOMER") {
-            return (
-                <Navigate
-                    to="/"
-                    replace
-                />
-            );
-        }
-
-        if (role === "SUPPLIER") {
-            return (
-                <Navigate
-                    to="/supplier/dashboard"
-                    replace
-                />
-            );
-        }
-
-        if (
-            role === "DELIVERY_RIDER" ||
-            role === "DELIVERY RIDER"
-        ) {
-            return (
-                <Navigate
-                    to="/delivery/dashboard"
-                    replace
-                />
-            );
-        }
+        // User is authenticated but does not
+        // have permission to access this page.
 
         return (
             <Navigate
@@ -156,7 +94,7 @@ const ProtectedRoute = ({
     }
 
     // =========================================================
-    // AUTHORIZED
+    // AUTHENTICATED + AUTHORIZED
     // =========================================================
 
     return children;

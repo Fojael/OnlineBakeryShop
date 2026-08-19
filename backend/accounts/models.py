@@ -3,7 +3,6 @@ from django.contrib.auth.models import AbstractUser
 
 
 class User(AbstractUser):
-
     # ==========================================================
     # USER ROLES
     # ==========================================================
@@ -21,6 +20,7 @@ class User(AbstractUser):
 
     email = models.EmailField(
         unique=True,
+        db_index=True,
     )
 
     USERNAME_FIELD = "email"
@@ -37,6 +37,7 @@ class User(AbstractUser):
 
     profile_image = models.ImageField(
         upload_to="profiles/",
+        default="profiles/default.png",
         blank=True,
         null=True,
     )
@@ -45,6 +46,7 @@ class User(AbstractUser):
         max_length=20,
         choices=ROLE_CHOICES,
         default="CUSTOMER",
+        db_index=True,
     )
 
     # ==========================================================
@@ -53,10 +55,6 @@ class User(AbstractUser):
 
     is_email_verified = models.BooleanField(
         default=False,
-    )
-
-    is_active = models.BooleanField(
-        default=True,
     )
 
     # ==========================================================
@@ -81,8 +79,34 @@ class User(AbstractUser):
         verbose_name_plural = "Users"
 
     # ==========================================================
+    # HELPER PROPERTIES
+    # ==========================================================
+
+    @property
+    def full_name(self):
+        """
+        Return full name if available,
+        otherwise return username.
+        """
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name or self.username
+
+    @property
+    def image_url(self):
+        """
+        Return profile image URL or default image.
+        """
+        if self.profile_image:
+            try:
+                return self.profile_image.url
+            except ValueError:
+                pass
+
+        return "/media/profiles/default.png"
+
+    # ==========================================================
     # STRING REPRESENTATION
     # ==========================================================
 
     def __str__(self):
-        return f"{self.username} ({self.email})"
+        return self.email

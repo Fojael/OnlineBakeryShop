@@ -43,6 +43,7 @@ import Customers from "../pages/Admin/Customers/Customers";
 import Reports from "../pages/Admin/Reports/Reports";
 import AIPrediction from "../pages/Admin/AIPrediction/AIPrediction";
 import Notifications from "../pages/Admin/Notifications/Notifications";
+import CustomerDashboard from "../pages/customer/CustomerDashboard";
 
 // ============================================================
 // Product Pages
@@ -305,6 +306,14 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
+                    <Route
+    path="/customer/dashboard"
+    element={
+        <ProtectedRoute>
+            <CustomerDashboard />
+        </ProtectedRoute>
+    }
+/>
 
                     {/* ==================================================
                         ADMIN REPORTS

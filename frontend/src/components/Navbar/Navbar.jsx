@@ -1,48 +1,55 @@
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import { logout } from "../../services/authService";
 
 const Navbar = () => {
     const navigate = useNavigate();
 
     const token = localStorage.getItem("access");
+    const role = localStorage.getItem("role");
+    const username = localStorage.getItem("username") || "User";
 
     const handleLogout = async () => {
-    try {
-        const refreshToken = localStorage.getItem("refresh");
+        try {
+            const refresh = localStorage.getItem("refresh");
 
-        await logout(refreshToken);
+            if (refresh) {
+                await logout(refresh);
+            }
+        } catch (error) {
+            console.log(error);
+        }
 
-        // Remove JWT tokens and role
         localStorage.removeItem("access");
         localStorage.removeItem("refresh");
         localStorage.removeItem("role");
+        localStorage.removeItem("username");
+        localStorage.removeItem("email");
 
-        alert("Logout Successful!");
+        toast.success("Logged out successfully!");
 
-        navigate("/login");
+        navigate("/login", { replace: true });
+    };
 
-    } catch (error) {
+    const dashboardPath =
+        role === "ADMIN"
+            ? "/admin/dashboard"
+            : role === "CUSTOMER"
+            ? "/customer/dashboard"
+            : role === "SUPPLIER"
+            ? "/supplier/dashboard"
+            : role === "DELIVERY"
+            ? "/delivery/dashboard"
+            : "/";
 
-        console.log(error);
-
-        // Clear localStorage even if the API fails
-        localStorage.removeItem("access");
-        localStorage.removeItem("refresh");
-        localStorage.removeItem("role");
-
-        navigate("/login");
-    }
-};
     return (
-        <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
+        <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
             <div className="container">
 
-                {/* Logo */}
-                <Link className="navbar-brand" to="/">
-                    Online Bakery Shop
+                <Link className="navbar-brand fw-bold" to="/">
+                    🥖 Online Bakery Shop
                 </Link>
 
-                {/* Mobile Menu Button */}
                 <button
                     className="navbar-toggler"
                     type="button"
@@ -51,65 +58,104 @@ const Navbar = () => {
                 >
                     <span className="navbar-toggler-icon"></span>
                 </button>
-                {/* Show Logout when logged in */}
-{token && (
-    <button
-        className="btn btn-danger ms-2"
-        onClick={handleLogout}
-    >
-        Logout
-    </button>
-)}
 
-                {/* Navbar Links */}
                 <div
                     className="collapse navbar-collapse"
                     id="navbarContent"
                 >
-                    <div className="navbar-nav ms-auto">
+                    <ul className="navbar-nav ms-auto align-items-lg-center">
 
-                        <Link className="nav-link" to="/">
-                            Home
-                        </Link>
+                        <li className="nav-item">
+                            <Link className="nav-link" to="/">
+                                Home
+                            </Link>
+                        </li>
 
-                        <Link className="nav-link" to="/products">
-                            Products
-                        </Link>
+                        <li className="nav-item">
+                            <Link className="nav-link" to="/products">
+                                Products
+                            </Link>
+                        </li>
 
-                        <Link className="nav-link" to="/cart">
-                            Cart
-                        </Link>
+                        <li className="nav-item">
+                            <Link className="nav-link" to="/about">
+                                About
+                            </Link>
+                        </li>
 
-                        <Link className="nav-link" to="/orders">
-                            Orders
-                        </Link>
+                        <li className="nav-item">
+                            <Link className="nav-link" to="/contact">
+                                Contact
+                            </Link>
+                        </li>
 
-                        <Link className="nav-link" to="/profile">
-                            Profile
-                        </Link>
+                        {!token ? (
+                            <>
+                                <li className="nav-item">
+                                    <Link
+                                        className="nav-link"
+                                        to="/login"
+                                    >
+                                        Login
+                                    </Link>
+                                </li>
 
-                        <Link className="nav-link" to="/about">
-                            About
-                        </Link>
+                                <li className="nav-item">
+                                    <Link
+                                        className="btn btn-warning ms-lg-2"
+                                        to="/register"
+                                    >
+                                        Register
+                                    </Link>
+                                </li>
+                            </>
+                        ) : (
+                            <li className="nav-item dropdown">
+                                <button
+                                    className="btn btn-outline-light dropdown-toggle ms-lg-3"
+                                    data-bs-toggle="dropdown"
+                                >
+                                    👋 Hello, {username}
+                                </button>
 
-                        <Link className="nav-link" to="/contact">
-                            Contact
-                        </Link>
+                                <ul className="dropdown-menu dropdown-menu-end">
 
-                       {/* Show Login and Register when not logged in */}
-{!token && (
-    <>
-        <Link className="nav-link" to="/login">
-            Login
-        </Link>
+                                    <li>
+                                        <Link
+                                            className="dropdown-item"
+                                            to={dashboardPath}
+                                        >
+                                            📊 Dashboard
+                                        </Link>
+                                    </li>
 
-        <Link className="nav-link" to="/register">
-            Register
-        </Link>
-    </>
-)}
+                                    <li>
+                                        <Link
+                                            className="dropdown-item"
+                                            to="/profile"
+                                        >
+                                            👤 Profile
+                                        </Link>
+                                    </li>
 
-                    </div>
+                                    <li>
+                                        <hr className="dropdown-divider" />
+                                    </li>
+
+                                    <li>
+                                        <button
+                                            className="dropdown-item text-danger"
+                                            onClick={handleLogout}
+                                        >
+                                            🚪 Logout
+                                        </button>
+                                    </li>
+
+                                </ul>
+                            </li>
+                        )}
+
+                    </ul>
                 </div>
 
             </div>

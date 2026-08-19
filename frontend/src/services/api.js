@@ -35,7 +35,7 @@ const saveAccessToken = (token) => {
 // CLEAR AUTHENTICATION
 // ============================================================
 
-const clearTokens = () => {
+const clearAuthentication = () => {
     localStorage.removeItem("access");
     localStorage.removeItem("refresh");
     localStorage.removeItem("user");
@@ -49,7 +49,6 @@ const clearTokens = () => {
 // ============================================================
 
 const redirectToLogin = () => {
-    // Avoid repeatedly redirecting if already on login page
     if (window.location.pathname !== "/login") {
         window.location.href = "/login";
     }
@@ -74,6 +73,7 @@ api.interceptors.request.use(
 
         return config;
     },
+
     (error) => {
         return Promise.reject(error);
     }
@@ -83,13 +83,12 @@ api.interceptors.request.use(
 // REFRESH TOKEN MANAGEMENT
 // ============================================================
 
-// Prevent multiple refresh requests at the same time.
 let isRefreshing = false;
 
 let refreshSubscribers = [];
 
 // ============================================================
-// ADD REQUEST TO WAITING QUEUE
+// SUBSCRIBE REQUEST
 // ============================================================
 
 const subscribeTokenRefresh = (callback) => {
@@ -97,10 +96,10 @@ const subscribeTokenRefresh = (callback) => {
 };
 
 // ============================================================
-// SEND NEW TOKEN TO WAITING REQUESTS
+// NOTIFY WAITING REQUESTS
 // ============================================================
 
-const onRefreshed = (newToken) => {
+const notifyTokenRefresh = (newToken) => {
     refreshSubscribers.forEach((callback) => {
         callback(newToken);
     });
@@ -113,28 +112,32 @@ const onRefreshed = (newToken) => {
 // ============================================================
 
 api.interceptors.response.use(
-    // --------------------------------------------------------
+
+    // ========================================================
     // SUCCESS
-    // --------------------------------------------------------
+    // ========================================================
 
     (response) => {
         return response;
     },
 
-    // --------------------------------------------------------
+    // ========================================================
     // ERROR
-    // --------------------------------------------------------
+    // ========================================================
 
     async (error) => {
         const originalRequest = error.config;
 
-        // No request configuration
+        // ----------------------------------------------------
+        // No request information
+        // ----------------------------------------------------
+
         if (!originalRequest) {
             return Promise.reject(error);
         }
 
         // ----------------------------------------------------
-        // Only handle 401 Unauthorized
+        // Only handle 401
         // ----------------------------------------------------
 
         if (error.response?.status !== 401) {
@@ -142,7 +145,7 @@ api.interceptors.response.use(
         }
 
         // ----------------------------------------------------
-        // Never retry the same request repeatedly
+        // Prevent infinite retry loop
         // ----------------------------------------------------
 
         if (originalRequest._retry) {
@@ -158,94 +161,120 @@ api.interceptors.response.use(
         const refreshToken = getRefreshToken();
 
         if (!refreshToken) {
-            clearTokens();
+            clearAuthentication();
             redirectToLogin();
 
             return Promise.reject(error);
         }
 
-        // ----------------------------------------------------
-        // If another request is already refreshing,
-        // wait for the new access token.
-        // ----------------------------------------------------
+        // ====================================================
+        // ANOTHER REQUEST IS ALREADY REFRESHING
+        // ====================================================
 
         if (isRefreshing) {
-            return new Promise((resolve, reject) => {
-                subscribeTokenRefresh((newToken) => {
-                    if (!newToken) {
-                        reject(error);
-                        return;
-                    }
+            return new Promise(
+                (resolve, reject) => {
 
-                    if (!originalRequest.headers) {
-                        originalRequest.headers = {};
-                    }
+                    subscribeTokenRefresh(
+                        (newToken) => {
 
-                    originalRequest.headers.Authorization =
-                        `Bearer ${newToken}`;
+                            if (!newToken) {
+                                reject(error);
+                                return;
+                            }
 
-                    resolve(api(originalRequest));
-                });
-            });
+                            if (
+                                !originalRequest.headers
+                            ) {
+                                originalRequest.headers = {};
+                            }
+
+                            originalRequest
+                                .headers
+                                .Authorization =
+                                `Bearer ${newToken}`;
+
+                            resolve(
+                                api(originalRequest)
+                            );
+                        }
+                    );
+                }
+            );
         }
 
-        // ----------------------------------------------------
-        // Start token refresh
-        // ----------------------------------------------------
+        // ====================================================
+        // START REFRESH
+        // ====================================================
 
         isRefreshing = true;
 
         try {
+
             /*
-             * IMPORTANT:
+             * IMPORTANT
              *
-             * Do NOT use `api.post()` here.
+             * Django URL:
              *
-             * We use axios.post() directly so this request
-             * does not trigger our own interceptor again.
+             * /api/auth/refresh/
+             *
+             * Therefore:
+             *
+             * ${BASE_URL}auth/refresh/
              */
 
-            const refreshResponse = await axios.post(
-                `${BASE_URL}token/refresh/`,
-                {
-                    refresh: refreshToken,
-                },
-                {
-                    headers: {
-                        Accept: "application/json",
-                        "Content-Type":
-                            "application/json",
+            const refreshResponse =
+                await axios.post(
+                    `${BASE_URL}auth/refresh/`,
+                    {
+                        refresh: refreshToken,
                     },
-                }
-            );
+                    {
+                        headers: {
+                            Accept:
+                                "application/json",
+
+                            "Content-Type":
+                                "application/json",
+                        },
+                    }
+                );
+
+            // ------------------------------------------------
+            // GET NEW ACCESS TOKEN
+            // ------------------------------------------------
 
             const newAccessToken =
                 refreshResponse.data?.access;
 
             // ------------------------------------------------
-            // Validate new token
+            // VALIDATE TOKEN
             // ------------------------------------------------
 
             if (!newAccessToken) {
                 throw new Error(
-                    "No access token returned from refresh endpoint."
+                    "Refresh endpoint did not return an access token."
                 );
             }
 
             // ------------------------------------------------
-            // Save new access token
+            // SAVE NEW ACCESS TOKEN
             // ------------------------------------------------
 
-            saveAccessToken(newAccessToken);
+            saveAccessToken(
+                newAccessToken
+            );
 
             // ------------------------------------------------
-            // Notify waiting requests
+            // NOTIFY WAITING REQUESTS
             // ------------------------------------------------
 
-            onRefreshed(newAccessToken);
+            notifyTokenRefresh(
+                newAccessToken
+            );
 
             // ------------------------------------------------
-            // Retry original request
+            // UPDATE ORIGINAL REQUEST
             // ------------------------------------------------
 
             if (!originalRequest.headers) {
@@ -255,20 +284,23 @@ api.interceptors.response.use(
             originalRequest.headers.Authorization =
                 `Bearer ${newAccessToken}`;
 
+            // ------------------------------------------------
+            // RETRY ORIGINAL REQUEST
+            // ------------------------------------------------
+
             return api(originalRequest);
 
         } catch (refreshError) {
-
-            // ------------------------------------------------
-            // Refresh failed
-            // ------------------------------------------------
 
             console.error(
                 "JWT refresh failed:",
                 refreshError
             );
 
-            // Reject all waiting requests
+            // ------------------------------------------------
+            // Reject waiting requests
+            // ------------------------------------------------
+
             refreshSubscribers.forEach(
                 (callback) => {
                     callback(null);
@@ -277,13 +309,26 @@ api.interceptors.response.use(
 
             refreshSubscribers = [];
 
-            clearTokens();
+            // ------------------------------------------------
+            // Clear authentication
+            // ------------------------------------------------
+
+            clearAuthentication();
+
+            // ------------------------------------------------
+            // Redirect
+            // ------------------------------------------------
+
             redirectToLogin();
 
-            return Promise.reject(refreshError);
+            return Promise.reject(
+                refreshError
+            );
 
         } finally {
+
             isRefreshing = false;
+
         }
     }
 );
