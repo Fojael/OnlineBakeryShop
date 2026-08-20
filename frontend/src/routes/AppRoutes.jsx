@@ -1,8 +1,10 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+
 import ProtectedRoute from "../components/ProtectedRoute/ProtectedRoute";
+import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
 
 // ============================================================
-// Public Pages
+// PUBLIC PAGES
 // ============================================================
 
 import Home from "../pages/Home/Home";
@@ -19,47 +21,71 @@ import Contact from "../pages/Contact/Contact";
 import NotFound from "../pages/NotFound/NotFound";
 
 // ============================================================
-// Admin Pages
+// CUSTOMER PAGES
+// ============================================================
+
+import CustomerDashboard from "../pages/Customer/CustomerDashboard";
+
+// ============================================================
+// ADMIN DASHBOARD
 // ============================================================
 
 import Dashboard from "../pages/Admin/Dashboard/Dashboard";
+
+// ============================================================
+// ADMIN PRODUCT PAGES
+// ============================================================
+
 import AdminProducts from "../pages/Admin/Products/AdminProducts";
+import AddProduct from "../pages/Admin/Products/AddProduct";
+import EditProduct from "../pages/Admin/Products/EditProduct";
+
+// ============================================================
+// ADMIN CATEGORY PAGES
+// ============================================================
 
 import Categories from "../pages/Admin/Categories/Categories";
 import AddCategory from "../pages/Admin/Categories/AddCategory";
 import EditCategory from "../pages/Admin/Categories/EditCategory";
 
+// ============================================================
+// ADMIN INVENTORY PAGES
+// ============================================================
+
 import Inventory from "../pages/Admin/Inventory/Inventory";
 import UpdateInventory from "../pages/Admin/Inventory/UpdateInventory";
+
+// ============================================================
+// ADMIN SUPPLIER PAGES
+// ============================================================
 
 import Suppliers from "../pages/Admin/Suppliers/Suppliers";
 import AddSupplier from "../pages/Admin/Suppliers/AddSupplier";
 import EditSupplier from "../pages/Admin/Suppliers/EditSupplier";
 
+// ============================================================
+// ADMIN ORDER PAGES
+// ============================================================
+
 import AdminOrders from "../pages/Admin/Orders/AdminOrders";
 import UpdateOrder from "../pages/Admin/Orders/UpdateOrder";
 
+// ============================================================
+// ADMIN CUSTOMER PAGES
+// ============================================================
+
 import Customers from "../pages/Admin/Customers/Customers";
+
+// ============================================================
+// ADMIN OTHER PAGES
+// ============================================================
+
 import Reports from "../pages/Admin/Reports/Reports";
 import AIPrediction from "../pages/Admin/AIPrediction/AIPrediction";
 import Notifications from "../pages/Admin/Notifications/Notifications";
-import CustomerDashboard from "../pages/customer/CustomerDashboard";
 
 // ============================================================
-// Product Pages
-// ============================================================
-
-import AddProduct from "../pages/Products/AddProduct";
-import EditProduct from "../pages/Products/EditProduct";
-
-// ============================================================
-// Protected Route
-// ============================================================
-
-import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
-
-// ============================================================
-// App Routes
+// APP ROUTES
 // ============================================================
 
 const AppRoutes = () => {
@@ -88,23 +114,14 @@ const AppRoutes = () => {
                     />
 
                     <Route
-    path="/cart"
-    element={
-        <ProtectedRoute>
-            <Cart />
-        </ProtectedRoute>
-    }
-/>
+                        path="/about"
+                        element={<About />}
+                    />
 
-<Route
-    path="/checkout"
-    element={
-        <ProtectedRoute>
-            <Checkout />
-        </ProtectedRoute>
-    }
-/>
-
+                    <Route
+                        path="/contact"
+                        element={<Contact />}
+                    />
 
                     <Route
                         path="/login"
@@ -116,32 +133,57 @@ const AppRoutes = () => {
                         element={<Register />}
                     />
 
-                    <Route
-    path="/orders"
-    element={
-        <ProtectedRoute>
-            <Orders />
-        </ProtectedRoute>
-    }
-/>
-
-<Route
-    path="/profile"
-    element={
-        <ProtectedRoute>
-            <Profile />
-        </ProtectedRoute>
-    }
-/>
+                    {/* ==================================================
+                        CUSTOMER PROTECTED ROUTES
+                    ================================================== */}
 
                     <Route
-                        path="/about"
-                        element={<About />}
+                        path="/cart"
+                        element={
+                            <ProtectedRoute>
+                                <Cart />
+                            </ProtectedRoute>
+                        }
                     />
 
                     <Route
-                        path="/contact"
-                        element={<Contact />}
+                        path="/checkout"
+                        element={
+                            <ProtectedRoute>
+                                <Checkout />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/orders"
+                        element={
+                            <ProtectedRoute>
+                                <Orders />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/profile"
+                        element={
+                            <ProtectedRoute>
+                                <Profile />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* ==================================================
+                        CUSTOMER DASHBOARD
+                    ================================================== */}
+
+                    <Route
+                        path="/customer/dashboard"
+                        element={
+                            <ProtectedRoute>
+                                <CustomerDashboard />
+                            </ProtectedRoute>
+                        }
                     />
 
                     {/* ==================================================
@@ -306,14 +348,6 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
-                    <Route
-    path="/customer/dashboard"
-    element={
-        <ProtectedRoute>
-            <CustomerDashboard />
-        </ProtectedRoute>
-    }
-/>
 
                     {/* ==================================================
                         ADMIN REPORTS

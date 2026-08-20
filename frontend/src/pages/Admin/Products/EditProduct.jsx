@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import {
     getProduct,
     updateProduct,
-} from "../../services/productService";
+} from "../../../services/productService";
 
 const EditProduct = () => {
 
