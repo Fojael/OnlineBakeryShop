@@ -27,6 +27,10 @@ urlpatterns = [
         "api/cart/",
         include("cart.urls")
     ),
+    path(
+        "api/wishlist/",
+        include("wishlist.urls"),
+    ),
 ]
 
 if settings.DEBUG:

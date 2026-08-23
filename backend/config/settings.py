@@ -57,7 +57,7 @@ INSTALLED_APPS = [
 'delivery',
 'reports',
 'notifications',
-
+"wishlist",
 'ai_prediction',
 ]
 

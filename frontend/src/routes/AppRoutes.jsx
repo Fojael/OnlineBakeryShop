@@ -25,6 +25,7 @@ import NotFound from "../pages/NotFound/NotFound";
 // ============================================================
 
 import CustomerDashboard from "../pages/Customer/CustomerDashboard";
+import Wishlist from "../pages/Customer/Wishlist";
 
 // ============================================================
 // ADMIN DASHBOARD
@@ -184,6 +185,10 @@ const AppRoutes = () => {
                                 <CustomerDashboard />
                             </ProtectedRoute>
                         }
+                    />
+                    <Route
+                        path="/wishlist"
+                        element={<Wishlist />}
                     />
 
                     {/* ==================================================

@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 
 import { getCart } from "../../services/cartService";
 import { getOrders } from "../../services/orderService";
+import { getWishlist } from "../../services/wishlistService";
 
 const CustomerDashboard = () => {
     const username =
@@ -13,77 +14,99 @@ const CustomerDashboard = () => {
 
     const [cartItems, setCartItems] = useState(0);
 
-    const [orders, setOrders] = useState([]);
+    const [wishlistCount, setWishlistCount] =
+        useState(0);
 
-    const [wishlistCount] = useState(0);
+    const [orders, setOrders] = useState([]);
 
     const [error, setError] = useState("");
 
     useEffect(() => {
-        let mounted = true;
+        let ignore = false;
 
         const loadDashboard = async () => {
-            setLoading(true);
-
             try {
-                // -------------------------
-                // LOAD CART
-                // -------------------------
+                setLoading(true);
+                setError("");
 
-                try {
-                    const cartResponse = await getCart();
+                const [
+                    cartResponse,
+                    orderResponse,
+                    wishlistResponse,
+                ] = await Promise.allSettled([
+                    getCart(),
+                    getOrders(),
+                    getWishlist(),
+                ]);
 
-                    const items = Array.isArray(
-                        cartResponse.data.items
-                    )
-                        ? cartResponse.data.items
-                        : [];
+                // ============================
+                // CART
+                // ============================
 
-                    const totalItems = items.reduce(
-                        (sum, item) =>
-                            sum + Number(item.quantity),
-                        0
-                    );
+                if (
+                    cartResponse.status === "fulfilled"
+                ) {
+                    const items =
+                        cartResponse.value.data.items || [];
 
-                    if (mounted) {
+                    const totalItems =
+                        items.reduce(
+                            (sum, item) =>
+                                sum +
+                                Number(item.quantity),
+                            0
+                        );
+
+                    if (!ignore) {
                         setCartItems(totalItems);
-                    }
-                } catch (err) {
-                    console.error("Cart Error:", err);
-
-                    if (mounted) {
-                        setCartItems(0);
                     }
                 }
 
-                // -------------------------
-                // LOAD ORDERS
-                // -------------------------
+                // ============================
+                // ORDERS
+                // ============================
 
-                try {
-                    const orderResponse = await getOrders();
+                if (
+                    orderResponse.status === "fulfilled"
+                ) {
+                    const data =
+                        orderResponse.value.data;
 
-                    const orderList = Array.isArray(
-                        orderResponse.data
-                    )
-                        ? orderResponse.data
-                        : [];
+                    const orderList =
+                        Array.isArray(data)
+                            ? data
+                            : data.results || [];
 
-                    if (mounted) {
+                    if (!ignore) {
                         setOrders(orderList);
                     }
-                } catch (err) {
-                    console.error("Orders Error:", err);
+                }
 
-                    if (mounted) {
-                        setOrders([]);
+                // ============================
+                // WISHLIST
+                // ============================
+
+                if (
+                    wishlistResponse.status ===
+                    "fulfilled"
+                ) {
+                    const items =
+                        wishlistResponse.value.data
+                            .items || [];
+
+                    if (!ignore) {
+                        setWishlistCount(
+                            items.length
+                        );
                     }
                 }
             } catch (err) {
                 console.error(err);
 
-                if (mounted) {
-                    setError("Unable to load dashboard.");
+                if (!ignore) {
+                    setError(
+                        "Unable to load dashboard."
+                    );
                 }
 
                 toast.error(
@@ -91,16 +114,16 @@ const CustomerDashboard = () => {
                         "Unable to load dashboard."
                 );
             } finally {
-                if (mounted) {
+                if (!ignore) {
                     setLoading(false);
                 }
             }
         };
 
-        loadDashboard();
+        void loadDashboard();
 
         return () => {
-            mounted = false;
+            ignore = true;
         };
     }, []);
 
@@ -156,7 +179,7 @@ const CustomerDashboard = () => {
 
                             <h2>{orders.length}</h2>
 
-                            <p className="text-muted">
+                            <p className="text-muted mb-0">
                                 Total Orders
                             </p>
                         </div>
@@ -170,7 +193,7 @@ const CustomerDashboard = () => {
 
                             <h2>{wishlistCount}</h2>
 
-                            <p className="text-muted">
+                            <p className="text-muted mb-0">
                                 Wishlist
                             </p>
                         </div>
@@ -184,7 +207,7 @@ const CustomerDashboard = () => {
 
                             <h2>{cartItems}</h2>
 
-                            <p className="text-muted">
+                            <p className="text-muted mb-0">
                                 Cart Items
                             </p>
                         </div>
@@ -198,7 +221,7 @@ const CustomerDashboard = () => {
 
                             <h2>0</h2>
 
-                            <p className="text-muted">
+                            <p className="text-muted mb-0">
                                 Addresses
                             </p>
                         </div>
@@ -241,6 +264,24 @@ const CustomerDashboard = () => {
 
                         <div className="col-md-4">
                             <Link
+                                to="/wishlist"
+                                className="btn btn-outline-danger w-100 py-3"
+                            >
+                                ❤️ Wishlist
+                            </Link>
+                        </div>
+
+                        <div className="col-md-4">
+                            <Link
+                                to="/checkout"
+                                className="btn btn-outline-warning w-100 py-3"
+                            >
+                                💳 Checkout
+                            </Link>
+                        </div>
+
+                        <div className="col-md-4">
+                            <Link
                                 to="/orders"
                                 className="btn btn-outline-dark w-100 py-3"
                             >
@@ -254,15 +295,6 @@ const CustomerDashboard = () => {
                                 className="btn btn-outline-info w-100 py-3"
                             >
                                 👤 Profile
-                            </Link>
-                        </div>
-
-                        <div className="col-md-4">
-                            <Link
-                                to="/checkout"
-                                className="btn btn-outline-warning w-100 py-3"
-                            >
-                                💳 Checkout
                             </Link>
                         </div>
 
@@ -285,7 +317,7 @@ const CustomerDashboard = () => {
                 <div className="card-body">
 
                     {orders.length === 0 ? (
-                        <p className="text-muted">
+                        <p className="text-muted mb-0">
                             You haven't placed any orders yet.
                         </p>
                     ) : (
@@ -294,7 +326,7 @@ const CustomerDashboard = () => {
 
                                 <thead>
                                     <tr>
-                                        <th>ID</th>
+                                        <th>#</th>
                                         <th>Status</th>
                                         <th>Total</th>
                                         <th>Date</th>
@@ -303,26 +335,44 @@ const CustomerDashboard = () => {
 
                                 <tbody>
 
-                                    {orders.slice(0, 5).map((order) => (
-                                        <tr key={order.id}>
-                                            <td>{order.id}</td>
+                                    {orders
+                                        .slice(0, 5)
+                                        .map((order) => (
+                                            <tr
+                                                key={
+                                                    order.id
+                                                }
+                                            >
+                                                <td>
+                                                    {
+                                                        order.id
+                                                    }
+                                                </td>
 
-                                            <td>{order.status}</td>
+                                                <td>
+                                                    <span className="badge bg-success">
+                                                        {
+                                                            order.status
+                                                        }
+                                                    </span>
+                                                </td>
 
-                                            <td>
-                                                ৳{" "}
-                                                {Number(
-                                                    order.total_amount
-                                                ).toFixed(2)}
-                                            </td>
+                                                <td>
+                                                    ৳{" "}
+                                                    {Number(
+                                                        order.total_amount
+                                                    ).toFixed(
+                                                        2
+                                                    )}
+                                                </td>
 
-                                            <td>
-                                                {new Date(
-                                                    order.created_at
-                                                ).toLocaleDateString()}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                <td>
+                                                    {new Date(
+                                                        order.created_at
+                                                    ).toLocaleDateString()}
+                                                </td>
+                                            </tr>
+                                        ))}
 
                                 </tbody>
 

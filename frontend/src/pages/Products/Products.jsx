@@ -1,276 +1,804 @@
-import { useEffect, useState } from "react";
-import { getProducts } from "../../services/productService";
-import { Link } from "react-router-dom";
+import {
+    useEffect,
+    useMemo,
+    useState,
+    useCallback,
+} from "react";
+
+import {
+    Link,
+    useNavigate,
+} from "react-router-dom";
+
+import { toast } from "react-toastify";
+
+import {
+    getProducts,
+} from "../../services/productService";
+
+import {
+    addToCart,
+} from "../../services/cartService";
+
+import {
+    getWishlist,
+    addToWishlist,
+    removeFromWishlist,
+} from "../../services/wishlistService";
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+const FALLBACK_IMAGE =
+    "https://placehold.co/400x300?text=No+Image";
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 const Products = () => {
+
+    const navigate = useNavigate();
+
+    // ========================================================
+    // PRODUCTS
+    // ========================================================
+
     const [products, setProducts] = useState([]);
-    const [loading, setLoading] = useState(true);
 
-    const [search, setSearch] = useState("");
-    const [category, setCategory] = useState("All");
-    const [sort, setSort] = useState("default");
-    const addToCart = async (productId, quantity) => {
-    try {
-        console.log("Product:", productId);
-        console.log("Quantity:", quantity);
+    const [loading, setLoading] =
+        useState(true);
 
-        // Later call Cart API
+    // ========================================================
+    // WISHLIST
+    // ========================================================
 
-        alert("Product added to cart!");
-    } catch (error) {
-        console.log(error);
-    }
-};
+    const [wishlist, setWishlist] =
+        useState([]);
+
+    const [
+        wishlistLoadingId,
+        setWishlistLoadingId,
+    ] = useState(null);
+
+    // ========================================================
+    // CART
+    // ========================================================
+
+    const [
+        cartLoadingId,
+        setCartLoadingId,
+    ] = useState(null);
+
+    // ========================================================
+    // FILTERS
+    // ========================================================
+
+    const [search, setSearch] =
+        useState("");
+
+    const [category, setCategory] =
+        useState("All");
+
+    const [sort, setSort] =
+        useState("default");
+
+    // ========================================================
+    // AUTH
+    // ========================================================
+
+    const isLoggedIn = Boolean(
+        localStorage.getItem("access")
+    );
+
+    // ========================================================
+    // LOAD PRODUCTS
+    // ========================================================
+
+    const loadProducts = useCallback(
+        async () => {
+            try {
+                const response =
+                    await getProducts();
+
+                setProducts(
+                    Array.isArray(response.data)
+                        ? response.data
+                        : []
+                );
+            } catch (error) {
+                console.error(error);
+
+                toast.error(
+                    error?.response?.data?.detail ||
+                        "Unable to load products."
+                );
+
+                setProducts([]);
+            }
+        },
+        []
+    );
+
+    // ========================================================
+    // LOAD WISHLIST
+    // ========================================================
+
+    const loadWishlist = useCallback(
+        async () => {
+            if (!isLoggedIn) {
+                setWishlist([]);
+                return;
+            }
+
+            try {
+                const response =
+                    await getWishlist();
+
+                setWishlist(
+                    Array.isArray(response.data.items)
+                        ? response.data.items
+                        : []
+                );
+            } catch (error) {
+                console.error(error);
+                setWishlist([]);
+            }
+        },
+        [isLoggedIn]
+    );
+
+    // ========================================================
+    // INITIAL LOAD
+    // ========================================================
 
     useEffect(() => {
-        const fetchProducts = async () => {
+        let mounted = true;
+
+        const initialize = async () => {
             try {
-                const response = await getProducts();
-                setProducts(response.data);
-            } catch (error) {
-                console.log(error);
+                setLoading(true);
+
+                await Promise.all([
+                    loadProducts(),
+                    loadWishlist(),
+                ]);
             } finally {
-                setLoading(false);
+                if (mounted) {
+                    setLoading(false);
+                }
             }
         };
 
-        fetchProducts();
-    }, []);
+        initialize();
 
-    // Search + Category Filter
-    let filteredProducts = products.filter((product) => {
-        const matchesSearch = product.name
-            .toLowerCase()
-            .includes(search.toLowerCase());
+        return () => {
+            mounted = false;
+        };
+    }, [
+        loadProducts,
+        loadWishlist,
+    ]);
 
-        const matchesCategory =
-            category === "All"
-                ? true
-                : product.category.toLowerCase() === category.toLowerCase()
+    // ========================================================
+    // WISHLIST IDS
+    // ========================================================
 
-        return matchesSearch && matchesCategory;
-    });
-
-    // Sort Products
-    if (sort === "lowToHigh") {
-        filteredProducts.sort(
-            (a, b) => Number(a.price) - Number(b.price)
+    const wishlistIds = useMemo(() => {
+        return new Set(
+            wishlist.map(
+                (item) => item.product.id
+            )
         );
+    }, [wishlist]);
+
+    // ========================================================
+    // FILTERED PRODUCTS
+    // ========================================================
+
+    const filteredProducts = useMemo(() => {
+
+        let list = [...products];
+
+        // Search
+
+        if (search.trim()) {
+
+            const keyword =
+                search.toLowerCase();
+
+            list = list.filter((product) =>
+                product.name
+                    .toLowerCase()
+                    .includes(keyword)
+            );
+        }
+
+        // Category
+
+        if (category !== "All") {
+
+            list = list.filter(
+                (product) =>
+                    product.category.toLowerCase() ===
+                    category.toLowerCase()
+            );
+        }
+
+        // Sorting
+
+        switch (sort) {
+
+            case "lowToHigh":
+
+                list.sort(
+                    (a, b) =>
+                        Number(a.price) -
+                        Number(b.price)
+                );
+
+                break;
+
+            case "highToLow":
+
+                list.sort(
+                    (a, b) =>
+                        Number(b.price) -
+                        Number(a.price)
+                );
+
+                break;
+
+            case "name":
+
+                list.sort((a, b) =>
+                    a.name.localeCompare(
+                        b.name
+                    )
+                );
+
+                break;
+
+            default:
+                break;
+        }
+
+        return list;
+
+    }, [
+        products,
+        search,
+        category,
+        sort,
+    ]);
+    // ========================================================
+// IMAGE URL
+// ========================================================
+
+const getImage = (product) => {
+    if (!product?.image) {
+        return FALLBACK_IMAGE;
     }
 
-    if (sort === "highToLow") {
-        filteredProducts.sort(
-            (a, b) => Number(b.price) - Number(a.price)
-        );
+    if (
+        product.image.startsWith("http://") ||
+        product.image.startsWith("https://")
+    ) {
+        return product.image;
     }
 
-    // Loading State
-    if (loading) {
-        return (
-            <div className="container py-5 text-center">
-                <h3>Loading Products...</h3>
-            </div>
+    return `${API_BASE_URL}${product.image}`;
+};
+
+// ========================================================
+// GET WISHLIST ITEM
+// ========================================================
+
+const getWishlistItem = (productId) => {
+    return wishlist.find(
+        (item) => item.product.id === productId
+    );
+};
+
+// ========================================================
+// ADD TO CART
+// ========================================================
+
+const handleAddToCart = async (productId) => {
+
+    if (!isLoggedIn) {
+        toast.info(
+            "Please login to add products to your cart."
         );
+
+        navigate("/login");
+
+        return;
     }
 
+    try {
+
+        setCartLoadingId(productId);
+
+        await addToCart(productId, 1);
+
+        toast.success(
+            "Product added to cart successfully."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to add product."
+        );
+
+    } finally {
+
+        setCartLoadingId(null);
+
+    }
+};
+
+// ========================================================
+// ADD TO WISHLIST
+// ========================================================
+
+const handleAddWishlist = async (productId) => {
+
+    if (!isLoggedIn) {
+
+        toast.info(
+            "Please login to use wishlist."
+        );
+
+        navigate("/login");
+
+        return;
+    }
+
+    try {
+
+        setWishlistLoadingId(productId);
+
+        await addToWishlist(productId);
+
+        await loadWishlist();
+
+        toast.success(
+            "Added to wishlist."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to add to wishlist."
+        );
+
+    } finally {
+
+        setWishlistLoadingId(null);
+
+    }
+};
+
+// ========================================================
+// REMOVE FROM WISHLIST
+// ========================================================
+
+const handleRemoveWishlist = async (
+    wishlistItemId,
+    productId
+) => {
+
+    try {
+
+        setWishlistLoadingId(productId);
+
+        await removeFromWishlist(
+            wishlistItemId
+        );
+
+        setWishlist((previous) =>
+            previous.filter(
+                (item) =>
+                    item.id !== wishlistItemId
+            )
+        );
+
+        toast.success(
+            "Removed from wishlist."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to remove from wishlist."
+        );
+
+    } finally {
+
+        setWishlistLoadingId(null);
+
+    }
+};
+
+// ========================================================
+// TOGGLE WISHLIST
+// ========================================================
+
+const toggleWishlist = async (productId) => {
+
+    const wishlistItem =
+        getWishlistItem(productId);
+
+    if (wishlistItem) {
+
+        await handleRemoveWishlist(
+            wishlistItem.id,
+            productId
+        );
+
+    } else {
+
+        await handleAddWishlist(
+            productId
+        );
+
+    }
+};
+
+// ========================================================
+// LOADING SCREEN
+// ========================================================
+
+if (loading) {
     return (
-        <div className="container py-5">
+        <div className="container py-5 text-center">
 
-            {/* Page Title */}
-            <h1 className="text-center mb-5">
-                Our Fresh Bakery Collection
+            <div
+                className="spinner-border text-primary"
+                role="status"
+            >
+                <span className="visually-hidden">
+                    Loading...
+                </span>
+            </div>
+
+            <h4 className="mt-3">
+                Loading Products...
+            </h4>
+
+        </div>
+    );
+}
+// ========================================================
+// PAGE
+// ========================================================
+
+return (
+    <div className="container py-5">
+
+        {/* ========================================= */}
+        {/* PAGE TITLE */}
+        {/* ========================================= */}
+
+        <div className="text-center mb-5">
+
+            <h1 className="fw-bold">
+                🥐 Our Fresh Bakery Collection
             </h1>
 
-            {/* Search + Filter Section */}
-            <div className="row mb-4">
+            <p className="text-muted">
+                Freshly baked cakes, breads, pastries,
+                cookies and desserts delivered
+                to your doorstep.
+            </p>
 
-                {/* Search */}
-                <div className="col-md-4 mb-3">
-                    <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Search Bakery Products..."
-                        value={search}
-                        onChange={(e) =>
-                            setSearch(e.target.value)
-                        }
-                    />
-                </div>
+        </div>
 
-                {/* Category */}
-                <div className="col-md-4 mb-3">
-                    <select
-                        className="form-select"
-                        value={category}
-                        onChange={(e) =>
-                            setCategory(e.target.value)
-                        }
-                    >
-                        <option value="All">
-                            All Categories
-                        </option>
+        {/* ========================================= */}
+        {/* SEARCH + FILTER */}
+        {/* ========================================= */}
 
-                        <option value="Cake">
-                            Cake
-                        </option>
+        <div className="row g-3 mb-5">
 
-                        <option value="Pastry">
-                            Pastry
-                        </option>
+            {/* Search */}
 
-                        <option value="Cookies">
-                            Cookies
-                        </option>
+            <div className="col-lg-4">
 
-                        <option value="Bread">
-                            Bread
-                        </option>
-
-                        <option value="Donut">
-                            Donut
-                        </option>
-
-                        <option value="Muffin">
-                            Muffin
-                        </option>
-
-                        <option value="Cup Cake">
-                            Cup Cake
-                        </option>
-
-                    </select>
-                </div>
-
-                {/* Sorting */}
-                <div className="col-md-4 mb-3">
-                    <select
-                        className="form-select"
-                        value={sort}
-                        onChange={(e) =>
-                            setSort(e.target.value)
-                        }
-                    >
-                        <option value="default">
-                            Sort Products
-                        </option>
-
-                        <option value="lowToHigh">
-                            Price: Low to High
-                        </option>
-
-                        <option value="highToLow">
-                            Price: High to Low
-                        </option>
-                    </select>
-                </div>
+                <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Search bakery products..."
+                    value={search}
+                    onChange={(e) =>
+                        setSearch(e.target.value)
+                    }
+                />
 
             </div>
 
-            {/* Product Cards */}
-            <div className="row">
+            {/* Category */}
 
-                {filteredProducts.length > 0 ? (
+            <div className="col-lg-4">
 
-                    filteredProducts.map((product) => (
+                <select
+                    className="form-select"
+                    value={category}
+                    onChange={(e) =>
+                        setCategory(e.target.value)
+                    }
+                >
+                    <option value="All">
+                        All Categories
+                    </option>
+
+                    <option value="Cake">
+                        Cake
+                    </option>
+
+                    <option value="Bread">
+                        Bread
+                    </option>
+
+                    <option value="Cookies">
+                        Cookies
+                    </option>
+
+                    <option value="Pastry">
+                        Pastry
+                    </option>
+
+                    <option value="Donut">
+                        Donut
+                    </option>
+
+                    <option value="Muffin">
+                        Muffin
+                    </option>
+
+                    <option value="Cup Cake">
+                        Cup Cake
+                    </option>
+
+                </select>
+
+            </div>
+
+            {/* Sorting */}
+
+            <div className="col-lg-4">
+
+                <select
+                    className="form-select"
+                    value={sort}
+                    onChange={(e) =>
+                        setSort(e.target.value)
+                    }
+                >
+
+                    <option value="default">
+                        Default Sorting
+                    </option>
+
+                    <option value="lowToHigh">
+                        Price: Low → High
+                    </option>
+
+                    <option value="highToLow">
+                        Price: High → Low
+                    </option>
+
+                    <option value="name">
+                        Name (A-Z)
+                    </option>
+
+                </select>
+
+            </div>
+
+        </div>
+
+        {/* ========================================= */}
+        {/* PRODUCTS */}
+        {/* ========================================= */}
+
+        <div className="row">
+
+            {filteredProducts.length === 0 ? (
+
+                <div className="col-12 text-center py-5">
+
+                    <h3>No Products Found</h3>
+
+                    <p className="text-muted">
+                        Try another search or category.
+                    </p>
+
+                </div>
+
+            ) : (
+
+                filteredProducts.map((product) => {
+
+                    const stock =
+                        Number(product.stock_quantity);
+
+                    const available =
+                        product.is_available &&
+                        stock > 0;
+
+                    return (
 
                         <div
-                            className="col-lg-3 col-md-4 col-sm-6 mb-4"
                             key={product.id}
+                            className="col-xl-3 col-lg-4 col-md-6 mb-4"
                         >
-                            <div className="card shadow h-100">
+
+                            <div className="card shadow-sm border-0 h-100">
 
                                 {/* Product Image */}
-                                <img
-                                   src={
-                                        product.image
-                                       ? product.image
-                                       : "https://placehold.co/300x300?text=No+Image"
-                                         }
-                                      alt={product.name}
-                                />
+
+                                <div className="position-relative">
+
+                                    <img
+                                        src={getImage(product)}
+                                        alt={product.name}
+                                        className="card-img-top"
+                                        style={{
+                                            height: "250px",
+                                            objectFit: "cover",
+                                        }}
+                                        onError={(e) => {
+                                            e.currentTarget.src =
+                                                FALLBACK_IMAGE;
+                                        }}
+                                    />
+
+                                    {/* Wishlist Heart */}
+
+                                    <button
+                                        type="button"
+                                        className={`btn position-absolute top-0 end-0 m-2 rounded-circle shadow ${
+                                            wishlistIds.has(product.id)
+                                                ? "btn-danger"
+                                                : "btn-light"
+                                        }`}
+                                        disabled={
+                                            wishlistLoadingId ===
+                                            product.id
+                                        }
+                                        onClick={() =>
+                                            toggleWishlist(product.id)
+                                        }
+                                    >
+
+                                        {wishlistLoadingId ===
+                                        product.id ? (
+                                            <span className="spinner-border spinner-border-sm" />
+                                        ) : wishlistIds.has(
+                                              product.id
+                                          ) ? (
+                                            "♥"
+                                        ) : (
+                                            "♡"
+                                        )}
+
+                                    </button>
+
+                                </div>
+
+                                {/* Card Body */}
 
                                 <div className="card-body d-flex flex-column">
 
-                                    {/* Product Name */}
-                                    <h5 className="card-title">
+                                    <span className="badge bg-secondary mb-2 align-self-start">
+                                        {product.category}
+                                    </span>
+
+                                    <h5 className="fw-bold">
                                         {product.name}
                                     </h5>
 
-                                    {/* Category */}
-                                    <p className="text-muted mb-1">
-                                        {product.category}
-                                    </p>
-
-                                    {/* Description */}
                                     <p
-                                        className="card-text"
+                                        className="text-muted small flex-grow-1"
                                         style={{
-                                            minHeight: "50px",
+                                            minHeight: "70px",
                                         }}
                                     >
                                         {product.description}
                                     </p>
 
-                                    {/* Price */}
-                                    <h5 className="text-danger mb-2">
-                                       ৳ {Number(product.price).toFixed(2)}
-                                    </h5>
+                                    <h4 className="text-primary fw-bold">
+                                        ৳
+                                        {Number(
+                                            product.price
+                                        ).toFixed(2)}
+                                    </h4>
 
-                                    {/* Stock */}
-                                    <p
-    className={
-        product.stock_quantity > 0
-            ? "text-success"
-            : "text-danger"
-    }
->
-    {product.stock_quantity > 0
-        ? `${product.stock_quantity} Available`
-        : "Out of Stock"}
-</p>
+                                    {available ? (
+                                        <span className="badge bg-success mb-3">
+                                            {stock} Available
+                                        </span>
+                                    ) : (
+                                        <span className="badge bg-danger mb-3">
+                                            Out of Stock
+                                        </span>
+                                    )}
+                                                                        {/* ===================================== */}
+                                    {/* ACTION BUTTONS */}
+                                    {/* ===================================== */}
 
-                                    {/* Rating */}
-                                    <p>
-                                        ⭐ {product.rating || 5}/5
-                                    </p>
+                                    <div className="mt-auto d-grid gap-2">
 
-                                    {/* Buttons */}
-                                   <div className="mt-auto">
+                                        {/* Add to Cart */}
 
-                                  <button
-                                         className="btn btn-primary w-100 mb-2"
-                                           onClick={() => addToCart(product.id, 1)}
-                                    >
-                                               Add to Cart
-                                   </button>
-
-                                   <Link
-                                      to={`/products/${product.id}`}
-                                       className="btn btn-outline-dark w-100"
+                                        <button
+                                            className="btn btn-primary"
+                                            disabled={
+                                                !available ||
+                                                cartLoadingId === product.id
+                                            }
+                                            onClick={() =>
+                                                handleAddToCart(product.id)
+                                            }
                                         >
-                                          View Details
-                                   </Link>
+                                            {cartLoadingId === product.id ? (
+                                                <>
+                                                    <span
+                                                        className="spinner-border spinner-border-sm me-2"
+                                                        role="status"
+                                                    />
+                                                    Adding...
+                                                </>
+                                            ) : (
+                                                <>🛒 Add to Cart</>
+                                            )}
+                                        </button>
 
-                                             </div>
+                                        {/* View Details */}
+
+                                        <Link
+                                            to={`/products/${product.id}`}
+                                            className="btn btn-outline-dark"
+                                        >
+                                            👁 View Details
+                                        </Link>
+
+                                    </div>
 
                                 </div>
+                                {/* End Card Body */}
+
                             </div>
+                            {/* End Card */}
+
                         </div>
+                    );
 
-                    ))
+                })
 
-                ) : (
-
-                    <div className="text-center">
-                        <h4>No Products Found.</h4>
-                    </div>
-
-                )}
-
-            </div>
+            )}
 
         </div>
-    );
+        {/* End Product Grid */}
+
+    </div>
+    /* End Container */
+);
+
 };
 
 export default Products;
