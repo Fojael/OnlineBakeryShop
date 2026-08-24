@@ -196,11 +196,17 @@ class OrderListCreateView(APIView):
             )
         }
 
+               # ----------------------------------------------------
+        # DELIVERY CHARGE
+        # ----------------------------------------------------
+
+        DELIVERY_CHARGE = Decimal("60.00")
+
         # ----------------------------------------------------
         # Validate cart products and stock
         # ----------------------------------------------------
 
-        total_amount = Decimal("0.00")
+        subtotal = Decimal("0.00")
 
         validated_items = []
 
@@ -258,10 +264,7 @@ class OrderListCreateView(APIView):
             # Stock validation
             # ------------------------------------------------
 
-            if (
-                cart_item.quantity
-                > product.stock_quantity
-            ):
+            if cart_item.quantity > product.stock_quantity:
 
                 return Response(
                     {
@@ -279,7 +282,7 @@ class OrderListCreateView(APIView):
             # Price validation
             # ------------------------------------------------
 
-            if product.price <= 0:
+            if product.price <= Decimal("0.00"):
 
                 return Response(
                     {
@@ -292,39 +295,55 @@ class OrderListCreateView(APIView):
                 )
 
             # ------------------------------------------------
-            # Calculate subtotal from REAL database price
+            # Calculate item subtotal
             # ------------------------------------------------
 
-            subtotal = (
-                product.price
-                * cart_item.quantity
+            item_subtotal = (
+                product.price *
+                cart_item.quantity
             )
 
-            total_amount += subtotal
+            subtotal += item_subtotal
 
             validated_items.append(
                 {
                     "product": product,
                     "quantity": cart_item.quantity,
                     "price": product.price,
+                    "subtotal": item_subtotal,
                 }
             )
 
         # ----------------------------------------------------
-        # Validate final order amount
+        # Validate subtotal
         # ----------------------------------------------------
 
-        if total_amount <= Decimal("0.00"):
+        if subtotal <= Decimal("0.00"):
 
             return Response(
                 {
                     "detail": (
-                        "Order total must be "
+                        "Order subtotal must be "
                         "greater than zero."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # ----------------------------------------------------
+        # Compute Total
+        # ----------------------------------------------------
+
+        delivery_charge = (
+            DELIVERY_CHARGE
+            if subtotal > Decimal("0.00")
+            else Decimal("0.00")
+        )
+
+        total_amount = (
+            subtotal +
+            delivery_charge
+        )
 
         # ====================================================
         # CREATE ORDER
@@ -334,10 +353,11 @@ class OrderListCreateView(APIView):
             customer=request.user,
             shipping_address=shipping_address,
             payment_method=payment_method,
+            subtotal=subtotal,
+            delivery_charge=delivery_charge,
             total_amount=total_amount,
             status="Pending",
         )
-
         # ====================================================
         # CREATE ORDER ITEMS + REDUCE STOCK
         # ====================================================

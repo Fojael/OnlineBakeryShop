@@ -30,14 +30,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-        read_only_fields = [
-            "id",
-            "product_id",
-            "product_name",
-            "price",
-            "subtotal",
-            "created_at",
-        ]
+        read_only_fields = fields
 
     def get_subtotal(self, obj):
         return obj.subtotal
@@ -69,12 +62,19 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "customer_name",
             "customer_email",
+
             "shipping_address",
             "payment_method",
+
+            # NEW
+            "subtotal",
+            "delivery_charge",
             "total_amount",
+
             "status",
             "items",
             "item_count",
+
             "created_at",
             "updated_at",
         ]
@@ -83,10 +83,15 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "customer_name",
             "customer_email",
+
+            "subtotal",
+            "delivery_charge",
             "total_amount",
+
             "status",
             "items",
             "item_count",
+
             "created_at",
             "updated_at",
         ]

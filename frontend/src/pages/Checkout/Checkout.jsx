@@ -27,14 +27,13 @@ const Checkout = () => {
         useState(null);
 
     const [paymentMethod, setPaymentMethod] =
-        useState("cod");
+        useState("Cash on Delivery");
 
     const [error, setError] =
         useState("");
 
-
     // ==========================================================
-    // LOAD CHECKOUT DATA
+    // LOAD CHECKOUT
     // ==========================================================
 
     useEffect(() => {
@@ -45,23 +44,16 @@ const Checkout = () => {
                 setLoading(true);
                 setError("");
 
-                // ==================================================
-                // LOAD CART
-                // ==================================================
-
                 const cartResponse =
                     await getCart();
 
-                const cartData =
-                    cartResponse.data;
-
-
-                // ==================================================
-                // LOAD ADDRESSES
-                // ==================================================
-
                 const addressResponse =
                     await getAddresses();
+
+                if (!mounted) return;
+
+                const cartData =
+                    cartResponse.data;
 
                 const addressList =
                     Array.isArray(
@@ -70,95 +62,52 @@ const Checkout = () => {
                         ? addressResponse.data
                         : [];
 
-
-                if (!mounted) {
-                    return;
-                }
-
-
                 setCart(cartData);
-
-                setAddresses(
-                    addressList
-                );
-
-
-                // ==================================================
-                // SELECT DEFAULT ADDRESS
-                // ==================================================
+                setAddresses(addressList);
 
                 const defaultAddress =
                     addressList.find(
-                        (address) =>
-                            address.is_default === true
+                        (a) => a.is_default
                     );
 
-
                 if (defaultAddress) {
-
                     setSelectedAddress(
                         defaultAddress.id
                     );
-
                 } else if (
                     addressList.length > 0
                 ) {
-
-                    // No default address.
-                    // Select the first available address.
-
                     setSelectedAddress(
                         addressList[0].id
                     );
-
-                } else {
-
-                    // No addresses available.
-
-                    setSelectedAddress(
-                        null
-                    );
                 }
-
-            } catch (error) {
-
-                console.error(
-                    "Checkout loading error:",
-                    error
-                );
-
+            } catch (err) {
+                console.error(err);
 
                 if (mounted) {
-
                     setError(
-                        "Unable to load checkout information."
+                        "Unable to load checkout."
                     );
 
                     toast.error(
-                        error?.response?.data?.detail ||
-                        "Unable to load checkout information."
+                        err?.response?.data
+                            ?.detail ||
+                            "Unable to load checkout."
                     );
                 }
-
             } finally {
-
                 if (mounted) {
                     setLoading(false);
                 }
-
             }
         };
 
-
         loadCheckout();
-
 
         return () => {
             mounted = false;
         };
-
     }, []);
-
 
     // ==========================================================
     // CART ITEMS
@@ -169,56 +118,41 @@ const Checkout = () => {
             ? cart.items
             : [];
 
+    // ==========================================================
+    // SUBTOTAL
+    // ==========================================================
+
+    const subtotal = cartItems.reduce(
+        (total, item) => {
+            const price = Number(
+                item.product_price ??
+                    item.price ??
+                    item.product?.price ??
+                    0
+            );
+
+            return (
+                total +
+                price *
+                    Number(item.quantity)
+            );
+        },
+        0
+    );
 
     // ==========================================================
-    // CALCULATE SUBTOTAL
-    // ==========================================================
-
-    const subtotal =
-        cartItems.reduce(
-            (total, item) => {
-
-                const price =
-                    Number(
-                        item.product_price ??
-                        item.price ??
-                        item.product?.price ??
-                        0
-                    );
-
-                const quantity =
-                    Number(
-                        item.quantity ?? 0
-                    );
-
-                return (
-                    total +
-                    price * quantity
-                );
-
-            },
-            0
-        );
-
-
-    // ==========================================================
-    // DELIVERY CHARGE
+    // DELIVERY
     // ==========================================================
 
     const deliveryCharge =
-        subtotal > 0
-            ? 60
-            : 0;
-
+        subtotal > 0 ? 60 : 0;
 
     // ==========================================================
     // GRAND TOTAL
     // ==========================================================
 
     const grandTotal =
-        subtotal +
-        deliveryCharge;
-
+        subtotal + deliveryCharge;
 
     // ==========================================================
     // SELECTED ADDRESS
@@ -227,196 +161,106 @@ const Checkout = () => {
     const selectedAddressData =
         addresses.find(
             (address) =>
-                address.id === selectedAddress
+                address.id ===
+                selectedAddress
         );
-
-
-    // ==========================================================
+            // ==========================================================
     // PLACE ORDER
     // ==========================================================
 
     const handlePlaceOrder = async () => {
+        // ------------------------------------------------------
+        // Validate Address
+        // ------------------------------------------------------
 
-        // ==================================================
-        // CHECK ADDRESS
-        // ==================================================
-
-        if (!selectedAddress) {
-
+        if (!selectedAddressData) {
             toast.error(
                 "Please select a delivery address."
             );
-
             return;
         }
 
-
-        // ==================================================
-        // CHECK CART
-        // ==================================================
+        // ------------------------------------------------------
+        // Validate Cart
+        // ------------------------------------------------------
 
         if (cartItems.length === 0) {
-
-            toast.error(
-                "Your cart is empty."
-            );
-
+            toast.error("Your cart is empty.");
             return;
         }
 
+        // ------------------------------------------------------
+        // Build Shipping Address
+        // ------------------------------------------------------
 
-        // ==================================================
-        // CHECK PAYMENT
-        // ==================================================
+        const shippingAddress = `
+${selectedAddressData.full_name}
+${selectedAddressData.phone}
+${selectedAddressData.address_line}
+${selectedAddressData.upazila}, ${selectedAddressData.district}
+${selectedAddressData.division} - ${selectedAddressData.postal_code}
+        `.trim();
 
-        if (!paymentMethod) {
+        // ------------------------------------------------------
+        // Request Body
+        // Must match Django backend exactly
+        // ------------------------------------------------------
 
-            toast.error(
-                "Please select a payment method."
-            );
-
-            return;
-        }
-
+        const orderData = {
+            shipping_address: shippingAddress,
+            payment_method: paymentMethod,
+        };
 
         try {
-
             setPlacingOrder(true);
 
-
-            // ==================================================
-            // ORDER DATA
-            // ==================================================
-
-            const orderData = {
-                address_id: selectedAddress,
-                payment_method: paymentMethod,
-            };
-
-
-            console.log(
-                "Creating order:",
-                orderData
-            );
-
-
-            // ==================================================
-            // CREATE ORDER
-            // ==================================================
-
             const response =
-                await createOrder(
-                    orderData
-                );
-
-
-            console.log(
-                "Order response:",
-                response.data
-            );
-
+                await createOrder(orderData);
 
             toast.success(
-                "Order placed successfully!"
+                response.data.message ||
+                    "Order placed successfully."
             );
 
+            // ----------------------------------------------
+            // Redirect
+            // ----------------------------------------------
 
-            // ==================================================
-            // REDIRECT
-            // ==================================================
-
-            if (response?.data?.id) {
-
-                navigate(
-                    `/orders/${response.data.id}`
-                );
-
+            if (
+                response.data.order &&
+                response.data.order.id
+            ) {
+                navigate("/orders");
             } else {
-
-                navigate(
-                    "/orders"
-                );
-
+                navigate("/orders");
             }
-
         } catch (error) {
-
-            console.error(
-                "Place order error:",
-                error
-            );
-
+            console.error(error);
 
             const backendError =
                 error?.response?.data;
 
-
-            // ==================================================
-            // BACKEND ERROR
-            // ==================================================
-
-            if (
-                backendError?.detail
-            ) {
-
+            if (backendError?.detail) {
                 toast.error(
                     backendError.detail
                 );
-
-            } else if (
-                typeof backendError === "object"
-            ) {
-
-                const firstError =
-                    Object.values(
-                        backendError
-                    )[0];
-
-
-                if (
-                    Array.isArray(
-                        firstError
-                    )
-                ) {
-
-                    toast.error(
-                        firstError[0]
-                    );
-
-                } else {
-
-                    toast.error(
-                        String(firstError)
-                    );
-
-                }
-
             } else {
-
                 toast.error(
                     "Unable to place order."
                 );
-
             }
-
         } finally {
-
             setPlacingOrder(false);
-
         }
     };
-
 
     // ==========================================================
     // LOADING
     // ==========================================================
 
     if (loading) {
-
         return (
-
             <div className="container py-5 text-center">
-
                 <div
                     className="spinner-border text-primary"
                     role="status"
@@ -429,37 +273,29 @@ const Checkout = () => {
                 <h5 className="mt-3">
                     Loading Checkout...
                 </h5>
-
             </div>
         );
     }
-
 
     // ==========================================================
     // EMPTY CART
     // ==========================================================
 
     if (cartItems.length === 0) {
-
         return (
-
             <div className="container py-5">
-
                 <div className="card shadow-sm border-0">
-
                     <div className="card-body text-center py-5">
-
-                        <h1>
-                            🛒
-                        </h1>
+                        <h1>🛒</h1>
 
                         <h3>
                             Your Cart is Empty
                         </h3>
 
                         <p className="text-muted">
-                            Add some bakery products
-                            before checkout.
+                            Add some bakery
+                            products before
+                            checkout.
                         </p>
 
                         <Link
@@ -468,22 +304,16 @@ const Checkout = () => {
                         >
                             Continue Shopping
                         </Link>
-
                     </div>
-
                 </div>
-
             </div>
         );
     }
-
-
-    // ==========================================================
+        // ==========================================================
     // PAGE
     // ==========================================================
 
     return (
-
         <div className="container py-5">
 
             {/* ==================================================
@@ -497,25 +327,21 @@ const Checkout = () => {
                 </h2>
 
                 <p className="text-muted">
-                    Complete your order by selecting
-                    your delivery address and payment method.
+                    Complete your order by selecting your
+                    delivery address and payment method.
                 </p>
 
             </div>
-
 
             {/* ==================================================
                 ERROR
             ================================================== */}
 
             {error && (
-
                 <div className="alert alert-danger">
                     {error}
                 </div>
-
             )}
-
 
             <div className="row g-4">
 
@@ -525,9 +351,8 @@ const Checkout = () => {
 
                 <div className="col-lg-8">
 
-
                     {/* ==================================================
-                        ADDRESS
+                        DELIVERY ADDRESS
                     ================================================== */}
 
                     <div className="card border-0 shadow-sm mb-4">
@@ -551,20 +376,20 @@ const Checkout = () => {
 
                         </div>
 
-
                         <div className="card-body">
 
                             {addresses.length === 0 ? (
 
-                                <div className="text-center py-4">
+                                <div className="text-center py-5">
 
                                     <h5>
-                                        No Delivery Address
+                                        No saved addresses
                                     </h5>
 
                                     <p className="text-muted">
-                                        Please add a delivery address
-                                        before placing your order.
+                                        Please add a delivery
+                                        address before placing
+                                        your order.
                                     </p>
 
                                     <Link
@@ -580,110 +405,102 @@ const Checkout = () => {
 
                                 <div className="row g-3">
 
-                                    {addresses.map(
-                                        (address) => (
+                                    {addresses.map((address) => (
+
+                                        <div
+                                            className="col-md-6"
+                                            key={address.id}
+                                        >
 
                                             <div
-                                                className="col-md-6"
-                                                key={
+                                                className={`card h-100 ${
+                                                    selectedAddress ===
                                                     address.id
-                                                }
+                                                        ? "border-primary shadow"
+                                                        : ""
+                                                }`}
                                             >
 
-                                                <div
-                                                    className={`card h-100 ${
-                                                        selectedAddress ===
-                                                        address.id
-                                                            ? "border-primary"
-                                                            : ""
-                                                    }`}
-                                                >
+                                                <div className="card-body">
 
-                                                    <div className="card-body">
+                                                    <div className="form-check">
 
-                                                        <div className="form-check">
-
-                                                            <input
-                                                                className="form-check-input"
-                                                                type="radio"
-                                                                name="address"
-                                                                id={`address-${address.id}`}
-                                                                checked={
-                                                                    selectedAddress ===
+                                                        <input
+                                                            className="form-check-input"
+                                                            type="radio"
+                                                            name="address"
+                                                            id={`address-${address.id}`}
+                                                            checked={
+                                                                selectedAddress ===
+                                                                address.id
+                                                            }
+                                                            onChange={() =>
+                                                                setSelectedAddress(
                                                                     address.id
-                                                                }
-                                                                onChange={() =>
-                                                                    setSelectedAddress(
-                                                                        address.id
-                                                                    )
-                                                                }
-                                                            />
+                                                                )
+                                                            }
+                                                        />
 
-                                                            <label
-                                                                className="form-check-label w-100"
-                                                                htmlFor={`address-${address.id}`}
-                                                            >
+                                                        <label
+                                                            htmlFor={`address-${address.id}`}
+                                                            className="form-check-label w-100"
+                                                        >
 
-                                                                <div className="d-flex justify-content-between">
+                                                            <div className="d-flex justify-content-between">
 
-                                                                    <strong>
-                                                                        {
-                                                                            address.full_name
-                                                                        }
-                                                                    </strong>
+                                                                <strong>
+                                                                    {
+                                                                        address.full_name
+                                                                    }
+                                                                </strong>
 
-                                                                    {address.is_default && (
+                                                                {address.is_default && (
+                                                                    <span className="badge bg-success">
+                                                                        Default
+                                                                    </span>
+                                                                )}
 
-                                                                        <span className="badge bg-success">
-                                                                            Default
-                                                                        </span>
+                                                            </div>
 
-                                                                    )}
+                                                            <div className="mt-2 small">
 
+                                                                <div>
+                                                                    📞{" "}
+                                                                    {
+                                                                        address.phone
+                                                                    }
                                                                 </div>
 
-
-                                                                <div className="mt-2 small">
-
-                                                                    <div>
-                                                                        📞{" "}
-                                                                        {
-                                                                            address.phone
-                                                                        }
-                                                                    </div>
-
-                                                                    <div>
-                                                                        📍{" "}
-                                                                        {
-                                                                            address.address_line
-                                                                        }
-                                                                    </div>
-
-                                                                    <div>
-                                                                        {
-                                                                            address.upazila
-                                                                        }
-                                                                        ,{" "}
-                                                                        {
-                                                                            address.district
-                                                                        }
-                                                                    </div>
-
-                                                                    <div>
-                                                                        {
-                                                                            address.division
-                                                                        }
-                                                                        {" - "}
-                                                                        {
-                                                                            address.postal_code
-                                                                        }
-                                                                    </div>
-
+                                                                <div>
+                                                                    📍{" "}
+                                                                    {
+                                                                        address.address_line
+                                                                    }
                                                                 </div>
 
-                                                            </label>
+                                                                <div>
+                                                                    {
+                                                                        address.upazila
+                                                                    }
+                                                                    ,{" "}
+                                                                    {
+                                                                        address.district
+                                                                    }
+                                                                </div>
 
-                                                        </div>
+                                                                <div>
+                                                                    {
+                                                                        address.division
+                                                                    }
+                                                                    {" - "}
+                                                                    {
+                                                                        address.postal_code
+                                                                    }
+                                                                </div>
+
+                                                            </div>
+
+                                                        </label>
 
                                                     </div>
 
@@ -691,8 +508,9 @@ const Checkout = () => {
 
                                             </div>
 
-                                        )
-                                    )}
+                                        </div>
+
+                                    ))}
 
                                 </div>
 
@@ -701,10 +519,8 @@ const Checkout = () => {
                         </div>
 
                     </div>
-
-
-                    {/* ==================================================
-                        PAYMENT
+                                        {/* ==================================================
+                        PAYMENT METHOD
                     ================================================== */}
 
                     <div className="card border-0 shadow-sm mb-4">
@@ -717,14 +533,14 @@ const Checkout = () => {
 
                         </div>
 
-
                         <div className="card-body">
 
-                            {/* COD */}
+                            {/* Cash on Delivery */}
 
                             <div
                                 className={`card mb-3 ${
-                                    paymentMethod === "cod"
+                                    paymentMethod ===
+                                    "Cash on Delivery"
                                         ? "border-primary"
                                         : ""
                                 }`}
@@ -738,11 +554,11 @@ const Checkout = () => {
                                             className="form-check-input"
                                             type="radio"
                                             name="payment"
-                                            id="payment-cod"
-                                            value="cod"
+                                            id="cod"
+                                            value="Cash on Delivery"
                                             checked={
                                                 paymentMethod ===
-                                                "cod"
+                                                "Cash on Delivery"
                                             }
                                             onChange={(e) =>
                                                 setPaymentMethod(
@@ -753,7 +569,7 @@ const Checkout = () => {
 
                                         <label
                                             className="form-check-label"
-                                            htmlFor="payment-cod"
+                                            htmlFor="cod"
                                         >
 
                                             <strong>
@@ -761,7 +577,8 @@ const Checkout = () => {
                                             </strong>
 
                                             <div className="text-muted small">
-                                                Pay when your order is delivered.
+                                                Pay after receiving
+                                                your order.
                                             </div>
 
                                         </label>
@@ -772,12 +589,12 @@ const Checkout = () => {
 
                             </div>
 
-
-                            {/* SSLCommerz */}
+                            {/* Credit Card */}
 
                             <div
                                 className={`card ${
-                                    paymentMethod === "sslcommerz"
+                                    paymentMethod ===
+                                    "Credit Card"
                                         ? "border-primary"
                                         : ""
                                 }`}
@@ -791,11 +608,11 @@ const Checkout = () => {
                                             className="form-check-input"
                                             type="radio"
                                             name="payment"
-                                            id="payment-ssl"
-                                            value="sslcommerz"
+                                            id="card"
+                                            value="Credit Card"
                                             checked={
                                                 paymentMethod ===
-                                                "sslcommerz"
+                                                "Credit Card"
                                             }
                                             onChange={(e) =>
                                                 setPaymentMethod(
@@ -806,15 +623,15 @@ const Checkout = () => {
 
                                         <label
                                             className="form-check-label"
-                                            htmlFor="payment-ssl"
+                                            htmlFor="card"
                                         >
 
                                             <strong>
-                                                💳 Online Payment
+                                                💳 Credit Card
                                             </strong>
 
                                             <div className="text-muted small">
-                                                Pay securely using SSLCommerz.
+                                                Secure online payment.
                                             </div>
 
                                         </label>
@@ -829,9 +646,8 @@ const Checkout = () => {
 
                     </div>
 
-
                     {/* ==================================================
-                        SELECTED ADDRESS PREVIEW
+                        ADDRESS PREVIEW
                     ================================================== */}
 
                     {selectedAddressData && (
@@ -839,25 +655,31 @@ const Checkout = () => {
                         <div className="alert alert-info">
 
                             <strong>
-                                Delivery to:
+                                Delivering To:
                             </strong>
 
                             <br />
 
-                            {
-                                selectedAddressData.full_name
-                            }
+                            {selectedAddressData.full_name}
 
                             <br />
 
-                            {
-                                selectedAddressData.address_line
-                            }
+                            {selectedAddressData.phone}
 
-                            ,{" "}
-                            {
-                                selectedAddressData.district
-                            }
+                            <br />
+
+                            {selectedAddressData.address_line}
+
+                            <br />
+
+                            {selectedAddressData.upazila},{" "}
+                            {selectedAddressData.district}
+
+                            <br />
+
+                            {selectedAddressData.division}
+                            {" - "}
+                            {selectedAddressData.postal_code}
 
                         </div>
 
@@ -865,9 +687,8 @@ const Checkout = () => {
 
                 </div>
 
-
                 {/* ==================================================
-                    RIGHT SIDE
+                    ORDER SUMMARY
                 ================================================== */}
 
                 <div className="col-lg-4">
@@ -888,76 +709,54 @@ const Checkout = () => {
 
                         </div>
 
-
                         <div className="card-body">
 
-                            {/* ==================================================
-                                ITEMS
-                            ================================================== */}
+                            {cartItems.map((item) => {
 
-                            {cartItems.map(
-                                (item) => {
+                                const price = Number(
+                                    item.product_price ??
+                                    item.price ??
+                                    item.product?.price ??
+                                    0
+                                );
 
-                                    const price =
-                                        Number(
-                                            item.product_price ??
-                                            item.price ??
-                                            item.product?.price ??
-                                            0
-                                        );
+                                return (
 
-                                    const quantity =
-                                        Number(
-                                            item.quantity ?? 0
-                                        );
+                                    <div
+                                        key={item.id}
+                                        className="d-flex justify-content-between mb-3"
+                                    >
 
-                                    return (
+                                        <div>
 
-                                        <div
-                                            key={item.id}
-                                            className="d-flex justify-content-between mb-3"
-                                        >
+                                            <strong>
+                                                {
+                                                    item.product_name ??
+                                                    item.product?.name
+                                                }
+                                            </strong>
 
-                                            <div>
-
-                                                <strong>
-                                                    {
-                                                        item.product_name ??
-                                                        item.product?.name ??
-                                                        "Product"
-                                                    }
-                                                </strong>
-
-                                                <div className="text-muted small">
-                                                    Qty: {quantity}
-                                                </div>
-
+                                            <div className="small text-muted">
+                                                Qty: {item.quantity}
                                             </div>
-
-
-                                            <span>
-
-                                                ৳{" "}
-                                                {(
-                                                    price *
-                                                    quantity
-                                                ).toFixed(2)}
-
-                                            </span>
 
                                         </div>
 
-                                    );
-                                }
-                            )}
+                                        <strong>
+                                            ৳
+                                            {(
+                                                price *
+                                                item.quantity
+                                            ).toFixed(2)}
+                                        </strong>
 
+                                    </div>
+
+                                );
+
+                            })}
 
                             <hr />
-
-
-                            {/* ==================================================
-                                SUBTOTAL
-                            ================================================== */}
 
                             <div className="d-flex justify-content-between mb-2">
 
@@ -966,16 +765,11 @@ const Checkout = () => {
                                 </span>
 
                                 <strong>
-                                    ৳{" "}
+                                    ৳
                                     {subtotal.toFixed(2)}
                                 </strong>
 
                             </div>
-
-
-                            {/* ==================================================
-                                DELIVERY
-                            ================================================== */}
 
                             <div className="d-flex justify-content-between mb-2">
 
@@ -984,47 +778,35 @@ const Checkout = () => {
                                 </span>
 
                                 <strong>
-                                    ৳{" "}
+                                    ৳
                                     {deliveryCharge.toFixed(2)}
                                 </strong>
 
                             </div>
 
-
                             <hr />
 
-
-                            {/* ==================================================
-                                TOTAL
-                            ================================================== */}
-
-                            <div className="d-flex justify-content-between mb-4">
+                            <div className="d-flex justify-content-between">
 
                                 <h5>
                                     Total
                                 </h5>
 
                                 <h5 className="text-primary">
-                                    ৳{" "}
+                                    ৳
                                     {grandTotal.toFixed(2)}
                                 </h5>
 
                             </div>
 
-
-                            {/* ==================================================
-                                PLACE ORDER
-                            ================================================== */}
-
                             <button
-                                type="button"
-                                className="btn btn-primary w-100 py-3"
+                                className="btn btn-primary w-100 mt-4"
+                                onClick={
+                                    handlePlaceOrder
+                                }
                                 disabled={
                                     placingOrder ||
                                     !selectedAddress
-                                }
-                                onClick={
-                                    handlePlaceOrder
                                 }
                             >
 
@@ -1033,7 +815,6 @@ const Checkout = () => {
                                     : "🛍 Place Order"}
 
                             </button>
-
 
                             <Link
                                 to="/cart"
