@@ -1,176 +1,422 @@
-import {
-    useCallback,
-    useEffect,
-    useState,
-} from "react";
-
-import {
-    Link,
-    useNavigate,
-} from "react-router-dom";
-
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import { getCart } from "../../services/cartService";
+import { getAddresses } from "../../services/addressService";
 import { createOrder } from "../../services/orderService";
-
-const API_BASE_URL = "http://127.0.0.1:8000";
 
 const Checkout = () => {
     const navigate = useNavigate();
 
-    // =========================================================
+    // ==========================================================
     // STATE
-    // =========================================================
-
-    const [cart, setCart] = useState(null);
+    // ==========================================================
 
     const [loading, setLoading] = useState(true);
 
     const [placingOrder, setPlacingOrder] =
         useState(false);
 
-    const [formData, setFormData] = useState({
-        shipping_address: "",
-        payment_method: "Cash on Delivery",
-    });
+    const [cart, setCart] = useState(null);
 
-    // =========================================================
-    // LOAD CART
-    // =========================================================
+    const [addresses, setAddresses] =
+        useState([]);
 
-    const fetchCart = useCallback(async () => {
-        try {
-            setLoading(true);
+    const [selectedAddress, setSelectedAddress] =
+        useState(null);
 
-            const response = await getCart();
+    const [paymentMethod, setPaymentMethod] =
+        useState("cod");
 
-            setCart(response.data);
-        } catch (error) {
-            console.error(error);
+    const [error, setError] =
+        useState("");
 
-            if (error?.response?.status === 401) {
-                localStorage.removeItem("access");
-                localStorage.removeItem("refresh");
 
-                toast.info(
-                    "Please login to continue."
-                );
-
-                navigate("/login");
-
-                return;
-            }
-
-            toast.error(
-                error?.response?.data?.detail ||
-                    "Failed to load cart."
-            );
-
-            setCart(null);
-        } finally {
-            setLoading(false);
-        }
-    }, [navigate]);
+    // ==========================================================
+    // LOAD CHECKOUT DATA
+    // ==========================================================
 
     useEffect(() => {
-        const timer = window.setTimeout(() => {
-            void fetchCart();
-        }, 0);
+        let mounted = true;
 
-        return () => {
-            window.clearTimeout(timer);
-        };
-    }, [fetchCart]);
+        const loadCheckout = async () => {
+            try {
+                setLoading(true);
+                setError("");
 
-    // =========================================================
-    // FORM CHANGE
-    // =========================================================
+                // ==================================================
+                // LOAD CART
+                // ==================================================
 
-    const handleChange = (event) => {
-        const { name, value } = event.target;
+                const cartResponse =
+                    await getCart();
 
-        setFormData((prev) => ({
-            ...prev,
-            [name]: value,
-        }));
-    };
+                const cartData =
+                    cartResponse.data;
 
-    // =========================================================
-    // PLACE ORDER
-    // =========================================================
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
+                // ==================================================
+                // LOAD ADDRESSES
+                // ==================================================
 
-        if (!formData.shipping_address.trim()) {
-            toast.warning(
-                "Shipping address is required."
-            );
+                const addressResponse =
+                    await getAddresses();
 
-            return;
-        }
+                const addressList =
+                    Array.isArray(
+                        addressResponse.data
+                    )
+                        ? addressResponse.data
+                        : [];
 
-        if (
-            !cart ||
-            !Array.isArray(cart.items) ||
-            cart.items.length === 0
-        ) {
-            toast.warning("Your cart is empty.");
 
-            navigate("/cart");
+                if (!mounted) {
+                    return;
+                }
 
-            return;
-        }
 
-        try {
-            setPlacingOrder(true);
+                setCart(cartData);
 
-            const response = await createOrder({
-                shipping_address:
-                    formData.shipping_address.trim(),
-                payment_method:
-                    formData.payment_method,
-            });
-
-            toast.success(
-                response.data.message ||
-                    "Order placed successfully."
-            );
-
-            navigate("/orders");
-        } catch (error) {
-            console.error(error);
-
-            if (error?.response?.status === 401) {
-                localStorage.removeItem("access");
-                localStorage.removeItem("refresh");
-
-                toast.info(
-                    "Please login again."
+                setAddresses(
+                    addressList
                 );
 
-                navigate("/login");
 
-                return;
+                // ==================================================
+                // SELECT DEFAULT ADDRESS
+                // ==================================================
+
+                const defaultAddress =
+                    addressList.find(
+                        (address) =>
+                            address.is_default === true
+                    );
+
+
+                if (defaultAddress) {
+
+                    setSelectedAddress(
+                        defaultAddress.id
+                    );
+
+                } else if (
+                    addressList.length > 0
+                ) {
+
+                    // No default address.
+                    // Select the first available address.
+
+                    setSelectedAddress(
+                        addressList[0].id
+                    );
+
+                } else {
+
+                    // No addresses available.
+
+                    setSelectedAddress(
+                        null
+                    );
+                }
+
+            } catch (error) {
+
+                console.error(
+                    "Checkout loading error:",
+                    error
+                );
+
+
+                if (mounted) {
+
+                    setError(
+                        "Unable to load checkout information."
+                    );
+
+                    toast.error(
+                        error?.response?.data?.detail ||
+                        "Unable to load checkout information."
+                    );
+                }
+
+            } finally {
+
+                if (mounted) {
+                    setLoading(false);
+                }
+
             }
+        };
+
+
+        loadCheckout();
+
+
+        return () => {
+            mounted = false;
+        };
+
+    }, []);
+
+
+    // ==========================================================
+    // CART ITEMS
+    // ==========================================================
+
+    const cartItems =
+        Array.isArray(cart?.items)
+            ? cart.items
+            : [];
+
+
+    // ==========================================================
+    // CALCULATE SUBTOTAL
+    // ==========================================================
+
+    const subtotal =
+        cartItems.reduce(
+            (total, item) => {
+
+                const price =
+                    Number(
+                        item.product_price ??
+                        item.price ??
+                        item.product?.price ??
+                        0
+                    );
+
+                const quantity =
+                    Number(
+                        item.quantity ?? 0
+                    );
+
+                return (
+                    total +
+                    price * quantity
+                );
+
+            },
+            0
+        );
+
+
+    // ==========================================================
+    // DELIVERY CHARGE
+    // ==========================================================
+
+    const deliveryCharge =
+        subtotal > 0
+            ? 60
+            : 0;
+
+
+    // ==========================================================
+    // GRAND TOTAL
+    // ==========================================================
+
+    const grandTotal =
+        subtotal +
+        deliveryCharge;
+
+
+    // ==========================================================
+    // SELECTED ADDRESS
+    // ==========================================================
+
+    const selectedAddressData =
+        addresses.find(
+            (address) =>
+                address.id === selectedAddress
+        );
+
+
+    // ==========================================================
+    // PLACE ORDER
+    // ==========================================================
+
+    const handlePlaceOrder = async () => {
+
+        // ==================================================
+        // CHECK ADDRESS
+        // ==================================================
+
+        if (!selectedAddress) {
 
             toast.error(
-                error?.response?.data?.detail ||
-                    "Failed to place order."
+                "Please select a delivery address."
             );
+
+            return;
+        }
+
+
+        // ==================================================
+        // CHECK CART
+        // ==================================================
+
+        if (cartItems.length === 0) {
+
+            toast.error(
+                "Your cart is empty."
+            );
+
+            return;
+        }
+
+
+        // ==================================================
+        // CHECK PAYMENT
+        // ==================================================
+
+        if (!paymentMethod) {
+
+            toast.error(
+                "Please select a payment method."
+            );
+
+            return;
+        }
+
+
+        try {
+
+            setPlacingOrder(true);
+
+
+            // ==================================================
+            // ORDER DATA
+            // ==================================================
+
+            const orderData = {
+                address_id: selectedAddress,
+                payment_method: paymentMethod,
+            };
+
+
+            console.log(
+                "Creating order:",
+                orderData
+            );
+
+
+            // ==================================================
+            // CREATE ORDER
+            // ==================================================
+
+            const response =
+                await createOrder(
+                    orderData
+                );
+
+
+            console.log(
+                "Order response:",
+                response.data
+            );
+
+
+            toast.success(
+                "Order placed successfully!"
+            );
+
+
+            // ==================================================
+            // REDIRECT
+            // ==================================================
+
+            if (response?.data?.id) {
+
+                navigate(
+                    `/orders/${response.data.id}`
+                );
+
+            } else {
+
+                navigate(
+                    "/orders"
+                );
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Place order error:",
+                error
+            );
+
+
+            const backendError =
+                error?.response?.data;
+
+
+            // ==================================================
+            // BACKEND ERROR
+            // ==================================================
+
+            if (
+                backendError?.detail
+            ) {
+
+                toast.error(
+                    backendError.detail
+                );
+
+            } else if (
+                typeof backendError === "object"
+            ) {
+
+                const firstError =
+                    Object.values(
+                        backendError
+                    )[0];
+
+
+                if (
+                    Array.isArray(
+                        firstError
+                    )
+                ) {
+
+                    toast.error(
+                        firstError[0]
+                    );
+
+                } else {
+
+                    toast.error(
+                        String(firstError)
+                    );
+
+                }
+
+            } else {
+
+                toast.error(
+                    "Unable to place order."
+                );
+
+            }
+
         } finally {
+
             setPlacingOrder(false);
+
         }
     };
 
-    // =========================================================
+
+    // ==========================================================
     // LOADING
-    // =========================================================
+    // ==========================================================
 
     if (loading) {
+
         return (
+
             <div className="container py-5 text-center">
+
                 <div
                     className="spinner-border text-primary"
                     role="status"
@@ -183,28 +429,37 @@ const Checkout = () => {
                 <h5 className="mt-3">
                     Loading Checkout...
                 </h5>
+
             </div>
         );
     }
 
-    // =========================================================
-    // EMPTY CART
-    // =========================================================
 
-    if (
-        !cart ||
-        !Array.isArray(cart.items) ||
-        cart.items.length === 0
-    ) {
+    // ==========================================================
+    // EMPTY CART
+    // ==========================================================
+
+    if (cartItems.length === 0) {
+
         return (
+
             <div className="container py-5">
-                <div className="card shadow">
+
+                <div className="card shadow-sm border-0">
+
                     <div className="card-body text-center py-5">
-                        <h3>Your Cart is Empty</h3>
+
+                        <h1>
+                            🛒
+                        </h1>
+
+                        <h3>
+                            Your Cart is Empty
+                        </h3>
 
                         <p className="text-muted">
-                            Add products before
-                            proceeding to checkout.
+                            Add some bakery products
+                            before checkout.
                         </p>
 
                         <Link
@@ -213,260 +468,588 @@ const Checkout = () => {
                         >
                             Continue Shopping
                         </Link>
+
                     </div>
+
                 </div>
+
             </div>
         );
     }
 
+
+    // ==========================================================
+    // PAGE
+    // ==========================================================
+
     return (
+
         <div className="container py-5">
-            <div className="row g-4">
-                {/* ================================================= */}
-                {/* CHECKOUT FORM */}
-                {/* ================================================= */}
 
-                <div className="col-lg-7">
-                    <div className="card shadow">
-                        <div className="card-header bg-primary text-white">
-                            <h3 className="mb-0">Checkout</h3>
-                        </div>
+            {/* ==================================================
+                HEADER
+            ================================================== */}
 
-                        <div className="card-body">
-                            <form onSubmit={handleSubmit}>
-                                {/* Shipping Address */}
+            <div className="mb-4">
 
-                                <div className="mb-4">
-                                    <label
-                                        htmlFor="shipping_address"
-                                        className="form-label fw-semibold"
-                                    >
-                                        Shipping Address
-                                    </label>
+                <h2 className="fw-bold">
+                    🛒 Checkout
+                </h2>
 
-                                    <textarea
-                                        id="shipping_address"
-                                        name="shipping_address"
-                                        className="form-control"
-                                        rows={4}
-                                        placeholder="Enter your complete delivery address"
-                                        value={formData.shipping_address}
-                                        onChange={handleChange}
-                                        disabled={placingOrder}
-                                        required
-                                    />
-                                </div>
+                <p className="text-muted">
+                    Complete your order by selecting
+                    your delivery address and payment method.
+                </p>
 
-                                {/* Payment Method */}
+            </div>
 
-                                <div className="mb-4">
-                                    <label
-                                        htmlFor="payment_method"
-                                        className="form-label fw-semibold"
-                                    >
-                                        Payment Method
-                                    </label>
 
-                                    <select
-                                        id="payment_method"
-                                        name="payment_method"
-                                        className="form-select"
-                                        value={formData.payment_method}
-                                        onChange={handleChange}
-                                        disabled={placingOrder}
-                                    >
-                                        <option value="Cash on Delivery">
-                                            Cash on Delivery
-                                        </option>
+            {/* ==================================================
+                ERROR
+            ================================================== */}
 
-                                        <option value="bKash">
-                                            bKash
-                                        </option>
+            {error && (
 
-                                        <option value="Nagad">
-                                            Nagad
-                                        </option>
-
-                                        <option value="Rocket">
-                                            Rocket
-                                        </option>
-
-                                        <option value="Credit Card">
-                                            Credit Card
-                                        </option>
-                                    </select>
-                                </div>
-
-                                {/* Order Total */}
-
-                                <div className="mb-4">
-                                    <label className="form-label fw-semibold">
-                                        Order Total
-                                    </label>
-
-                                    <div className="form-control bg-light">
-                                        <strong>
-                                            ৳ {" "}
-                                            {Number(
-                                                cart.total_amount || 0
-                                            ).toFixed(2)}
-                                        </strong>
-                                    </div>
-
-                                    <small className="text-muted">
-                                        Calculated from your current cart.
-                                    </small>
-                                </div>
-
-                                {/* Buttons */}
-
-                                <div className="d-flex gap-2">
-                                    <button
-                                        type="submit"
-                                        className="btn btn-success"
-                                        disabled={placingOrder}
-                                    >
-                                        {placingOrder ? (
-                                            <>
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                />
-                                                Placing Order...
-                                            </>
-                                        ) : (
-                                            "Place Order"
-                                        )}
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        disabled={placingOrder}
-                                        onClick={() => navigate("/cart")}
-                                    >
-                                        Back to Cart
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+                <div className="alert alert-danger">
+                    {error}
                 </div>
 
-                {/* ================================================= */}
-                {/* ORDER SUMMARY */}
-                {/* ================================================= */}
+            )}
 
-                <div className="col-lg-5">
-                    <div className="card shadow">
-                        <div className="card-header bg-dark text-white">
-                            <h5 className="mb-0">Order Summary</h5>
+
+            <div className="row g-4">
+
+                {/* ==================================================
+                    LEFT SIDE
+                ================================================== */}
+
+                <div className="col-lg-8">
+
+
+                    {/* ==================================================
+                        ADDRESS
+                    ================================================== */}
+
+                    <div className="card border-0 shadow-sm mb-4">
+
+                        <div className="card-header bg-white">
+
+                            <div className="d-flex justify-content-between align-items-center">
+
+                                <h4 className="mb-0">
+                                    📍 Delivery Address
+                                </h4>
+
+                                <Link
+                                    to="/address/add"
+                                    className="btn btn-sm btn-outline-primary"
+                                >
+                                    + Add Address
+                                </Link>
+
+                            </div>
+
                         </div>
 
-                        <div className="card-body">
-                            {cart.items.map((item) => {
-                                const imageUrl =
-                                    item.product?.image
-                                        ? item.product.image.startsWith("http")
-                                            ? item.product.image
-                                            : `${API_BASE_URL}${item.product.image}`
-                                        : "https://placehold.co/80x80?text=No+Image";
 
-                                return (
-                                    <div
-                                        key={item.id}
-                                        className="d-flex justify-content-between align-items-center border-bottom py-3"
+                        <div className="card-body">
+
+                            {addresses.length === 0 ? (
+
+                                <div className="text-center py-4">
+
+                                    <h5>
+                                        No Delivery Address
+                                    </h5>
+
+                                    <p className="text-muted">
+                                        Please add a delivery address
+                                        before placing your order.
+                                    </p>
+
+                                    <Link
+                                        to="/address/add"
+                                        className="btn btn-primary"
                                     >
-                                        <div className="d-flex">
-                                            <img
-                                                src={imageUrl}
-                                                alt={item.product?.name}
-                                                width="70"
-                                                height="70"
-                                                className="rounded me-3"
-                                                style={{
-                                                    objectFit: "cover",
-                                                }}
-                                                onError={(e) => {
-                                                    e.currentTarget.src =
-                                                        "https://placehold.co/80x80?text=No+Image";
-                                                }}
-                                            />
+                                        Add Address
+                                    </Link>
+
+                                </div>
+
+                            ) : (
+
+                                <div className="row g-3">
+
+                                    {addresses.map(
+                                        (address) => (
+
+                                            <div
+                                                className="col-md-6"
+                                                key={
+                                                    address.id
+                                                }
+                                            >
+
+                                                <div
+                                                    className={`card h-100 ${
+                                                        selectedAddress ===
+                                                        address.id
+                                                            ? "border-primary"
+                                                            : ""
+                                                    }`}
+                                                >
+
+                                                    <div className="card-body">
+
+                                                        <div className="form-check">
+
+                                                            <input
+                                                                className="form-check-input"
+                                                                type="radio"
+                                                                name="address"
+                                                                id={`address-${address.id}`}
+                                                                checked={
+                                                                    selectedAddress ===
+                                                                    address.id
+                                                                }
+                                                                onChange={() =>
+                                                                    setSelectedAddress(
+                                                                        address.id
+                                                                    )
+                                                                }
+                                                            />
+
+                                                            <label
+                                                                className="form-check-label w-100"
+                                                                htmlFor={`address-${address.id}`}
+                                                            >
+
+                                                                <div className="d-flex justify-content-between">
+
+                                                                    <strong>
+                                                                        {
+                                                                            address.full_name
+                                                                        }
+                                                                    </strong>
+
+                                                                    {address.is_default && (
+
+                                                                        <span className="badge bg-success">
+                                                                            Default
+                                                                        </span>
+
+                                                                    )}
+
+                                                                </div>
+
+
+                                                                <div className="mt-2 small">
+
+                                                                    <div>
+                                                                        📞{" "}
+                                                                        {
+                                                                            address.phone
+                                                                        }
+                                                                    </div>
+
+                                                                    <div>
+                                                                        📍{" "}
+                                                                        {
+                                                                            address.address_line
+                                                                        }
+                                                                    </div>
+
+                                                                    <div>
+                                                                        {
+                                                                            address.upazila
+                                                                        }
+                                                                        ,{" "}
+                                                                        {
+                                                                            address.district
+                                                                        }
+                                                                    </div>
+
+                                                                    <div>
+                                                                        {
+                                                                            address.division
+                                                                        }
+                                                                        {" - "}
+                                                                        {
+                                                                            address.postal_code
+                                                                        }
+                                                                    </div>
+
+                                                                </div>
+
+                                                            </label>
+
+                                                        </div>
+
+                                                    </div>
+
+                                                </div>
+
+                                            </div>
+
+                                        )
+                                    )}
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    </div>
+
+
+                    {/* ==================================================
+                        PAYMENT
+                    ================================================== */}
+
+                    <div className="card border-0 shadow-sm mb-4">
+
+                        <div className="card-header bg-white">
+
+                            <h4 className="mb-0">
+                                💳 Payment Method
+                            </h4>
+
+                        </div>
+
+
+                        <div className="card-body">
+
+                            {/* COD */}
+
+                            <div
+                                className={`card mb-3 ${
+                                    paymentMethod === "cod"
+                                        ? "border-primary"
+                                        : ""
+                                }`}
+                            >
+
+                                <div className="card-body">
+
+                                    <div className="form-check">
+
+                                        <input
+                                            className="form-check-input"
+                                            type="radio"
+                                            name="payment"
+                                            id="payment-cod"
+                                            value="cod"
+                                            checked={
+                                                paymentMethod ===
+                                                "cod"
+                                            }
+                                            onChange={(e) =>
+                                                setPaymentMethod(
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="payment-cod"
+                                        >
+
+                                            <strong>
+                                                💵 Cash on Delivery
+                                            </strong>
+
+                                            <div className="text-muted small">
+                                                Pay when your order is delivered.
+                                            </div>
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            {/* SSLCommerz */}
+
+                            <div
+                                className={`card ${
+                                    paymentMethod === "sslcommerz"
+                                        ? "border-primary"
+                                        : ""
+                                }`}
+                            >
+
+                                <div className="card-body">
+
+                                    <div className="form-check">
+
+                                        <input
+                                            className="form-check-input"
+                                            type="radio"
+                                            name="payment"
+                                            id="payment-ssl"
+                                            value="sslcommerz"
+                                            checked={
+                                                paymentMethod ===
+                                                "sslcommerz"
+                                            }
+                                            onChange={(e) =>
+                                                setPaymentMethod(
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="payment-ssl"
+                                        >
+
+                                            <strong>
+                                                💳 Online Payment
+                                            </strong>
+
+                                            <div className="text-muted small">
+                                                Pay securely using SSLCommerz.
+                                            </div>
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    {/* ==================================================
+                        SELECTED ADDRESS PREVIEW
+                    ================================================== */}
+
+                    {selectedAddressData && (
+
+                        <div className="alert alert-info">
+
+                            <strong>
+                                Delivery to:
+                            </strong>
+
+                            <br />
+
+                            {
+                                selectedAddressData.full_name
+                            }
+
+                            <br />
+
+                            {
+                                selectedAddressData.address_line
+                            }
+
+                            ,{" "}
+                            {
+                                selectedAddressData.district
+                            }
+
+                        </div>
+
+                    )}
+
+                </div>
+
+
+                {/* ==================================================
+                    RIGHT SIDE
+                ================================================== */}
+
+                <div className="col-lg-4">
+
+                    <div
+                        className="card border-0 shadow-sm"
+                        style={{
+                            position: "sticky",
+                            top: "20px",
+                        }}
+                    >
+
+                        <div className="card-header bg-primary text-white">
+
+                            <h4 className="mb-0">
+                                📦 Order Summary
+                            </h4>
+
+                        </div>
+
+
+                        <div className="card-body">
+
+                            {/* ==================================================
+                                ITEMS
+                            ================================================== */}
+
+                            {cartItems.map(
+                                (item) => {
+
+                                    const price =
+                                        Number(
+                                            item.product_price ??
+                                            item.price ??
+                                            item.product?.price ??
+                                            0
+                                        );
+
+                                    const quantity =
+                                        Number(
+                                            item.quantity ?? 0
+                                        );
+
+                                    return (
+
+                                        <div
+                                            key={item.id}
+                                            className="d-flex justify-content-between mb-3"
+                                        >
 
                                             <div>
+
                                                 <strong>
-                                                    {item.product?.name}
+                                                    {
+                                                        item.product_name ??
+                                                        item.product?.name ??
+                                                        "Product"
+                                                    }
                                                 </strong>
 
                                                 <div className="text-muted small">
-                                                    Qty: {item.quantity}
+                                                    Qty: {quantity}
                                                 </div>
 
-                                                <div className="text-muted small">
-                                                    Unit Price: ৳ {" "}
-                                                    {Number(
-                                                        item.product?.price || 0
-                                                    ).toFixed(2)}
-                                                </div>
                                             </div>
+
+
+                                            <span>
+
+                                                ৳{" "}
+                                                {(
+                                                    price *
+                                                    quantity
+                                                ).toFixed(2)}
+
+                                            </span>
+
                                         </div>
 
-                                        <div className="fw-bold">
-                                            ৳ {" "}
-                                            {Number(
-                                                item.subtotal || 0
-                                            ).toFixed(2)}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                }
+                            )}
 
-                            <div className="mt-4">
-                                <div className="d-flex justify-content-between mb-2">
-                                    <span>Items</span>
 
-                                    <strong>{cart.items.length}</strong>
-                                </div>
+                            <hr />
 
-                                <div className="d-flex justify-content-between mb-2">
-                                    <span>Subtotal</span>
 
-                                    <strong>
-                                        ৳ {" "}
-                                        {Number(
-                                            cart.total_amount || 0
-                                        ).toFixed(2)}
-                                    </strong>
-                                </div>
+                            {/* ==================================================
+                                SUBTOTAL
+                            ================================================== */}
 
-                                <div className="d-flex justify-content-between mb-2">
-                                    <span>Shipping</span>
+                            <div className="d-flex justify-content-between mb-2">
 
-                                    <strong>Free</strong>
-                                </div>
+                                <span>
+                                    Subtotal
+                                </span>
 
-                                <hr />
+                                <strong>
+                                    ৳{" "}
+                                    {subtotal.toFixed(2)}
+                                </strong>
 
-                                <div className="d-flex justify-content-between">
-                                    <h5>Total</h5>
-
-                                    <h5 className="text-primary">
-                                        ৳ {" "}
-                                        {Number(
-                                            cart.total_amount || 0
-                                        ).toFixed(2)}
-                                    </h5>
-                                </div>
-
-                                <small className="text-muted">
-                                    Your order total is calculated from the
-                                    latest prices in your cart.
-                                </small>
                             </div>
+
+
+                            {/* ==================================================
+                                DELIVERY
+                            ================================================== */}
+
+                            <div className="d-flex justify-content-between mb-2">
+
+                                <span>
+                                    Delivery
+                                </span>
+
+                                <strong>
+                                    ৳{" "}
+                                    {deliveryCharge.toFixed(2)}
+                                </strong>
+
+                            </div>
+
+
+                            <hr />
+
+
+                            {/* ==================================================
+                                TOTAL
+                            ================================================== */}
+
+                            <div className="d-flex justify-content-between mb-4">
+
+                                <h5>
+                                    Total
+                                </h5>
+
+                                <h5 className="text-primary">
+                                    ৳{" "}
+                                    {grandTotal.toFixed(2)}
+                                </h5>
+
+                            </div>
+
+
+                            {/* ==================================================
+                                PLACE ORDER
+                            ================================================== */}
+
+                            <button
+                                type="button"
+                                className="btn btn-primary w-100 py-3"
+                                disabled={
+                                    placingOrder ||
+                                    !selectedAddress
+                                }
+                                onClick={
+                                    handlePlaceOrder
+                                }
+                            >
+
+                                {placingOrder
+                                    ? "Placing Order..."
+                                    : "🛍 Place Order"}
+
+                            </button>
+
+
+                            <Link
+                                to="/cart"
+                                className="btn btn-outline-secondary w-100 mt-2"
+                            >
+                                ← Back to Cart
+                            </Link>
+
                         </div>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
     );
 };

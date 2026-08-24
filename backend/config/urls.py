@@ -31,6 +31,10 @@ urlpatterns = [
         "api/wishlist/",
         include("wishlist.urls"),
     ),
+    path(
+        "api/address/",
+        include("address.urls"),
+    ),
 ]
 
 if settings.DEBUG:

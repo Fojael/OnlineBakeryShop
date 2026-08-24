@@ -5,105 +5,190 @@ import { toast } from "react-toastify";
 import { getCart } from "../../services/cartService";
 import { getOrders } from "../../services/orderService";
 import { getWishlist } from "../../services/wishlistService";
+import { getAddresses } from "../../services/addressService";
 
 const CustomerDashboard = () => {
+    // ==========================================================
+    // USER
+    // ==========================================================
+
     const username =
         localStorage.getItem("username") || "Customer";
 
+    // ==========================================================
+    // STATE
+    // ==========================================================
+
     const [loading, setLoading] = useState(true);
+
+    const [error, setError] = useState("");
 
     const [cartItems, setCartItems] = useState(0);
 
     const [wishlistCount, setWishlistCount] =
         useState(0);
 
+    const [addressCount, setAddressCount] =
+        useState(0);
+
     const [orders, setOrders] = useState([]);
 
-    const [error, setError] = useState("");
+    // ==========================================================
+    // LOAD DASHBOARD
+    // ==========================================================
 
     useEffect(() => {
-        let ignore = false;
+        let mounted = true;
 
         const loadDashboard = async () => {
             try {
                 setLoading(true);
                 setError("");
 
-                const [
-                    cartResponse,
-                    orderResponse,
-                    wishlistResponse,
-                ] = await Promise.allSettled([
-                    getCart(),
-                    getOrders(),
-                    getWishlist(),
-                ]);
+                // ==================================================
+                // LOAD CART
+                // ==================================================
 
-                // ============================
-                // CART
-                // ============================
+                try {
+                    const cartResponse =
+                        await getCart();
 
-                if (
-                    cartResponse.status === "fulfilled"
-                ) {
+                    const cart =
+                        cartResponse.data;
+
                     const items =
-                        cartResponse.value.data.items || [];
+                        Array.isArray(cart.items)
+                            ? cart.items
+                            : [];
 
                     const totalItems =
                         items.reduce(
                             (sum, item) =>
                                 sum +
-                                Number(item.quantity),
+                                Number(
+                                    item.quantity
+                                ),
                             0
                         );
 
-                    if (!ignore) {
-                        setCartItems(totalItems);
+                    if (mounted) {
+                        setCartItems(
+                            totalItems
+                        );
+                    }
+                } catch (err) {
+                    console.error(
+                        "Cart Error:",
+                        err
+                    );
+
+                    if (mounted) {
+                        setCartItems(0);
                     }
                 }
 
-                // ============================
-                // ORDERS
-                // ============================
+                // ==================================================
+                // LOAD ORDERS
+                // ==================================================
 
-                if (
-                    orderResponse.status === "fulfilled"
-                ) {
-                    const data =
-                        orderResponse.value.data;
+                try {
+                    const orderResponse =
+                        await getOrders();
 
                     const orderList =
-                        Array.isArray(data)
-                            ? data
-                            : data.results || [];
+                        Array.isArray(
+                            orderResponse.data
+                        )
+                            ? orderResponse.data
+                            : [];
 
-                    if (!ignore) {
-                        setOrders(orderList);
+                    if (mounted) {
+                        setOrders(
+                            orderList
+                        );
+                    }
+                } catch (err) {
+                    console.error(
+                        "Orders Error:",
+                        err
+                    );
+
+                    if (mounted) {
+                        setOrders([]);
                     }
                 }
 
-                // ============================
-                // WISHLIST
-                // ============================
+                // ==================================================
+                // LOAD WISHLIST
+                // ==================================================
 
-                if (
-                    wishlistResponse.status ===
-                    "fulfilled"
-                ) {
-                    const items =
-                        wishlistResponse.value.data
-                            .items || [];
+                try {
+                    const wishlistResponse =
+                        await getWishlist();
 
-                    if (!ignore) {
+                    const wishlistItems =
+                        Array.isArray(
+                            wishlistResponse
+                                .data
+                                ?.items
+                        )
+                            ? wishlistResponse
+                                  .data.items
+                            : [];
+
+                    if (mounted) {
                         setWishlistCount(
-                            items.length
+                            wishlistItems.length
                         );
+                    }
+                } catch (err) {
+                    console.error(
+                        "Wishlist Error:",
+                        err
+                    );
+
+                    if (mounted) {
+                        setWishlistCount(0);
+                    }
+                }
+
+                // ==================================================
+                // LOAD ADDRESSES
+                // ==================================================
+
+                try {
+                    const addressResponse =
+                        await getAddresses();
+
+                    const addressList =
+                        Array.isArray(
+                            addressResponse.data
+                        )
+                            ? addressResponse.data
+                            : [];
+
+                    if (mounted) {
+                        setAddressCount(
+                            addressList.length
+                        );
+                    }
+                } catch (err) {
+                    console.error(
+                        "Address Error:",
+                        err
+                    );
+
+                    if (mounted) {
+                        setAddressCount(0);
                     }
                 }
             } catch (err) {
-                console.error(err);
+                console.error(
+                    "Dashboard Error:",
+                    err
+                );
 
-                if (!ignore) {
+                if (mounted) {
                     setError(
                         "Unable to load dashboard."
                     );
@@ -114,22 +199,27 @@ const CustomerDashboard = () => {
                         "Unable to load dashboard."
                 );
             } finally {
-                if (!ignore) {
+                if (mounted) {
                     setLoading(false);
                 }
             }
         };
 
-        void loadDashboard();
+        loadDashboard();
 
         return () => {
-            ignore = true;
+            mounted = false;
         };
     }, []);
+
+    // ==========================================================
+    // LOADING
+    // ==========================================================
 
     if (loading) {
         return (
             <div className="container py-5 text-center">
+
                 <div
                     className="spinner-border text-primary"
                     role="status"
@@ -142,16 +232,24 @@ const CustomerDashboard = () => {
                 <h4 className="mt-3">
                     Loading Dashboard...
                 </h4>
+
             </div>
         );
     }
 
+    // ==========================================================
+    // DASHBOARD
+    // ==========================================================
+
     return (
         <div className="container py-5">
 
-            {/* Welcome */}
+            {/* ==================================================
+                WELCOME
+            ================================================== */}
 
             <div className="mb-5">
+
                 <h2 className="fw-bold">
                     👋 Welcome, {username}
                 </h2>
@@ -160,7 +258,12 @@ const CustomerDashboard = () => {
                     Manage your orders, cart,
                     wishlist and account.
                 </p>
+
             </div>
+
+            {/* ==================================================
+                ERROR
+            ================================================== */}
 
             {error && (
                 <div className="alert alert-danger">
@@ -168,134 +271,232 @@ const CustomerDashboard = () => {
                 </div>
             )}
 
-            {/* Statistics */}
+            {/* ==================================================
+                STATISTICS
+            ================================================== */}
 
             <div className="row g-4 mb-5">
 
+                {/* ==================================================
+                    ORDERS
+                ================================================== */}
+
                 <div className="col-md-6 col-lg-3">
-                    <div className="card shadow-sm text-center h-100">
+
+                    <div className="card border-0 shadow-sm h-100 text-center">
+
                         <div className="card-body">
+
                             <h1>📦</h1>
 
-                            <h2>{orders.length}</h2>
+                            <h2 className="fw-bold">
+                                {orders.length}
+                            </h2>
 
                             <p className="text-muted mb-0">
                                 Total Orders
                             </p>
+
                         </div>
+
                     </div>
+
                 </div>
 
+                {/* ==================================================
+                    WISHLIST
+                ================================================== */}
+
                 <div className="col-md-6 col-lg-3">
-                    <div className="card shadow-sm text-center h-100">
+
+                    <div className="card border-0 shadow-sm h-100 text-center">
+
                         <div className="card-body">
+
                             <h1>❤️</h1>
 
-                            <h2>{wishlistCount}</h2>
+                            <h2 className="fw-bold">
+                                {wishlistCount}
+                            </h2>
 
                             <p className="text-muted mb-0">
-                                Wishlist
+                                Wishlist Items
                             </p>
+
                         </div>
+
                     </div>
+
                 </div>
 
+                {/* ==================================================
+                    CART
+                ================================================== */}
+
                 <div className="col-md-6 col-lg-3">
-                    <div className="card shadow-sm text-center h-100">
+
+                    <div className="card border-0 shadow-sm h-100 text-center">
+
                         <div className="card-body">
+
                             <h1>🛒</h1>
 
-                            <h2>{cartItems}</h2>
+                            <h2 className="fw-bold">
+                                {cartItems}
+                            </h2>
 
                             <p className="text-muted mb-0">
                                 Cart Items
                             </p>
+
                         </div>
+
                     </div>
+
                 </div>
 
+                {/* ==================================================
+                    ADDRESS
+                ================================================== */}
+
                 <div className="col-md-6 col-lg-3">
-                    <div className="card shadow-sm text-center h-100">
-                        <div className="card-body">
-                            <h1>📍</h1>
 
-                            <h2>0</h2>
+                    <Link
+                        to="/address"
+                        className="text-decoration-none text-dark"
+                    >
 
-                            <p className="text-muted mb-0">
-                                Addresses
-                            </p>
+                        <div className="card border-0 shadow-sm h-100 text-center">
+
+                            <div className="card-body">
+
+                                <h1>📍</h1>
+
+                                <h2 className="fw-bold">
+                                    {addressCount}
+                                </h2>
+
+                                <p className="text-muted mb-0">
+                                    Saved Addresses
+                                </p>
+
+                            </div>
+
                         </div>
-                    </div>
+
+                    </Link>
+
                 </div>
 
             </div>
 
-            {/* Quick Actions */}
+            {/* ==================================================
+                QUICK ACTIONS
+            ================================================== */}
 
-            <div className="card shadow-sm mb-5">
+            <div className="card border-0 shadow-sm mb-5">
 
-                <div className="card-header">
+                <div className="card-header bg-white">
+
                     <h4 className="mb-0">
                         🚀 Quick Actions
                     </h4>
+
                 </div>
 
                 <div className="card-body">
 
                     <div className="row g-3">
 
-                        <div className="col-md-4">
+                        {/* Products */}
+
+                        <div className="col-md-6 col-lg-4">
+
                             <Link
                                 to="/products"
                                 className="btn btn-outline-primary w-100 py-3"
                             >
                                 🛍 Continue Shopping
                             </Link>
+
                         </div>
 
-                        <div className="col-md-4">
+                        {/* Cart */}
+
+                        <div className="col-md-6 col-lg-4">
+
                             <Link
                                 to="/cart"
                                 className="btn btn-outline-success w-100 py-3"
                             >
                                 🛒 View Cart
                             </Link>
+
                         </div>
 
-                        <div className="col-md-4">
+                        {/* Wishlist */}
+
+                        <div className="col-md-6 col-lg-4">
+
                             <Link
                                 to="/wishlist"
                                 className="btn btn-outline-danger w-100 py-3"
                             >
                                 ❤️ Wishlist
                             </Link>
+
                         </div>
 
-                        <div className="col-md-4">
-                            <Link
-                                to="/checkout"
-                                className="btn btn-outline-warning w-100 py-3"
-                            >
-                                💳 Checkout
-                            </Link>
-                        </div>
+                        {/* Orders */}
 
-                        <div className="col-md-4">
+                        <div className="col-md-6 col-lg-4">
+
                             <Link
                                 to="/orders"
                                 className="btn btn-outline-dark w-100 py-3"
                             >
                                 📦 My Orders
                             </Link>
+
                         </div>
 
-                        <div className="col-md-4">
+                        {/* Checkout */}
+
+                        <div className="col-md-6 col-lg-4">
+
+                            <Link
+                                to="/checkout"
+                                className="btn btn-outline-warning w-100 py-3"
+                            >
+                                💳 Checkout
+                            </Link>
+
+                        </div>
+
+                        {/* Profile */}
+
+                        <div className="col-md-6 col-lg-4">
+
                             <Link
                                 to="/profile"
                                 className="btn btn-outline-info w-100 py-3"
                             >
-                                👤 Profile
+                                👤 My Profile
                             </Link>
+
+                        </div>
+
+                        {/* Address */}
+
+                        <div className="col-md-6 col-lg-4">
+
+                            <Link
+                                to="/address"
+                                className="btn btn-outline-secondary w-100 py-3"
+                            >
+                                📍 My Addresses
+                            </Link>
+
                         </div>
 
                     </div>
@@ -304,80 +505,149 @@ const CustomerDashboard = () => {
 
             </div>
 
-            {/* Recent Orders */}
+            {/* ==================================================
+                RECENT ORDERS
+            ================================================== */}
 
-            <div className="card shadow-sm">
+            <div className="card border-0 shadow-sm">
 
-                <div className="card-header">
+                <div className="card-header bg-white">
+
                     <h4 className="mb-0">
                         📋 Recent Orders
                     </h4>
+
                 </div>
 
                 <div className="card-body">
 
                     {orders.length === 0 ? (
-                        <p className="text-muted mb-0">
-                            You haven't placed any orders yet.
-                        </p>
-                    ) : (
-                        <div className="table-responsive">
-                            <table className="table table-hover">
 
-                                <thead>
+                        <div className="text-center py-4">
+
+                            <h5 className="text-muted">
+                                You haven't placed
+                                any orders yet.
+                            </h5>
+
+                            <Link
+                                to="/products"
+                                className="btn btn-primary mt-3"
+                            >
+                                Start Shopping
+                            </Link>
+
+                        </div>
+
+                    ) : (
+
+                        <div className="table-responsive">
+
+                            <table className="table table-hover align-middle">
+
+                                <thead className="table-light">
+
                                     <tr>
+
                                         <th>#</th>
-                                        <th>Status</th>
-                                        <th>Total</th>
-                                        <th>Date</th>
+
+                                        <th>
+                                            Order ID
+                                        </th>
+
+                                        <th>
+                                            Status
+                                        </th>
+
+                                        <th>
+                                            Total
+                                        </th>
+
+                                        <th>
+                                            Date
+                                        </th>
+
                                     </tr>
+
                                 </thead>
 
                                 <tbody>
 
                                     {orders
                                         .slice(0, 5)
-                                        .map((order) => (
-                                            <tr
-                                                key={
-                                                    order.id
-                                                }
-                                            >
-                                                <td>
-                                                    {
+                                        .map(
+                                            (
+                                                order,
+                                                index
+                                            ) => (
+
+                                                <tr
+                                                    key={
                                                         order.id
                                                     }
-                                                </td>
+                                                >
 
-                                                <td>
-                                                    <span className="badge bg-success">
+                                                    <td>
+                                                        {index +
+                                                            1}
+                                                    </td>
+
+                                                    <td>
+                                                        #
                                                         {
-                                                            order.status
+                                                            order.id
                                                         }
-                                                    </span>
-                                                </td>
+                                                    </td>
 
-                                                <td>
-                                                    ৳{" "}
-                                                    {Number(
-                                                        order.total_amount
-                                                    ).toFixed(
-                                                        2
-                                                    )}
-                                                </td>
+                                                    <td>
 
-                                                <td>
-                                                    {new Date(
-                                                        order.created_at
-                                                    ).toLocaleDateString()}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                        <span
+                                                            className={`badge ${
+                                                                order.status ===
+                                                                "Delivered"
+                                                                    ? "bg-success"
+                                                                    : order.status ===
+                                                                      "Pending"
+                                                                    ? "bg-warning text-dark"
+                                                                    : order.status ===
+                                                                      "Cancelled"
+                                                                    ? "bg-danger"
+                                                                    : "bg-info"
+                                                            }`}
+                                                        >
+                                                            {
+                                                                order.status
+                                                            }
+                                                        </span>
+
+                                                    </td>
+
+                                                    <td>
+                                                        ৳{" "}
+                                                        {Number(
+                                                            order.total_amount
+                                                        ).toFixed(
+                                                            2
+                                                        )}
+                                                    </td>
+
+                                                    <td>
+                                                        {new Date(
+                                                            order.created_at
+                                                        ).toLocaleDateString()}
+                                                    </td>
+
+                                                </tr>
+
+                                            )
+                                        )}
 
                                 </tbody>
 
                             </table>
+
                         </div>
+
                     )}
 
                 </div>

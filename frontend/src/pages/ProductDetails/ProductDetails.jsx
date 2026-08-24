@@ -1,400 +1,735 @@
-import { useEffect, useState } from "react";
+import {
+    useEffect,
+    useState,
+    useCallback,
+} from "react";
+
 import {
     Link,
     useNavigate,
     useParams,
 } from "react-router-dom";
+
 import { toast } from "react-toastify";
 
-import { getProduct } from "../../services/productService";
-import { addToCart as addProductToCart } from "../../services/cartService";
+import {
+    getProduct,
+} from "../../services/productService";
+
+import {
+    addToCart,
+} from "../../services/cartService";
+
+import {
+    getWishlist,
+    addToWishlist,
+    removeFromWishlist,
+} from "../../services/wishlistService";
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+const FALLBACK_IMAGE =
+    "https://placehold.co/600x500?text=No+Image";
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 const ProductDetails = () => {
+
     const { id } = useParams();
+
     const navigate = useNavigate();
 
-    const [product, setProduct] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [quantity, setQuantity] = useState(1);
+    // ========================================================
+    // STATE
+    // ========================================================
 
-    // =========================================================
-    // PRODUCT IMAGE
-    // =========================================================
+    const [product, setProduct] =
+        useState(null);
 
-    const getProductImage = (productData) => {
-        if (!productData?.image) {
-            return "https://placehold.co/600x500?text=No+Image";
-        }
+    const [loading, setLoading] =
+        useState(true);
 
-        const image = String(productData.image);
+    const [quantity, setQuantity] =
+        useState(1);
 
-        if (
-            image.startsWith("http://") ||
-            image.startsWith("https://")
-        ) {
-            return image;
-        }
+    const [wishlist, setWishlist] =
+        useState([]);
 
-        return `${API_BASE_URL}${image}`;
-    };
+    const [
+        cartLoading,
+        setCartLoading,
+    ] = useState(false);
 
-    // =========================================================
-    // LOAD PRODUCT
-    // =========================================================
+    const [
+        wishlistLoading,
+        setWishlistLoading,
+    ] = useState(false);
 
-    useEffect(() => {
-        const loadProduct = async () => {
-            try {
-                setLoading(true);
-
-                const response = await getProduct(id);
-
-                setProduct(response.data);
-            } catch (error) {
-                console.error(error);
-
-                toast.error(
-                    error?.response?.data?.detail ||
-                        "Unable to load product."
-                );
-
-                setProduct(null);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (id) {
-            loadProduct();
-        }
-    }, [id]);
-
-    // =========================================================
-    // PRODUCT STATUS
-    // =========================================================
-
-    const stockQuantity = Number(product?.stock_quantity || 0);
-
-    const isAvailable =
-        product?.is_available !== false &&
-        stockQuantity > 0;
+    // ========================================================
+    // AUTH
+    // ========================================================
 
     const isLoggedIn = Boolean(
         localStorage.getItem("access")
     );
 
-    // =========================================================
-    // QUANTITY
-    // =========================================================
+    // ========================================================
+    // LOAD PRODUCT
+    // ========================================================
 
-    const handleQuantityChange = (event) => {
-        const value = Number(event.target.value);
+    const loadProduct = useCallback(async () => {
 
-        if (Number.isNaN(value) || value < 1) {
-            setQuantity(1);
-            return;
-        }
+        try {
 
-        if (value > stockQuantity) {
-            setQuantity(stockQuantity);
-            return;
-        }
+            const response =
+                await getProduct(id);
 
-        setQuantity(value);
-    };
+            setProduct(response.data);
 
-    // =========================================================
-    // ADD TO CART
-    // =========================================================
+        } catch (error) {
 
-    const addToCart = async () => {
-        if (!isLoggedIn) {
-            toast.info(
-                "Please login to add products to your cart."
-            );
+            console.error(error);
 
-            navigate("/login");
-
-            return;
-        }
-
-        if (!product) {
-            toast.error("Product not found.");
-            return;
-        }
-
-        if (!isAvailable) {
             toast.error(
-                "This product is currently unavailable."
+                error?.response?.data?.detail ||
+                "Unable to load product."
             );
+
+            setProduct(null);
+
+        }
+
+    }, [id]);
+
+    // ========================================================
+    // LOAD WISHLIST
+    // ========================================================
+
+    const loadWishlist = useCallback(async () => {
+
+        if (!isLoggedIn) {
+            setWishlist([]);
             return;
         }
 
         try {
-            await addProductToCart(
-                product.id,
-                quantity
+
+            const response =
+                await getWishlist();
+
+            setWishlist(
+                Array.isArray(response.data.items)
+                    ? response.data.items
+                    : []
             );
 
-            toast.success(
-                `${product.name} added to cart.`
-            );
         } catch (error) {
+
             console.error(error);
 
-            if (error?.response?.status === 401) {
-                localStorage.removeItem("access");
-                localStorage.removeItem("refresh");
+            setWishlist([]);
 
-                toast.info(
-                    "Please login again."
-                );
+        }
 
-                navigate("/login");
+    }, [isLoggedIn]);
 
-                return;
+    // ========================================================
+    // INITIAL LOAD
+    // ========================================================
+
+    useEffect(() => {
+
+        let mounted = true;
+
+        const initialize = async () => {
+
+            try {
+
+                setLoading(true);
+
+                await Promise.all([
+                    loadProduct(),
+                    loadWishlist(),
+                ]);
+
+            } finally {
+
+                if (mounted) {
+                    setLoading(false);
+                }
+
             }
 
-            toast.error(
-                error?.response?.data?.detail ||
-                    "Unable to add product."
-            );
-        }
-    };
+        };
 
-    // =========================================================
-    // BUY NOW
-    // =========================================================
+        initialize();
 
-    const handleBuyNow = () => {
-        if (!isLoggedIn) {
-            toast.info(
-                "Please login before purchasing."
-            );
+        return () => {
+            mounted = false;
+        };
 
-            navigate("/login");
-            return;
-        }
+    }, [
+        loadProduct,
+        loadWishlist,
+    ]);
+    // ========================================================
+// PRODUCT IMAGE
+// ========================================================
 
-        if (!isAvailable) {
-            toast.error(
-                "This product is currently unavailable."
-            );
-            return;
-        }
+const getProductImage = () => {
+
+    if (!product?.image) {
+        return FALLBACK_IMAGE;
+    }
+
+    if (
+        product.image.startsWith("http://") ||
+        product.image.startsWith("https://")
+    ) {
+        return product.image;
+    }
+
+    return `${API_BASE_URL}${product.image}`;
+};
+
+// ========================================================
+// STOCK
+// ========================================================
+
+const stockQuantity = Number(
+    product?.stock_quantity || 0
+);
+
+const isAvailable =
+    product?.is_available &&
+    stockQuantity > 0;
+
+// ========================================================
+// WISHLIST
+// ========================================================
+
+const wishlistItem = wishlist.find(
+    (item) =>
+        item.product.id === Number(id)
+);
+
+const isWishlisted = Boolean(
+    wishlistItem
+);
+
+// ========================================================
+// QUANTITY
+// ========================================================
+
+const handleQuantityChange = (event) => {
+
+    const value = Number(
+        event.target.value
+    );
+
+    if (Number.isNaN(value)) {
+        return;
+    }
+
+    if (value < 1) {
+        setQuantity(1);
+        return;
+    }
+
+    if (value > stockQuantity) {
+        setQuantity(stockQuantity);
+        return;
+    }
+
+    setQuantity(value);
+};
+
+// ========================================================
+// ADD TO WISHLIST
+// ========================================================
+
+const handleAddWishlist = async () => {
+
+    if (!isLoggedIn) {
 
         toast.info(
-            "Checkout will be connected next."
+            "Please login to use wishlist."
         );
 
-        // Later:
-        // navigate("/checkout");
-    };
+        navigate("/login");
 
-    // =========================================================
-    // LOADING
-    // =========================================================
-
-    if (loading) {
-        return (
-            <div className="container py-5 text-center">
-                <div
-                    className="spinner-border text-primary"
-                    role="status"
-                >
-                    <span className="visually-hidden">
-                        Loading...
-                    </span>
-                </div>
-
-                <h4 className="mt-3">
-                    Loading Product Details...
-                </h4>
-            </div>
-        );
+        return;
     }
 
-    // =========================================================
-    // PRODUCT NOT FOUND
-    // =========================================================
+    try {
 
-    if (!product) {
-        return (
-            <div className="container py-5 text-center">
-                <h3>Product Not Found</h3>
+        setWishlistLoading(true);
 
-                <p className="text-muted">
-                    The requested product could not be
-                    found.
-                </p>
+        await addToWishlist(product.id);
 
-                <Link
-                    to="/products"
-                    className="btn btn-primary"
-                >
-                    Browse Products
-                </Link>
-            </div>
+        await loadWishlist();
+
+        toast.success(
+            "Added to wishlist."
         );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to add to wishlist."
+        );
+
+    } finally {
+
+        setWishlistLoading(false);
+
     }
 
-    // =========================================================
-    // PAGE
-    // =========================================================
+};
+
+// ========================================================
+// REMOVE FROM WISHLIST
+// ========================================================
+
+const handleRemoveWishlist = async () => {
+
+    if (!wishlistItem) return;
+
+    try {
+
+        setWishlistLoading(true);
+
+        await removeFromWishlist(
+            wishlistItem.id
+        );
+
+        setWishlist((previous) =>
+            previous.filter(
+                (item) =>
+                    item.id !== wishlistItem.id
+            )
+        );
+
+        toast.success(
+            "Removed from wishlist."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to remove from wishlist."
+        );
+
+    } finally {
+
+        setWishlistLoading(false);
+
+    }
+
+};
+
+// ========================================================
+// TOGGLE WISHLIST
+// ========================================================
+
+const toggleWishlist = async () => {
+
+    if (isWishlisted) {
+
+        await handleRemoveWishlist();
+
+    } else {
+
+        await handleAddWishlist();
+
+    }
+
+};
+// ========================================================
+// ADD TO CART
+// ========================================================
+
+const handleAddToCart = async () => {
+
+    if (!isLoggedIn) {
+
+        toast.info(
+            "Please login to add products to your cart."
+        );
+
+        navigate("/login");
+
+        return;
+
+    }
+
+    if (!isAvailable) {
+
+        toast.error(
+            "This product is currently unavailable."
+        );
+
+        return;
+
+    }
+
+    try {
+
+        setCartLoading(true);
+
+        await addToCart(
+            product.id,
+            quantity
+        );
+
+        toast.success(
+            `${product.name} added to cart successfully.`
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to add product to cart."
+        );
+
+    } finally {
+
+        setCartLoading(false);
+
+    }
+
+};
+
+// ========================================================
+// BUY NOW
+// ========================================================
+
+const handleBuyNow = async () => {
+
+    if (!isLoggedIn) {
+
+        toast.info(
+            "Please login before purchasing."
+        );
+
+        navigate("/login");
+
+        return;
+
+    }
+
+    if (!isAvailable) {
+
+        toast.error(
+            "This product is currently unavailable."
+        );
+
+        return;
+
+    }
+
+    try {
+
+        setCartLoading(true);
+
+        await addToCart(
+            product.id,
+            quantity
+        );
+
+        toast.success(
+            "Proceeding to checkout..."
+        );
+
+        navigate("/checkout");
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast.error(
+            error?.response?.data?.detail ||
+            "Unable to proceed to checkout."
+        );
+
+    } finally {
+
+        setCartLoading(false);
+
+    }
+
+};
+
+// ========================================================
+// LOADING
+// ========================================================
+
+if (loading) {
 
     return (
-        <div className="container py-5">
-            <div className="row g-5">
 
-                {/* IMAGE */}
+        <div className="container py-5 text-center">
 
-                <div className="col-md-6">
-                    <div className="card shadow-sm border-0">
-                        <img
-                            src={getProductImage(product)}
-                            alt={product.name}
-                            className="card-img-top"
-                            style={{
-                                width: "100%",
-                                height: "500px",
-                                objectFit: "cover",
-                            }}
-                            onError={(e) => {
-                                e.currentTarget.src =
-                                    "https://placehold.co/600x500?text=No+Image";
-                            }}
-                        />
-                    </div>
+            <div
+                className="spinner-border text-primary"
+                role="status"
+            >
+                <span className="visually-hidden">
+                    Loading...
+                </span>
+            </div>
+
+            <h4 className="mt-3">
+                Loading Product...
+            </h4>
+
+        </div>
+
+    );
+
+}
+
+// ========================================================
+// PRODUCT NOT FOUND
+// ========================================================
+
+if (!product) {
+
+    return (
+
+        <div className="container py-5 text-center">
+
+            <h2>
+                Product Not Found
+            </h2>
+
+            <p className="text-muted">
+                The requested product does not exist.
+            </p>
+
+            <Link
+                to="/products"
+                className="btn btn-primary mt-3"
+            >
+                Back to Products
+            </Link>
+
+        </div>
+
+    );
+
+}
+// ========================================================
+// PAGE
+// ========================================================
+
+return (
+    <div className="container py-5">
+
+        <div className="row g-5">
+
+            {/* ================================================= */}
+            {/* PRODUCT IMAGE */}
+            {/* ================================================= */}
+
+            <div className="col-lg-6">
+
+                <div className="card shadow border-0">
+
+                    <img
+                        src={getProductImage()}
+                        alt={product.name}
+                        className="card-img-top"
+                        style={{
+                            height: "500px",
+                            objectFit: "cover",
+                        }}
+                        onError={(e) => {
+                            e.target.src = FALLBACK_IMAGE;
+                        }}
+                    />
+
                 </div>
 
-                {/* PRODUCT INFO */}
+            </div>
 
-                <div className="col-md-6">
+            {/* ================================================= */}
+            {/* PRODUCT DETAILS */}
+            {/* ================================================= */}
 
-                    <span className="badge bg-secondary mb-3">
-                        {product.category || "Bakery"}
-                    </span>
+            <div className="col-lg-6">
 
-                    <h1 className="fw-bold mb-3">
-                        {product.name}
-                    </h1>
+                <span className="badge bg-secondary mb-3">
+                    {product.category}
+                </span>
 
-                    <h2 className="text-primary fw-bold mb-4">
-                        ৳{" "}
-                        {Number(
-                            product.price || 0
-                        ).toFixed(2)}
-                    </h2>
+                <h1 className="fw-bold">
+                    {product.name}
+                </h1>
 
-                    <div className="mb-4">
-                        <h5 className="fw-bold">
-                            Description
-                        </h5>
+                <h2 className="text-primary fw-bold my-3">
+                    ৳
+                    {Number(product.price).toFixed(2)}
+                </h2>
 
-                        <p className="text-muted">
-                            {product.description ||
-                                "No description available."}
-                        </p>
-                    </div>
+                <p className="text-muted">
+                    {product.description}
+                </p>
 
-                    <div className="mb-4">
-                        <h6 className="fw-bold">
-                            Availability
-                        </h6>
+                <hr />
 
-                        {isAvailable ? (
-                            <span className="badge bg-success">
-                                In Stock
-                            </span>
-                        ) : (
-                            <span className="badge bg-danger">
-                                Out of Stock
-                            </span>
-                        )}
+                {/* Stock */}
 
-                        <p className="mt-2">
-                            Available Quantity:
-                            <strong>
-                                {" "}
-                                {stockQuantity}
-                            </strong>
-                        </p>
-                    </div>
+                <div className="mb-3">
 
-                    <div className="mb-4">
-                        <label className="form-label fw-bold">
-                            Quantity
-                        </label>
+                    {isAvailable ? (
 
-                        <input
-                            type="number"
-                            className="form-control"
-                            style={{
-                                width: "130px",
-                            }}
-                            value={quantity}
-                            min="1"
-                            max={
-                                stockQuantity || 1
-                            }
-                            disabled={!isAvailable}
-                            onChange={
-                                handleQuantityChange
-                            }
-                        />
-                    </div>
+                        <span className="badge bg-success fs-6">
+                            {stockQuantity} In Stock
+                        </span>
 
-                    {/* BUTTONS */}
+                    ) : (
 
-                    <div className="d-flex flex-wrap gap-2">
+                        <span className="badge bg-danger fs-6">
+                            Out of Stock
+                        </span>
 
-                        {isLoggedIn ? (
+                    )}
+
+                </div>
+
+                {/* Quantity */}
+
+                <div className="mb-4">
+
+                    <label className="form-label fw-bold">
+                        Quantity
+                    </label>
+
+                    <input
+                        type="number"
+                        className="form-control"
+                        style={{
+                            width: "130px",
+                        }}
+                        value={quantity}
+                        min="1"
+                        max={stockQuantity}
+                        disabled={!isAvailable}
+                        onChange={handleQuantityChange}
+                    />
+
+                </div>
+
+                {/* ============================================= */}
+                {/* ACTION BUTTONS */}
+                {/* ============================================= */}
+
+                <div className="d-grid gap-2">
+
+                    {/* Add To Cart */}
+
+                    <button
+                        className="btn btn-primary btn-lg"
+                        disabled={
+                            cartLoading ||
+                            !isAvailable
+                        }
+                        onClick={handleAddToCart}
+                    >
+
+                        {cartLoading ? (
+
                             <>
-                                <button
-                                    className="btn btn-primary btn-lg"
-                                    disabled={!isAvailable}
-                                    onClick={addToCart}
-                                >
-                                    Add to Cart
-                                </button>
-
-                                <button
-                                    className="btn btn-success btn-lg"
-                                    disabled={!isAvailable}
-                                    onClick={handleBuyNow}
-                                >
-                                    Buy Now
-                                </button>
+                                <span className="spinner-border spinner-border-sm me-2"></span>
+                                Adding...
                             </>
-                        ) : (
-                            <button
-                                className="btn btn-primary btn-lg"
-                                onClick={() => {
-                                    toast.info(
-                                        "Please login to purchase this product."
-                                    );
 
-                                    navigate("/login");
-                                }}
-                            >
-                                Login to Purchase
-                            </button>
+                        ) : (
+
+                            <>🛒 Add to Cart</>
+
                         )}
 
-                        <Link
-                            to="/products"
-                            className="btn btn-outline-secondary btn-lg"
-                        >
-                            Back to Products
-                        </Link>
-                    </div>
+                    </button>
+
+                    {/* Buy Now */}
+
+                    <button
+                        className="btn btn-success btn-lg"
+                        disabled={
+                            cartLoading ||
+                            !isAvailable
+                        }
+                        onClick={handleBuyNow}
+                    >
+                        ⚡ Buy Now
+                    </button>
+
+                    {/* Wishlist */}
+
+                    <button
+                        className={`btn btn-lg ${
+                            isWishlisted
+                                ? "btn-danger"
+                                : "btn-outline-danger"
+                        }`}
+                        disabled={wishlistLoading}
+                        onClick={toggleWishlist}
+                    >
+
+                        {wishlistLoading ? (
+
+                            <>
+                                <span className="spinner-border spinner-border-sm me-2"></span>
+                                Processing...
+                            </>
+
+                        ) : isWishlisted ? (
+
+                            <>❤️ Remove from Wishlist</>
+
+                        ) : (
+
+                            <>🤍 Add to Wishlist</>
+
+                        )}
+
+                    </button>
+
+                    {/* Back */}
+
+                    <Link
+                        to="/products"
+                        className="btn btn-outline-secondary btn-lg"
+                    >
+                        ← Back to Products
+                    </Link>
+
+                </div>
 
             </div>
+
         </div>
+
     </div>
-    );
+);
+
 };
 
 export default ProductDetails;

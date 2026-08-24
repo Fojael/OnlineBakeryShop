@@ -26,6 +26,9 @@ import NotFound from "../pages/NotFound/NotFound";
 
 import CustomerDashboard from "../pages/Customer/CustomerDashboard";
 import Wishlist from "../pages/Customer/Wishlist";
+import Address from "../pages/Address/Address";
+import AddAddress from "../pages/Address/AddAddress";
+import EditAddress from "../pages/Address/EditAddress";
 
 // ============================================================
 // ADMIN DASHBOARD
@@ -188,8 +191,42 @@ const AppRoutes = () => {
                     />
                     <Route
                         path="/wishlist"
-                        element={<Wishlist />}
+                        element={
+                            <ProtectedRoute>
+                                <Wishlist />
+                            </ProtectedRoute>
+                        }
                     />
+{/* ==================================================
+    CUSTOMER ADDRESS BOOK
+================================================== */}
+
+<Route
+    path="/address"
+    element={
+        <ProtectedRoute>
+            <Address />
+        </ProtectedRoute>
+    }
+/>
+
+<Route
+    path="/address/add"
+    element={
+        <ProtectedRoute>
+            <AddAddress />
+        </ProtectedRoute>
+    }
+/>
+
+<Route
+    path="/address/edit/:id"
+    element={
+        <ProtectedRoute>
+            <EditAddress />
+        </ProtectedRoute>
+    }
+/>
 
                     {/* ==================================================
                         ADMIN DASHBOARD
