@@ -6,8 +6,11 @@ import { getCart } from "../../services/cartService";
 import { getAddresses } from "../../services/addressService";
 import { createOrder } from "../../services/orderService";
 
+
 const Checkout = () => {
+
     const navigate = useNavigate();
+
 
     // ==========================================================
     // STATE
@@ -29,31 +32,44 @@ const Checkout = () => {
     const [paymentMethod, setPaymentMethod] =
         useState("Cash on Delivery");
 
-    const [error, setError] =
-        useState("");
+    const [error, setError] = useState("");
+
 
     // ==========================================================
-    // LOAD CHECKOUT
+    // LOAD CHECKOUT DATA
     // ==========================================================
 
     useEffect(() => {
+
         let mounted = true;
 
+
         const loadCheckout = async () => {
+
             try {
+
                 setLoading(true);
+
                 setError("");
+
+
+                // ==================================================
+                // LOAD CART
+                // ==================================================
 
                 const cartResponse =
                     await getCart();
 
-                const addressResponse =
-                    await getAddresses();
-
-                if (!mounted) return;
-
                 const cartData =
                     cartResponse.data;
+
+
+                // ==================================================
+                // LOAD ADDRESSES
+                // ==================================================
+
+                const addressResponse =
+                    await getAddresses();
 
                 const addressList =
                     Array.isArray(
@@ -62,52 +78,100 @@ const Checkout = () => {
                         ? addressResponse.data
                         : [];
 
-                setCart(cartData);
-                setAddresses(addressList);
-
-                const defaultAddress =
-                    addressList.find(
-                        (a) => a.is_default
-                    );
-
-                if (defaultAddress) {
-                    setSelectedAddress(
-                        defaultAddress.id
-                    );
-                } else if (
-                    addressList.length > 0
-                ) {
-                    setSelectedAddress(
-                        addressList[0].id
-                    );
-                }
-            } catch (err) {
-                console.error(err);
 
                 if (mounted) {
-                    setError(
-                        "Unable to load checkout."
+
+                    setCart(cartData);
+
+                    setAddresses(
+                        addressList
                     );
+
+
+                    // ==================================================
+                    // SELECT DEFAULT ADDRESS
+                    // ==================================================
+
+                    const defaultAddress =
+                        addressList.find(
+                            (address) =>
+                                address.is_default === true
+                        );
+
+
+                    if (defaultAddress) {
+
+                        setSelectedAddress(
+                            defaultAddress.id
+                        );
+
+                    } else if (
+                        addressList.length > 0
+                    ) {
+
+                        // If no default address exists,
+                        // select the first address.
+
+                        setSelectedAddress(
+                            addressList[0].id
+                        );
+
+                    } else {
+
+                        setSelectedAddress(
+                            null
+                        );
+
+                    }
+
+                }
+
+            } catch (err) {
+
+                console.error(
+                    "Checkout loading error:",
+                    err
+                );
+
+
+                if (mounted) {
+
+                    setError(
+                        "Unable to load checkout information."
+                    );
+
 
                     toast.error(
-                        err?.response?.data
-                            ?.detail ||
-                            "Unable to load checkout."
+                        err?.response?.data?.detail ||
+                        "Unable to load checkout information."
                     );
+
                 }
+
             } finally {
+
                 if (mounted) {
+
                     setLoading(false);
+
                 }
+
             }
+
         };
+
 
         loadCheckout();
 
+
         return () => {
+
             mounted = false;
+
         };
+
     }, []);
+
 
     // ==========================================================
     // CART ITEMS
@@ -118,41 +182,70 @@ const Checkout = () => {
             ? cart.items
             : [];
 
-    // ==========================================================
-    // SUBTOTAL
-    // ==========================================================
-
-    const subtotal = cartItems.reduce(
-        (total, item) => {
-            const price = Number(
-                item.product_price ??
-                    item.price ??
-                    item.product?.price ??
-                    0
-            );
-
-            return (
-                total +
-                price *
-                    Number(item.quantity)
-            );
-        },
-        0
-    );
 
     // ==========================================================
-    // DELIVERY
+    // CALCULATE SUBTOTAL
+    //
+    // This is only for displaying the checkout summary.
+    //
+    // Django recalculates the real subtotal when the order
+    // is created.
+    // ==========================================================
+
+    const subtotal =
+        cartItems.reduce(
+            (total, item) => {
+
+                const price =
+                    Number(
+                        item.product_price ??
+                        item.price ??
+                        item.product?.price ??
+                        0
+                    );
+
+
+                const quantity =
+                    Number(
+                        item.quantity ?? 0
+                    );
+
+
+                return (
+                    total +
+                    price * quantity
+                );
+
+            },
+            0
+        );
+
+
+    // ==========================================================
+    // DELIVERY CHARGE
+    //
+    // Current Django backend:
+    //
+    // DELIVERY_CHARGE = 60.00
     // ==========================================================
 
     const deliveryCharge =
-        subtotal > 0 ? 60 : 0;
+        subtotal > 0
+            ? 60
+            : 0;
+
 
     // ==========================================================
     // GRAND TOTAL
+    //
+    // Display only.
+    // Backend calculates the official total.
     // ==========================================================
 
     const grandTotal =
-        subtotal + deliveryCharge;
+        subtotal +
+        deliveryCharge;
+
 
     // ==========================================================
     // SELECTED ADDRESS
@@ -161,142 +254,328 @@ const Checkout = () => {
     const selectedAddressData =
         addresses.find(
             (address) =>
-                address.id ===
-                selectedAddress
+                address.id === selectedAddress
         );
-            // ==========================================================
+
+
+    // ==========================================================
+    // FORMAT SHIPPING ADDRESS
+    // ==========================================================
+
+    const buildShippingAddress = () => {
+
+        if (!selectedAddressData) {
+
+            return "";
+
+        }
+
+
+        const address = selectedAddressData;
+
+
+        return [
+            address.full_name,
+            address.phone,
+            address.address_line,
+            address.upazila,
+            address.district,
+            address.division,
+            address.postal_code,
+        ]
+            .filter(
+                (value) =>
+                    value !== null &&
+                    value !== undefined &&
+                    String(value).trim() !== ""
+            )
+            .join(", ");
+
+    };
+
+
+    // ==========================================================
     // PLACE ORDER
     // ==========================================================
 
     const handlePlaceOrder = async () => {
-        // ------------------------------------------------------
-        // Validate Address
-        // ------------------------------------------------------
+
+        // ==================================================
+        // CHECK ADDRESS
+        // ==================================================
 
         if (!selectedAddressData) {
+
             toast.error(
                 "Please select a delivery address."
             );
+
             return;
+
         }
 
-        // ------------------------------------------------------
-        // Validate Cart
-        // ------------------------------------------------------
+
+        // ==================================================
+        // CHECK CART
+        // ==================================================
 
         if (cartItems.length === 0) {
-            toast.error("Your cart is empty.");
-            return;
-        }
 
-        // ------------------------------------------------------
-        // Build Shipping Address
-        // ------------------------------------------------------
-
-        const shippingAddress = `
-${selectedAddressData.full_name}
-${selectedAddressData.phone}
-${selectedAddressData.address_line}
-${selectedAddressData.upazila}, ${selectedAddressData.district}
-${selectedAddressData.division} - ${selectedAddressData.postal_code}
-        `.trim();
-
-        // ------------------------------------------------------
-        // Request Body
-        // Must match Django backend exactly
-        // ------------------------------------------------------
-
-        const orderData = {
-            shipping_address: shippingAddress,
-            payment_method: paymentMethod,
-        };
-
-        try {
-            setPlacingOrder(true);
-
-            const response =
-                await createOrder(orderData);
-
-            toast.success(
-                response.data.message ||
-                    "Order placed successfully."
+            toast.error(
+                "Your cart is empty."
             );
 
-            // ----------------------------------------------
-            // Redirect
-            // ----------------------------------------------
+            return;
 
-            if (
-                response.data.order &&
-                response.data.order.id
-            ) {
-                navigate("/orders");
+        }
+
+
+        // ==================================================
+        // BUILD SHIPPING ADDRESS
+        // ==================================================
+
+        const shippingAddress =
+            buildShippingAddress();
+
+
+        if (!shippingAddress) {
+
+            toast.error(
+                "Please provide a valid delivery address."
+            );
+
+            return;
+
+        }
+
+
+        try {
+
+            setPlacingOrder(true);
+
+
+            // ==================================================
+            // ORDER DATA
+            //
+            // IMPORTANT:
+            //
+            // Do NOT send:
+            //
+            // subtotal
+            // delivery_charge
+            // total_amount
+            // address_id
+            //
+            // Django calculates totals itself.
+            // ==================================================
+
+            const orderData = {
+
+                shipping_address:
+                    shippingAddress,
+
+                payment_method:
+                    paymentMethod,
+
+            };
+
+
+            console.log(
+                "Creating order:",
+                orderData
+            );
+
+
+            // ==================================================
+            // CREATE ORDER
+            // ==================================================
+
+            const response =
+                await createOrder(
+                    orderData
+                );
+
+
+            console.log(
+                "Order response:",
+                response.data
+            );
+
+
+            // ==================================================
+            // SUCCESS MESSAGE
+            // ==================================================
+
+            toast.success(
+                "🎉 Order placed successfully!"
+            );
+
+
+            // ==================================================
+            // REDIRECT TO ORDER DETAILS
+            //
+            // Backend response:
+            //
+            // {
+            //     message: "...",
+            //     order: {
+            //         id: 1,
+            //         ...
+            //     }
+            // }
+            // ==================================================
+
+            const orderId =
+                response?.data?.order?.id;
+
+
+            if (orderId) {
+
+                navigate(
+                    `/orders/${orderId}`
+                );
+
             } else {
-                navigate("/orders");
+
+                navigate(
+                    "/orders"
+                );
+
             }
-        } catch (error) {
-            console.error(error);
+
+        } catch (err) {
+
+            console.error(
+                "Place order error:",
+                err
+            );
+
+
+            // ==================================================
+            // BACKEND ERROR
+            // ==================================================
 
             const backendError =
-                error?.response?.data;
+                err?.response?.data;
 
-            if (backendError?.detail) {
+
+            if (
+                backendError?.detail
+            ) {
+
                 toast.error(
                     backendError.detail
                 );
+
+            } else if (
+                typeof backendError === "object"
+            ) {
+
+                // Handle Django validation errors
+
+                const messages =
+                    Object.values(
+                        backendError
+                    )
+                        .flat()
+                        .filter(Boolean);
+
+
+                if (messages.length > 0) {
+
+                    toast.error(
+                        messages.join(" ")
+                    );
+
+                } else {
+
+                    toast.error(
+                        "Unable to place order."
+                    );
+
+                }
+
             } else {
+
                 toast.error(
                     "Unable to place order."
                 );
+
             }
+
         } finally {
+
             setPlacingOrder(false);
+
         }
+
     };
+
 
     // ==========================================================
     // LOADING
     // ==========================================================
 
     if (loading) {
+
         return (
+
             <div className="container py-5 text-center">
+
                 <div
                     className="spinner-border text-primary"
                     role="status"
                 >
+
                     <span className="visually-hidden">
                         Loading...
                     </span>
+
                 </div>
+
 
                 <h5 className="mt-3">
                     Loading Checkout...
                 </h5>
+
             </div>
+
         );
+
     }
+
 
     // ==========================================================
     // EMPTY CART
     // ==========================================================
 
     if (cartItems.length === 0) {
+
         return (
+
             <div className="container py-5">
-                <div className="card shadow-sm border-0">
+
+                <div className="card border-0 shadow-sm">
+
                     <div className="card-body text-center py-5">
-                        <h1>🛒</h1>
+
+                        <h1>
+                            🛒
+                        </h1>
+
 
                         <h3>
                             Your Cart is Empty
                         </h3>
 
+
                         <p className="text-muted">
-                            Add some bakery
-                            products before
-                            checkout.
+
+                            Add some bakery products
+                            before checkout.
+
                         </p>
+
 
                         <Link
                             to="/products"
@@ -304,17 +583,26 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                         >
                             Continue Shopping
                         </Link>
+
                     </div>
+
                 </div>
+
             </div>
+
         );
+
     }
-        // ==========================================================
+
+
+    // ==========================================================
     // PAGE
     // ==========================================================
 
     return (
+
         <div className="container py-5">
+
 
             {/* ==================================================
                 HEADER
@@ -326,36 +614,48 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                     🛒 Checkout
                 </h2>
 
+
                 <p className="text-muted">
-                    Complete your order by selecting your
-                    delivery address and payment method.
+
+                    Complete your order by selecting
+                    your delivery address and payment method.
+
                 </p>
 
             </div>
+
 
             {/* ==================================================
                 ERROR
             ================================================== */}
 
             {error && (
+
                 <div className="alert alert-danger">
+
                     {error}
+
                 </div>
+
             )}
+
 
             <div className="row g-4">
 
+
                 {/* ==================================================
-                    LEFT SIDE
+                    LEFT COLUMN
                 ================================================== */}
 
                 <div className="col-lg-8">
+
 
                     {/* ==================================================
                         DELIVERY ADDRESS
                     ================================================== */}
 
                     <div className="card border-0 shadow-sm mb-4">
+
 
                         <div className="card-header bg-white">
 
@@ -364,6 +664,7 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                 <h4 className="mb-0">
                                     📍 Delivery Address
                                 </h4>
+
 
                                 <Link
                                     to="/address/add"
@@ -376,21 +677,27 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                         </div>
 
+
                         <div className="card-body">
+
 
                             {addresses.length === 0 ? (
 
-                                <div className="text-center py-5">
+                                <div className="text-center py-4">
 
                                     <h5>
-                                        No saved addresses
+                                        No Delivery Address
                                     </h5>
 
+
                                     <p className="text-muted">
+
                                         Please add a delivery
                                         address before placing
                                         your order.
+
                                     </p>
+
 
                                     <Link
                                         to="/address/add"
@@ -405,102 +712,134 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                                 <div className="row g-3">
 
-                                    {addresses.map((address) => (
-
-                                        <div
-                                            className="col-md-6"
-                                            key={address.id}
-                                        >
+                                    {addresses.map(
+                                        (address) => (
 
                                             <div
-                                                className={`card h-100 ${
-                                                    selectedAddress ===
-                                                    address.id
-                                                        ? "border-primary shadow"
-                                                        : ""
-                                                }`}
+                                                className="col-md-6"
+                                                key={address.id}
                                             >
 
-                                                <div className="card-body">
+                                                <div
+                                                    className={`card h-100 ${
+                                                        selectedAddress ===
+                                                        address.id
+                                                            ? "border-primary shadow-sm"
+                                                            : "border-light"
+                                                    }`}
+                                                    style={{
+                                                        cursor: "pointer",
+                                                    }}
+                                                    onClick={() =>
+                                                        setSelectedAddress(
+                                                            address.id
+                                                        )
+                                                    }
+                                                >
 
-                                                    <div className="form-check">
+                                                    <div className="card-body">
 
-                                                        <input
-                                                            className="form-check-input"
-                                                            type="radio"
-                                                            name="address"
-                                                            id={`address-${address.id}`}
-                                                            checked={
-                                                                selectedAddress ===
-                                                                address.id
-                                                            }
-                                                            onChange={() =>
-                                                                setSelectedAddress(
+                                                        <div className="form-check">
+
+
+                                                            <input
+                                                                className="form-check-input"
+                                                                type="radio"
+                                                                name="address"
+                                                                id={`address-${address.id}`}
+                                                                checked={
+                                                                    selectedAddress ===
                                                                     address.id
-                                                                )
-                                                            }
-                                                        />
+                                                                }
+                                                                onChange={() =>
+                                                                    setSelectedAddress(
+                                                                        address.id
+                                                                    )
+                                                                }
+                                                            />
 
-                                                        <label
-                                                            htmlFor={`address-${address.id}`}
-                                                            className="form-check-label w-100"
-                                                        >
 
-                                                            <div className="d-flex justify-content-between">
+                                                            <label
+                                                                className="form-check-label w-100"
+                                                                htmlFor={`address-${address.id}`}
+                                                            >
 
-                                                                <strong>
-                                                                    {
-                                                                        address.full_name
-                                                                    }
-                                                                </strong>
 
-                                                                {address.is_default && (
-                                                                    <span className="badge bg-success">
-                                                                        Default
-                                                                    </span>
-                                                                )}
+                                                                <div className="d-flex justify-content-between align-items-start">
 
-                                                            </div>
+                                                                    <strong>
+                                                                        {
+                                                                            address.full_name
+                                                                        }
+                                                                    </strong>
 
-                                                            <div className="mt-2 small">
 
-                                                                <div>
-                                                                    📞{" "}
-                                                                    {
-                                                                        address.phone
-                                                                    }
+                                                                    {address.is_default && (
+
+                                                                        <span className="badge bg-success">
+
+                                                                            Default
+
+                                                                        </span>
+
+                                                                    )}
+
                                                                 </div>
 
-                                                                <div>
-                                                                    📍{" "}
-                                                                    {
-                                                                        address.address_line
-                                                                    }
+
+                                                                <div className="mt-2 small">
+
+
+                                                                    <div>
+                                                                        📞{" "}
+                                                                        {
+                                                                            address.phone
+                                                                        }
+                                                                    </div>
+
+
+                                                                    <div>
+                                                                        📍{" "}
+                                                                        {
+                                                                            address.address_line
+                                                                        }
+                                                                    </div>
+
+
+                                                                    <div>
+
+                                                                        {
+                                                                            address.upazila
+                                                                        }
+
+                                                                        ,{" "}
+
+                                                                        {
+                                                                            address.district
+                                                                        }
+
+                                                                    </div>
+
+
+                                                                    <div>
+
+                                                                        {
+                                                                            address.division
+                                                                        }
+
+                                                                        {" - "}
+
+                                                                        {
+                                                                            address.postal_code
+                                                                        }
+
+                                                                    </div>
+
                                                                 </div>
 
-                                                                <div>
-                                                                    {
-                                                                        address.upazila
-                                                                    }
-                                                                    ,{" "}
-                                                                    {
-                                                                        address.district
-                                                                    }
-                                                                </div>
+                                                            </label>
 
-                                                                <div>
-                                                                    {
-                                                                        address.division
-                                                                    }
-                                                                    {" - "}
-                                                                    {
-                                                                        address.postal_code
-                                                                    }
-                                                                </div>
-
-                                                            </div>
-
-                                                        </label>
+                                                        </div>
 
                                                     </div>
 
@@ -508,9 +847,8 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                                             </div>
 
-                                        </div>
-
-                                    ))}
+                                        )
+                                    )}
 
                                 </div>
 
@@ -519,11 +857,14 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                         </div>
 
                     </div>
-                                        {/* ==================================================
+
+
+                    {/* ==================================================
                         PAYMENT METHOD
                     ================================================== */}
 
                     <div className="card border-0 shadow-sm mb-4">
+
 
                         <div className="card-header bg-white">
 
@@ -533,22 +874,35 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                         </div>
 
+
                         <div className="card-body">
 
-                            {/* Cash on Delivery */}
+
+                            {/* ==================================================
+                                CASH ON DELIVERY
+                            ================================================== */}
 
                             <div
-                                className={`card mb-3 ${
+                                className={`card payment-card mb-3 ${
                                     paymentMethod ===
                                     "Cash on Delivery"
-                                        ? "border-primary"
+                                        ? "border-primary shadow-sm"
                                         : ""
                                 }`}
+                                style={{
+                                    cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                    setPaymentMethod(
+                                        "Cash on Delivery"
+                                    )
+                                }
                             >
 
                                 <div className="card-body">
 
                                     <div className="form-check">
+
 
                                         <input
                                             className="form-check-input"
@@ -567,6 +921,7 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                             }
                                         />
 
+
                                         <label
                                             className="form-check-label"
                                             htmlFor="cod"
@@ -576,9 +931,12 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                                 💵 Cash on Delivery
                                             </strong>
 
+
                                             <div className="text-muted small">
+
                                                 Pay after receiving
                                                 your order.
+
                                             </div>
 
                                         </label>
@@ -589,26 +947,248 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                             </div>
 
-                            {/* Credit Card */}
+
+                            {/* ==================================================
+                                BKASH
+                            ================================================== */}
 
                             <div
-                                className={`card ${
+                                className={`card payment-card mb-3 ${
                                     paymentMethod ===
-                                    "Credit Card"
-                                        ? "border-primary"
+                                    "bKash"
+                                        ? "border-primary shadow-sm"
                                         : ""
                                 }`}
+                                style={{
+                                    cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                    setPaymentMethod(
+                                        "bKash"
+                                    )
+                                }
                             >
 
                                 <div className="card-body">
 
                                     <div className="form-check">
 
+
                                         <input
                                             className="form-check-input"
                                             type="radio"
                                             name="payment"
-                                            id="card"
+                                            id="bkash"
+                                            value="bKash"
+                                            checked={
+                                                paymentMethod ===
+                                                "bKash"
+                                            }
+                                            onChange={(e) =>
+                                                setPaymentMethod(
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+
+
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="bkash"
+                                        >
+
+                                            <strong>
+                                                📱 bKash
+                                            </strong>
+
+
+                                            <div className="text-muted small">
+
+                                                Pay using your
+                                                bKash account.
+
+                                            </div>
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            {/* ==================================================
+                                NAGAD
+                            ================================================== */}
+
+                            <div
+                                className={`card payment-card mb-3 ${
+                                    paymentMethod ===
+                                    "Nagad"
+                                        ? "border-primary shadow-sm"
+                                        : ""
+                                }`}
+                                style={{
+                                    cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                    setPaymentMethod(
+                                        "Nagad"
+                                    )
+                                }
+                            >
+
+                                <div className="card-body">
+
+                                    <div className="form-check">
+
+
+                                        <input
+                                            className="form-check-input"
+                                            type="radio"
+                                            name="payment"
+                                            id="nagad"
+                                            value="Nagad"
+                                            checked={
+                                                paymentMethod ===
+                                                "Nagad"
+                                            }
+                                            onChange={(e) =>
+                                                setPaymentMethod(
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+
+
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="nagad"
+                                        >
+
+                                            <strong>
+                                                📲 Nagad
+                                            </strong>
+
+
+                                            <div className="text-muted small">
+
+                                                Mobile payment
+                                                with Nagad.
+
+                                            </div>
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            {/* ==================================================
+                                ROCKET
+                            ================================================== */}
+
+                            <div
+                                className={`card payment-card mb-3 ${
+                                    paymentMethod ===
+                                    "Rocket"
+                                        ? "border-primary shadow-sm"
+                                        : ""
+                                }`}
+                                style={{
+                                    cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                    setPaymentMethod(
+                                        "Rocket"
+                                    )
+                                }
+                            >
+
+                                <div className="card-body">
+
+                                    <div className="form-check">
+
+
+                                        <input
+                                            className="form-check-input"
+                                            type="radio"
+                                            name="payment"
+                                            id="rocket"
+                                            value="Rocket"
+                                            checked={
+                                                paymentMethod ===
+                                                "Rocket"
+                                            }
+                                            onChange={(e) =>
+                                                setPaymentMethod(
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+
+
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="rocket"
+                                        >
+
+                                            <strong>
+                                                🚀 Rocket
+                                            </strong>
+
+
+                                            <div className="text-muted small">
+
+                                                Pay using Rocket
+                                                mobile banking.
+
+                                            </div>
+
+                                        </label>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            {/* ==================================================
+                                CREDIT CARD
+                            ================================================== */}
+
+                            <div
+                                className={`card payment-card ${
+                                    paymentMethod ===
+                                    "Credit Card"
+                                        ? "border-primary shadow-sm"
+                                        : ""
+                                }`}
+                                style={{
+                                    cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                    setPaymentMethod(
+                                        "Credit Card"
+                                    )
+                                }
+                            >
+
+                                <div className="card-body">
+
+                                    <div className="form-check">
+
+
+                                        <input
+                                            className="form-check-input"
+                                            type="radio"
+                                            name="payment"
+                                            id="credit-card"
                                             value="Credit Card"
                                             checked={
                                                 paymentMethod ===
@@ -621,17 +1201,22 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                             }
                                         />
 
+
                                         <label
                                             className="form-check-label"
-                                            htmlFor="card"
+                                            htmlFor="credit-card"
                                         >
 
                                             <strong>
                                                 💳 Credit Card
                                             </strong>
 
+
                                             <div className="text-muted small">
-                                                Secure online payment.
+
+                                                Secure online
+                                                card payment.
+
                                             </div>
 
                                         </label>
@@ -642,9 +1227,33 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                             </div>
 
+
+                            {/* ==================================================
+                                PAYMENT NOTICE
+                            ================================================== */}
+
+                            <div className="alert alert-info mt-3 mb-0">
+
+                                <strong>
+                                    Payment Notice
+                                </strong>
+
+
+                                <div className="small mt-1">
+
+                                    Online payment gateways will
+                                    be available soon. You can
+                                    currently place orders using
+                                    Cash on Delivery.
+
+                                </div>
+
+                            </div>
+
                         </div>
 
                     </div>
+
 
                     {/* ==================================================
                         ADDRESS PREVIEW
@@ -658,28 +1267,59 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                 Delivering To:
                             </strong>
 
-                            <br />
 
-                            {selectedAddressData.full_name}
+                            <hr className="my-2" />
 
-                            <br />
 
-                            {selectedAddressData.phone}
+                            <div>
+                                {
+                                    selectedAddressData.full_name
+                                }
+                            </div>
 
-                            <br />
 
-                            {selectedAddressData.address_line}
+                            <div>
+                                {
+                                    selectedAddressData.phone
+                                }
+                            </div>
 
-                            <br />
 
-                            {selectedAddressData.upazila},{" "}
-                            {selectedAddressData.district}
+                            <div>
+                                {
+                                    selectedAddressData.address_line
+                                }
+                            </div>
 
-                            <br />
 
-                            {selectedAddressData.division}
-                            {" - "}
-                            {selectedAddressData.postal_code}
+                            <div>
+
+                                {
+                                    selectedAddressData.upazila
+                                }
+
+                                ,{" "}
+
+                                {
+                                    selectedAddressData.district
+                                }
+
+                            </div>
+
+
+                            <div>
+
+                                {
+                                    selectedAddressData.division
+                                }
+
+                                {" - "}
+
+                                {
+                                    selectedAddressData.postal_code
+                                }
+
+                            </div>
 
                         </div>
 
@@ -687,11 +1327,13 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                 </div>
 
+
                 {/* ==================================================
-                    ORDER SUMMARY
+                    RIGHT COLUMN
                 ================================================== */}
 
                 <div className="col-lg-4">
+
 
                     <div
                         className="card border-0 shadow-sm"
@@ -701,6 +1343,7 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                         }}
                     >
 
+
                         <div className="card-header bg-primary text-white">
 
                             <h4 className="mb-0">
@@ -709,54 +1352,134 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
 
                         </div>
 
+
                         <div className="card-body">
 
-                            {cartItems.map((item) => {
 
-                                const price = Number(
-                                    item.product_price ??
-                                    item.price ??
-                                    item.product?.price ??
-                                    0
-                                );
+                            {/* ==================================================
+                                CART ITEMS
+                            ================================================== */}
 
-                                return (
+                            {cartItems.map(
+                                (item) => {
 
-                                    <div
-                                        key={item.id}
-                                        className="d-flex justify-content-between mb-3"
-                                    >
+                                    const price =
+                                        Number(
+                                            item.product_price ??
+                                            item.price ??
+                                            item.product?.price ??
+                                            0
+                                        );
 
-                                        <div>
+
+                                    const quantity =
+                                        Number(
+                                            item.quantity ?? 0
+                                        );
+
+
+                                    return (
+
+                                        <div
+                                            key={item.id}
+                                            className="d-flex justify-content-between mb-3"
+                                        >
+
+
+                                            <div>
+
+                                                <strong>
+
+                                                    {
+                                                        item.product_name ??
+                                                        item.product?.name ??
+                                                        "Product"
+                                                    }
+
+                                                </strong>
+
+
+                                                <div className="small text-muted">
+
+                                                    Qty:{" "}
+                                                    {quantity}
+
+                                                </div>
+
+                                            </div>
+
 
                                             <strong>
-                                                {
-                                                    item.product_name ??
-                                                    item.product?.name
-                                                }
-                                            </strong>
 
-                                            <div className="small text-muted">
-                                                Qty: {item.quantity}
-                                            </div>
+                                                ৳{" "}
+
+                                                {(
+                                                    price *
+                                                    quantity
+                                                ).toFixed(2)}
+
+                                            </strong>
 
                                         </div>
 
-                                        <strong>
-                                            ৳
-                                            {(
-                                                price *
-                                                item.quantity
-                                            ).toFixed(2)}
-                                        </strong>
+                                    );
 
-                                    </div>
+                                }
+                            )}
 
-                                );
-
-                            })}
 
                             <hr />
+
+
+                            {/* ==================================================
+                                COUPON PLACEHOLDER
+                            ================================================== */}
+
+                            <div className="mt-3">
+
+                                <label className="form-label fw-semibold">
+
+                                    Coupon Code
+
+                                </label>
+
+
+                                <div className="input-group">
+
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        placeholder="Enter coupon code"
+                                        disabled
+                                    />
+
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-secondary"
+                                        disabled
+                                    >
+                                        Apply
+                                    </button>
+
+                                </div>
+
+
+                                <small className="text-muted">
+
+                                    Coupon support coming soon.
+
+                                </small>
+
+                            </div>
+
+
+                            <hr />
+
+
+                            {/* ==================================================
+                                SUBTOTAL
+                            ================================================== */}
 
                             <div className="d-flex justify-content-between mb-2">
 
@@ -764,57 +1487,128 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
                                     Subtotal
                                 </span>
 
+
                                 <strong>
+
                                     ৳
                                     {subtotal.toFixed(2)}
+
                                 </strong>
 
                             </div>
+
+
+                            {/* ==================================================
+                                DELIVERY CHARGE
+                            ================================================== */}
 
                             <div className="d-flex justify-content-between mb-2">
 
                                 <span>
-                                    Delivery
+                                    Delivery Charge
                                 </span>
 
+
                                 <strong>
+
                                     ৳
                                     {deliveryCharge.toFixed(2)}
+
                                 </strong>
 
                             </div>
 
+
                             <hr />
+
+
+                            {/* ==================================================
+                                GRAND TOTAL
+                            ================================================== */}
 
                             <div className="d-flex justify-content-between">
 
                                 <h5>
-                                    Total
+                                    Grand Total
                                 </h5>
 
+
                                 <h5 className="text-primary">
+
                                     ৳
                                     {grandTotal.toFixed(2)}
+
                                 </h5>
 
                             </div>
 
+
+                            {/* ==================================================
+                                SECURE CHECKOUT
+                            ================================================== */}
+
+                            <div className="alert alert-success mt-3 mb-0">
+
+                                <strong>
+                                    ✓ Secure Checkout
+                                </strong>
+
+
+                                <div className="small mt-1">
+
+                                    Your order is protected
+                                    and processed securely.
+
+                                </div>
+
+                            </div>
+
+
+                            {/* ==================================================
+                                PLACE ORDER
+                            ================================================== */}
+
                             <button
-                                className="btn btn-primary w-100 mt-4"
+                                type="button"
+                                className="btn btn-primary btn-lg w-100 mt-4"
                                 onClick={
                                     handlePlaceOrder
                                 }
                                 disabled={
                                     placingOrder ||
-                                    !selectedAddress
+                                    !selectedAddress ||
+                                    cartItems.length === 0
                                 }
                             >
 
-                                {placingOrder
-                                    ? "Placing Order..."
-                                    : "🛍 Place Order"}
+                                {placingOrder ? (
+
+                                    <>
+
+                                        <span
+                                            className="spinner-border spinner-border-sm me-2"
+                                            role="status"
+                                            aria-hidden="true"
+                                        ></span>
+
+                                        Processing...
+
+                                    </>
+
+                                ) : (
+
+                                    <>
+                                        🛍 Place Order
+                                    </>
+
+                                )}
 
                             </button>
+
+
+                            {/* ==================================================
+                                BACK TO CART
+                            ================================================== */}
 
                             <Link
                                 to="/cart"
@@ -832,7 +1626,10 @@ ${selectedAddressData.division} - ${selectedAddressData.postal_code}
             </div>
 
         </div>
+
     );
+
 };
+
 
 export default Checkout;

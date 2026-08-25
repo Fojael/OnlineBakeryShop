@@ -9,13 +9,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from cart.models import Cart
+from products.models import Product
 
 from .models import Order, OrderItem
 from .serializers import OrderSerializer
 
 
 # ============================================================
+# ORDER SETTINGS
+# ============================================================
+
+DELIVERY_CHARGE = Decimal("60.00")
+
+
+# ============================================================
 # CUSTOMER ORDERS
+#
 # GET  /api/orders/
 # POST /api/orders/
 # ============================================================
@@ -33,9 +42,8 @@ class OrderListCreateView(APIView):
         orders = (
             Order.objects
             .filter(customer=request.user)
-            .prefetch_related(
-                "items__product"
-            )
+            .select_related("customer")
+            .prefetch_related("items__product")
             .order_by("-created_at")
         )
 
@@ -50,27 +58,30 @@ class OrderListCreateView(APIView):
         )
 
     # ========================================================
-    # POST CREATE ORDER FROM REAL CART
+    # CREATE ORDER
     # ========================================================
 
     @transaction.atomic
     def post(self, request):
 
-        # ----------------------------------------------------
-        # Get checkout data
-        # ----------------------------------------------------
+        # ====================================================
+        # GET CHECKOUT DATA
+        # ====================================================
 
-        shipping_address = request.data.get(
-            "shipping_address"
+        shipping_address = (
+            request.data.get("shipping_address", "")
         )
+
+        if shipping_address:
+            shipping_address = shipping_address.strip()
 
         payment_method = request.data.get(
             "payment_method"
         )
 
-        # ----------------------------------------------------
-        # Validate shipping address
-        # ----------------------------------------------------
+        # ====================================================
+        # VALIDATE SHIPPING ADDRESS
+        # ====================================================
 
         if not shipping_address:
 
@@ -80,22 +91,7 @@ class OrderListCreateView(APIView):
                         "Shipping address is required."
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        shipping_address = str(
-            shipping_address
-        ).strip()
-
-        if not shipping_address:
-
-            return Response(
-                {
-                    "detail": (
-                        "Shipping address is required."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if len(shipping_address) < 10:
@@ -107,12 +103,12 @@ class OrderListCreateView(APIView):
                         "shipping address."
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Validate payment method
-        # ----------------------------------------------------
+        # ====================================================
+        # VALIDATE PAYMENT METHOD
+        # ====================================================
 
         valid_payment_methods = [
             choice[0]
@@ -125,20 +121,20 @@ class OrderListCreateView(APIView):
                 {
                     "detail": (
                         "Invalid payment method."
-                    )
+                    ),
+                    "valid_payment_methods":
+                        valid_payment_methods,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Get customer's REAL cart
-        # ----------------------------------------------------
+        # ====================================================
+        # GET CUSTOMER CART
+        # ====================================================
 
         cart = (
             Cart.objects
-            .filter(
-                customer=request.user
-            )
+            .filter(customer=request.user)
             .first()
         )
 
@@ -146,16 +142,14 @@ class OrderListCreateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Your cart is empty."
-                    )
+                    "detail": "Your cart is empty."
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Get cart items
-        # ----------------------------------------------------
+        # ====================================================
+        # GET CART ITEMS
+        # ====================================================
 
         cart_items = list(
             cart.items
@@ -167,44 +161,39 @@ class OrderListCreateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Your cart is empty."
-                    )
+                    "detail": "Your cart is empty."
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Lock products during checkout
-        #
-        # This prevents two customers from buying the
-        # same last available product simultaneously.
-        # ----------------------------------------------------
+        # ====================================================
+        # GET PRODUCT IDS
+        # ====================================================
 
         product_ids = [
-            item.product_id
-            for item in cart_items
+            cart_item.product_id
+            for cart_item in cart_items
         ]
+
+        # ====================================================
+        # LOCK PRODUCTS
+        #
+        # Prevent another transaction from changing
+        # stock while this order is being created.
+        # ====================================================
 
         locked_products = {
             product.id: product
             for product in (
-                cart_items[0].product.__class__
-                .objects
+                Product.objects
                 .select_for_update()
                 .filter(id__in=product_ids)
             )
         }
 
-               # ----------------------------------------------------
-        # DELIVERY CHARGE
-        # ----------------------------------------------------
-
-        DELIVERY_CHARGE = Decimal("60.00")
-
-        # ----------------------------------------------------
-        # Validate cart products and stock
-        # ----------------------------------------------------
+        # ====================================================
+        # CALCULATE SUBTOTAL
+        # ====================================================
 
         subtotal = Decimal("0.00")
 
@@ -216,6 +205,10 @@ class OrderListCreateView(APIView):
                 cart_item.product_id
             )
 
+            # ------------------------------------------------
+            # PRODUCT EXISTS
+            # ------------------------------------------------
+
             if not product:
 
                 return Response(
@@ -225,11 +218,11 @@ class OrderListCreateView(APIView):
                             "in your cart no longer exists."
                         )
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ------------------------------------------------
-            # Product availability
+            # PRODUCT AVAILABLE
             # ------------------------------------------------
 
             if not product.is_available:
@@ -241,14 +234,16 @@ class OrderListCreateView(APIView):
                             "is currently unavailable."
                         )
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ------------------------------------------------
-            # Quantity validation
+            # VALIDATE QUANTITY
             # ------------------------------------------------
 
-            if cart_item.quantity <= 0:
+            quantity = cart_item.quantity
+
+            if quantity <= 0:
 
                 return Response(
                     {
@@ -257,29 +252,28 @@ class OrderListCreateView(APIView):
                             f"{product.name}."
                         )
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ------------------------------------------------
-            # Stock validation
+            # VALIDATE STOCK
             # ------------------------------------------------
 
-            if cart_item.quantity > product.stock_quantity:
+            if quantity > product.stock_quantity:
 
                 return Response(
                     {
                         "detail": (
                             f"Only "
                             f"{product.stock_quantity} "
-                            f"{product.name} "
-                            "available."
+                            f"{product.name} available."
                         )
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ------------------------------------------------
-            # Price validation
+            # VALIDATE PRICE
             # ------------------------------------------------
 
             if product.price <= Decimal("0.00"):
@@ -291,58 +285,59 @@ class OrderListCreateView(APIView):
                             "has an invalid price."
                         )
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ------------------------------------------------
-            # Calculate item subtotal
+            # CALCULATE LINE TOTAL
             # ------------------------------------------------
 
-            item_subtotal = (
-                product.price *
-                cart_item.quantity
+            line_total = (
+                product.price * quantity
             )
 
-            subtotal += item_subtotal
+            subtotal += line_total
 
             validated_items.append(
                 {
                     "product": product,
-                    "quantity": cart_item.quantity,
+                    "quantity": quantity,
                     "price": product.price,
-                    "subtotal": item_subtotal,
                 }
             )
 
-        # ----------------------------------------------------
-        # Validate subtotal
-        # ----------------------------------------------------
+        # ====================================================
+        # VALIDATE SUBTOTAL
+        # ====================================================
 
         if subtotal <= Decimal("0.00"):
 
             return Response(
                 {
                     "detail": (
-                        "Order subtotal must be "
-                        "greater than zero."
+                        "Order total must be greater than zero."
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Compute Total
-        # ----------------------------------------------------
+        # ====================================================
+        # DELIVERY CHARGE
+        # ====================================================
 
-        delivery_charge = (
-            DELIVERY_CHARGE
-            if subtotal > Decimal("0.00")
-            else Decimal("0.00")
-        )
+        delivery_charge = DELIVERY_CHARGE
+
+        # Future:
+        #
+        # if subtotal >= Decimal("1000.00"):
+        #     delivery_charge = Decimal("0.00")
+
+        # ====================================================
+        # FINAL TOTAL
+        # ====================================================
 
         total_amount = (
-            subtotal +
-            delivery_charge
+            subtotal + delivery_charge
         )
 
         # ====================================================
@@ -358,8 +353,10 @@ class OrderListCreateView(APIView):
             total_amount=total_amount,
             status="Pending",
         )
+
         # ====================================================
-        # CREATE ORDER ITEMS + REDUCE STOCK
+        # CREATE ORDER ITEMS
+        # REDUCE PRODUCT STOCK
         # ====================================================
 
         for item in validated_items:
@@ -369,11 +366,7 @@ class OrderListCreateView(APIView):
             price = item["price"]
 
             # ------------------------------------------------
-            # Create permanent order item
-            #
-            # This stores the price at purchase time.
-            # If product price changes later, old orders
-            # remain correct.
+            # CREATE ORDER ITEM
             # ------------------------------------------------
 
             OrderItem.objects.create(
@@ -384,18 +377,23 @@ class OrderListCreateView(APIView):
             )
 
             # ------------------------------------------------
-            # Reduce stock
+            # REDUCE STOCK
             # ------------------------------------------------
 
             product.stock_quantity -= quantity
 
             # ------------------------------------------------
-            # Automatically make unavailable when stock = 0
+            # MARK UNAVAILABLE IF STOCK IS ZERO
             # ------------------------------------------------
 
-            if product.stock_quantity == 0:
+            if product.stock_quantity <= 0:
 
+                product.stock_quantity = 0
                 product.is_available = False
+
+            # ------------------------------------------------
+            # SAVE PRODUCT
+            # ------------------------------------------------
 
             product.save(
                 update_fields=[
@@ -405,18 +403,22 @@ class OrderListCreateView(APIView):
             )
 
         # ====================================================
-        # EMPTY CUSTOMER CART
+        # CLEAR CUSTOMER CART
         # ====================================================
 
         cart.items.all().delete()
 
         # ====================================================
-        # RETURN CREATED ORDER
+        # SERIALIZE ORDER
         # ====================================================
 
         serializer = OrderSerializer(
             order
         )
+
+        # ====================================================
+        # RETURN ORDER
+        # ====================================================
 
         return Response(
             {
@@ -425,12 +427,13 @@ class OrderListCreateView(APIView):
                 ),
                 "order": serializer.data,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
 
 
 # ============================================================
 # CUSTOMER SINGLE ORDER
+#
 # GET /api/orders/<id>/
 # ============================================================
 
@@ -442,9 +445,8 @@ class OrderDetailView(APIView):
 
         order = get_object_or_404(
             Order.objects
-            .prefetch_related(
-                "items__product"
-            ),
+            .select_related("customer")
+            .prefetch_related("items__product"),
             id=pk,
             customer=request.user,
         )
@@ -455,12 +457,13 @@ class OrderDetailView(APIView):
 
         return Response(
             serializer.data,
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
 # ============================================================
 # CUSTOMER CANCEL ORDER
+#
 # PATCH /api/orders/<id>/cancel/
 # ============================================================
 
@@ -471,9 +474,9 @@ class CancelOrderView(APIView):
     @transaction.atomic
     def patch(self, request, pk):
 
-        # ----------------------------------------------------
-        # Lock order
-        # ----------------------------------------------------
+        # ====================================================
+        # LOCK ORDER
+        # ====================================================
 
         order = get_object_or_404(
             Order.objects.select_for_update(),
@@ -481,9 +484,9 @@ class CancelOrderView(APIView):
             customer=request.user,
         )
 
-        # ----------------------------------------------------
-        # Only Pending orders can be cancelled
-        # ----------------------------------------------------
+        # ====================================================
+        # ONLY PENDING ORDERS CAN BE CANCELLED
+        # ====================================================
 
         if order.status != "Pending":
 
@@ -494,12 +497,12 @@ class CancelOrderView(APIView):
                         "can be cancelled."
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ----------------------------------------------------
-        # Get order items
-        # ----------------------------------------------------
+        # ====================================================
+        # GET ORDER ITEMS
+        # ====================================================
 
         order_items = (
             OrderItem.objects
@@ -507,31 +510,23 @@ class CancelOrderView(APIView):
             .filter(order=order)
         )
 
-        # ----------------------------------------------------
-        # Restore stock
-        # ----------------------------------------------------
+        # ====================================================
+        # RESTORE STOCK
+        # ====================================================
 
         for item in order_items:
 
             product = (
-                item.product.__class__
-                .objects
+                Product.objects
                 .select_for_update()
-                .get(
-                    id=item.product_id
-                )
+                .get(id=item.product_id)
             )
 
             product.stock_quantity += (
                 item.quantity
             )
 
-            # ----------------------------------------------
-            # Product becomes available again
-            # ----------------------------------------------
-
             if product.stock_quantity > 0:
-
                 product.is_available = True
 
             product.save(
@@ -541,9 +536,9 @@ class CancelOrderView(APIView):
                 ]
             )
 
-        # ----------------------------------------------------
-        # Cancel order
-        # ----------------------------------------------------
+        # ====================================================
+        # CANCEL ORDER
+        # ====================================================
 
         order.status = "Cancelled"
 
@@ -553,6 +548,10 @@ class CancelOrderView(APIView):
                 "updated_at",
             ]
         )
+
+        # ====================================================
+        # RETURN UPDATED ORDER
+        # ====================================================
 
         serializer = OrderSerializer(
             order
@@ -565,12 +564,13 @@ class CancelOrderView(APIView):
                 ),
                 "order": serializer.data,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
 # ============================================================
 # ADMIN ORDER LIST
+#
 # GET /api/orders/admin/
 # ============================================================
 
@@ -580,31 +580,27 @@ class AdminOrderListView(APIView):
 
     def get(self, request):
 
-        # ----------------------------------------------------
-        # Admin authorization
-        # ----------------------------------------------------
+        # ====================================================
+        # ADMIN CHECK
+        # ====================================================
 
         if request.user.role != "ADMIN":
 
             return Response(
                 {
-                    "detail": (
-                        "Admin access required."
-                    )
+                    "detail": "Admin access required."
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ----------------------------------------------------
-        # Get ALL real orders
-        # ----------------------------------------------------
+        # ====================================================
+        # GET ALL ORDERS
+        # ====================================================
 
         orders = (
             Order.objects
             .select_related("customer")
-            .prefetch_related(
-                "items__product"
-            )
+            .prefetch_related("items__product")
             .order_by("-created_at")
         )
 
@@ -615,12 +611,12 @@ class AdminOrderListView(APIView):
 
         return Response(
             serializer.data,
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
 # ============================================================
-# ADMIN GET / PATCH ORDER
+# ADMIN SINGLE ORDER
 #
 # GET   /api/orders/admin/<id>/
 # PATCH /api/orders/admin/<id>/
@@ -636,31 +632,27 @@ class AdminOrderUpdateView(APIView):
 
     def get(self, request, pk):
 
-        # ----------------------------------------------------
-        # Admin authorization
-        # ----------------------------------------------------
+        # ====================================================
+        # ADMIN CHECK
+        # ====================================================
 
         if request.user.role != "ADMIN":
 
             return Response(
                 {
-                    "detail": (
-                        "Admin access required."
-                    )
+                    "detail": "Admin access required."
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ----------------------------------------------------
-        # Get order
-        # ----------------------------------------------------
+        # ====================================================
+        # GET ORDER
+        # ====================================================
 
         order = get_object_or_404(
             Order.objects
             .select_related("customer")
-            .prefetch_related(
-                "items__product"
-            ),
+            .prefetch_related("items__product"),
             id=pk,
         )
 
@@ -670,7 +662,7 @@ class AdminOrderUpdateView(APIView):
 
         return Response(
             serializer.data,
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
     # ========================================================
@@ -680,37 +672,39 @@ class AdminOrderUpdateView(APIView):
     @transaction.atomic
     def patch(self, request, pk):
 
-        # ----------------------------------------------------
-        # Admin authorization
-        # ----------------------------------------------------
+        # ====================================================
+        # ADMIN CHECK
+        # ====================================================
 
         if request.user.role != "ADMIN":
 
             return Response(
                 {
-                    "detail": (
-                        "Admin access required."
-                    )
+                    "detail": "Admin access required."
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ----------------------------------------------------
-        # Lock order
-        # ----------------------------------------------------
+        # ====================================================
+        # LOCK ORDER
+        # ====================================================
 
         order = get_object_or_404(
             Order.objects.select_for_update(),
             id=pk,
         )
 
+        # ====================================================
+        # GET NEW STATUS
+        # ====================================================
+
         new_status = request.data.get(
             "status"
         )
 
-        # ----------------------------------------------------
-        # Validate status
-        # ----------------------------------------------------
+        # ====================================================
+        # VALID STATUS
+        # ====================================================
 
         valid_statuses = [
             choice[0]
@@ -721,19 +715,18 @@ class AdminOrderUpdateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Invalid order status."
-                    ),
-                    "valid_statuses": valid_statuses,
+                    "detail": "Invalid order status.",
+                    "valid_statuses":
+                        valid_statuses,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         old_status = order.status
 
-        # ----------------------------------------------------
-        # No change
-        # ----------------------------------------------------
+        # ====================================================
+        # NO STATUS CHANGE
+        # ====================================================
 
         if old_status == new_status:
 
@@ -744,16 +737,18 @@ class AdminOrderUpdateView(APIView):
             return Response(
                 {
                     "message": (
-                        "Order status is already "
+                        f"Order status is already "
                         f"{new_status}."
                     ),
                     "order": serializer.data,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         # ====================================================
-        # ADMIN CANCELS ORDER
+        # CANCEL ORDER
+        #
+        # Restore stock
         # ====================================================
 
         if (
@@ -770,8 +765,7 @@ class AdminOrderUpdateView(APIView):
             for item in order_items:
 
                 product = (
-                    item.product.__class__
-                    .objects
+                    Product.objects
                     .select_for_update()
                     .get(
                         id=item.product_id
@@ -783,7 +777,6 @@ class AdminOrderUpdateView(APIView):
                 )
 
                 if product.stock_quantity > 0:
-
                     product.is_available = True
 
                 product.save(
@@ -794,10 +787,9 @@ class AdminOrderUpdateView(APIView):
                 )
 
         # ====================================================
-        # PREVENT RE-SELLING STOCK
+        # RESTORE CANCELLED ORDER
         #
-        # If a cancelled order is somehow moved back to
-        # Processing/Pending, stock must be checked again.
+        # Deduct stock again
         # ====================================================
 
         if (
@@ -811,11 +803,14 @@ class AdminOrderUpdateView(APIView):
                 .filter(order=order)
             )
 
+            # ------------------------------------------------
+            # VALIDATE STOCK FIRST
+            # ------------------------------------------------
+
             for item in order_items:
 
                 product = (
-                    item.product.__class__
-                    .objects
+                    Product.objects
                     .select_for_update()
                     .get(
                         id=item.product_id
@@ -835,18 +830,17 @@ class AdminOrderUpdateView(APIView):
                                 f"for {product.name}."
                             )
                         },
-                        status=status.HTTP_400_BAD_REQUEST
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
 
             # ------------------------------------------------
-            # Deduct stock again
+            # DEDUCT STOCK
             # ------------------------------------------------
 
             for item in order_items:
 
                 product = (
-                    item.product.__class__
-                    .objects
+                    Product.objects
                     .select_for_update()
                     .get(
                         id=item.product_id
@@ -857,8 +851,9 @@ class AdminOrderUpdateView(APIView):
                     item.quantity
                 )
 
-                if product.stock_quantity == 0:
+                if product.stock_quantity <= 0:
 
+                    product.stock_quantity = 0
                     product.is_available = False
 
                 product.save(
@@ -868,9 +863,9 @@ class AdminOrderUpdateView(APIView):
                     ]
                 )
 
-        # ----------------------------------------------------
-        # Update order status
-        # ----------------------------------------------------
+        # ====================================================
+        # UPDATE ORDER STATUS
+        # ====================================================
 
         order.status = new_status
 
@@ -881,9 +876,9 @@ class AdminOrderUpdateView(APIView):
             ]
         )
 
-        # ----------------------------------------------------
-        # Return updated order
-        # ----------------------------------------------------
+        # ====================================================
+        # RETURN UPDATED ORDER
+        # ====================================================
 
         serializer = OrderSerializer(
             order
@@ -896,5 +891,5 @@ class AdminOrderUpdateView(APIView):
                 ),
                 "order": serializer.data,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
