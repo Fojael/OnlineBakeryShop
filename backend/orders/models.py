@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django.conf import settings
 from django.db import models
 
@@ -7,8 +5,6 @@ from products.models import Product
 
 
 class Order(models.Model):
-
-    DELIVERY_CHARGE = Decimal("60.00")
 
     STATUS_CHOICES = [
         ("Pending", "Pending"),
@@ -19,10 +15,8 @@ class Order(models.Model):
 
     PAYMENT_METHOD_CHOICES = [
         ("Cash on Delivery", "Cash on Delivery"),
-        ("bKash", "bKash"),
-        ("Nagad", "Nagad"),
-        ("Rocket", "Rocket"),
-        ("Credit Card", "Credit Card"),
+        ("SSLCommerz", "SSLCommerz"),
+        ("Stripe", "Stripe"),
     ]
 
     customer = models.ForeignKey(
@@ -39,16 +33,20 @@ class Order(models.Model):
         default="Cash on Delivery",
     )
 
+    # ======================================================
+    # ORDER AMOUNTS
+    # ======================================================
+
     subtotal = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=Decimal("0.00"),
+        default=0,
     )
 
     delivery_charge = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=DELIVERY_CHARGE,
+        default=60,
     )
 
     total_amount = models.DecimalField(
@@ -70,8 +68,14 @@ class Order(models.Model):
         auto_now=True,
     )
 
+    class Meta:
+        ordering = ["-created_at"]
+
     def __str__(self):
-        return f"Order #{self.id} - {self.customer.email}"
+        return (
+            f"Order #{self.id} - "
+            f"{self.customer.email}"
+        )
 
 
 class OrderItem(models.Model):
@@ -88,7 +92,9 @@ class OrderItem(models.Model):
         related_name="order_items",
     )
 
-    quantity = models.PositiveIntegerField(default=1)
+    quantity = models.PositiveIntegerField(
+        default=1,
+    )
 
     price = models.DecimalField(
         max_digits=10,
@@ -104,4 +110,7 @@ class OrderItem(models.Model):
         return self.price * self.quantity
 
     def __str__(self):
-        return f"{self.product.name} x {self.quantity}"
+        return (
+            f"{self.product.name} × "
+            f"{self.quantity}"
+        )

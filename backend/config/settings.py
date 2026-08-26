@@ -208,6 +208,19 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+# ==========================================================
+# SSLCommerz Configuration
+# ==========================================================
+
+SSLCOMMERZ_STORE_ID = config("SSLCOMMERZ_STORE_ID")
+SSLCOMMERZ_STORE_PASSWORD = config("SSLCOMMERZ_STORE_PASSWORD")
+
+SSLCOMMERZ_API_URL = config("SSLCOMMERZ_API_URL")
+
+SSLCOMMERZ_SUCCESS_URL = config("SSLCOMMERZ_SUCCESS_URL")
+SSLCOMMERZ_FAIL_URL = config("SSLCOMMERZ_FAIL_URL")
+SSLCOMMERZ_CANCEL_URL = config("SSLCOMMERZ_CANCEL_URL")
+SSLCOMMERZ_IPN_URL = config("SSLCOMMERZ_IPN_URL")
 # ==========================
 # LOGIN
 # ==========================
@@ -225,3 +238,11 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
 ]
+# ==========================================================
+# FRONTEND
+# ==========================================================
+
+FRONTEND_URL = config(
+    "FRONTEND_URL",
+    default="http://localhost:5173",
+)
