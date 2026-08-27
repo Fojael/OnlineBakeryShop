@@ -17,273 +17,386 @@ from .serializers import (
     OrderCreateSerializer,
 )
 
+
 # ==========================================================
 # CONSTANTS
 # ==========================================================
 
 DELIVERY_CHARGE = Decimal("60.00")
-# ======================================================
-# GET ORDERS
-# ======================================================
 
-def get(self, request):
-    """
-    Return all orders belonging to the authenticated user.
-    """
 
-    orders = (
-        Order.objects
-        .filter(customer=request.user)
-        .select_related("payment")
-        .prefetch_related("items__product")
-        .order_by("-created_at")
-    )
-
-    serializer = OrderSerializer(
-        orders,
-        many=True,
-        context={"request": request},
-    )
-
-    return Response(
-        serializer.data,
-        status=status.HTTP_200_OK,
-    )
-    # ======================================================
-# CREATE ORDER
-# ======================================================
-
-@transaction.atomic
-def post(self, request):
-    """
-    Create a new order from the authenticated user's cart.
-
-    Stock is deducted immediately only for Cash on Delivery.
-    For online payments (SSLCommerz), stock is deducted
-    after successful payment validation.
-    """
-
-    # --------------------------------------------------
-    # Validate request
-    # --------------------------------------------------
-
-    serializer = OrderCreateSerializer(
-        data=request.data,
-        context={"request": request},
-    )
-
-    serializer.is_valid(
-        raise_exception=True,
-    )
-
-    shipping_address = serializer.validated_data[
-        "shipping_address"
-    ]
-
-    payment_method = serializer.validated_data[
-        "payment_method"
-    ]
-
-    # --------------------------------------------------
-    # Load customer's cart
-    # --------------------------------------------------
-
-    cart = get_object_or_404(
-        Cart.objects.select_for_update(),
-        customer=request.user,
-    )
-
-    cart_items = list(
-        CartItem.objects
-        .select_related("product")
-        .select_for_update()
-        .filter(cart=cart)
-    )
-
-    if not cart_items:
-        return Response(
-            {
-                "detail": "Your cart is empty.",
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # --------------------------------------------------
-    # Validate products and calculate subtotal
-    # --------------------------------------------------
-
-    subtotal = Decimal("0.00")
-
-    for item in cart_items:
-
-        product = item.product
-
-        # Product availability
-        if not product.is_active:
-            return Response(
-                {
-                    "detail": (
-                        f"{product.name} is no longer available."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Stock check
-        if product.stock_quantity < item.quantity:
-            return Response(
-                {
-                    "detail": (
-                        f"Only {product.stock_quantity} "
-                        f"units of {product.name} "
-                        f"are available."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        subtotal += (
-            product.price * item.quantity
-        )
-
-    # --------------------------------------------------
-    # Calculate order totals
-    # --------------------------------------------------
-
-    delivery_charge = DELIVERY_CHARGE
-
-    total_amount = (
-        subtotal +
-        delivery_charge
-    )
-        # --------------------------------------------------
-    # Create Order
-    # --------------------------------------------------
-
-    order = Order.objects.create(
-        customer=request.user,
-        shipping_address=shipping_address,
-        payment_method=payment_method,
-        subtotal=subtotal,
-        delivery_charge=delivery_charge,
-        total_amount=total_amount,
-        status=Order.STATUS_PENDING,
-    )
-
-    # --------------------------------------------------
-    # Create Order Items
-    # --------------------------------------------------
-
-    order_items = []
-
-    for item in cart_items:
-
-        order_items.append(
-            OrderItem(
-                order=order,
-                product=item.product,
-                quantity=item.quantity,
-                price=item.product.price,
-            )
-        )
-
-    OrderItem.objects.bulk_create(
-        order_items
-    )
-
-    # --------------------------------------------------
-    # CASH ON DELIVERY
-    #
-    # Deduct stock immediately.
-    # --------------------------------------------------
-
-    if payment_method == Order.PAYMENT_COD:
-
-        for item in cart_items:
-
-            product = item.product
-
-            product.stock_quantity -= (
-                item.quantity
-            )
-
-            product.save(
-                update_fields=[
-                    "stock_quantity",
-                ]
-            )
-
-        # Clear cart
-        cart_items_queryset = CartItem.objects.filter(
-            cart=cart
-        )
-
-        cart_items_queryset.delete()
-
-        # Order becomes Processing immediately
-        order.status = Order.STATUS_PROCESSING
-
-        order.save(
-            update_fields=[
-                "status",
-            ]
-        )
-
-    # --------------------------------------------------
-    # SSLCommerz
-    #
-    # Keep stock untouched.
-    # Keep cart untouched.
-    # Payment app will:
-    #
-    #   • create payment
-    #   • validate payment
-    #   • deduct stock
-    #   • clear cart
-    # --------------------------------------------------
-
-    serializer = OrderSerializer(
-        order,
-        context={
-            "request": request,
-        },
-    )
-
-    return Response(
-        {
-            "message": "Order created successfully.",
-            "order": serializer.data,
-            "payment_required":
-                payment_method
-                == Order.PAYMENT_SSLCOMMERZ,
-        },
-        status=status.HTTP_201_CREATED,
-    )
-    # ==========================================================
-# CUSTOMER - ORDER DETAILS
+# ==========================================================
+# CUSTOMER - LIST ORDERS
 # ==========================================================
 
-class OrderDetailView(APIView):
+class OrderListCreateView(APIView):
     """
-    GET /api/orders/<pk>/
+    GET  /api/orders/
+    POST /api/orders/
 
-    Retrieve a single order belonging to the
-    authenticated customer.
+    Customer can:
+        - View their own orders
+        - Create a new order from their cart
     """
 
     permission_classes = [
         IsAuthenticated,
     ]
 
-    def get(self, request, pk):
+    # ======================================================
+    # GET ORDERS
+    # ======================================================
+
+    def get(self, request):
+        """
+        Return all orders belonging to the
+        authenticated customer.
+        """
+
+        orders = (
+            Order.objects
+            .filter(
+                customer=request.user,
+            )
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            )
+            .order_by(
+                "-created_at",
+            )
+        )
+
+        serializer = OrderSerializer(
+            orders,
+            many=True,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ======================================================
+    # CREATE ORDER
+    # ======================================================
+
+    @transaction.atomic
+    def post(self, request):
+        """
+        Create a new order from the authenticated
+        customer's cart.
+
+        COD:
+            - Stock deducted immediately
+            - Cart cleared immediately
+            - Order becomes Processing
+
+        SSLCommerz:
+            - Stock is NOT deducted here
+            - Cart is NOT cleared here
+            - Payment app handles stock deduction
+            - Cart is cleared after successful payment
+        """
+
+        # --------------------------------------------------
+        # Validate request
+        # --------------------------------------------------
+
+        serializer = OrderCreateSerializer(
+            data=request.data,
+            context={
+                "request": request,
+            },
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        shipping_address = (
+            serializer.validated_data[
+                "shipping_address"
+            ]
+        )
+
+        payment_method = (
+            serializer.validated_data[
+                "payment_method"
+            ]
+        )
+
+        # --------------------------------------------------
+        # Lock customer's cart
+        # --------------------------------------------------
+
+        cart = get_object_or_404(
+            Cart.objects.select_for_update(),
+            customer=request.user,
+        )
+
+        # --------------------------------------------------
+        # Lock cart items
+        # --------------------------------------------------
+
+        cart_items = list(
+            CartItem.objects
+            .select_related(
+                "product",
+            )
+            .select_for_update()
+            .filter(
+                cart=cart,
+            )
+        )
+
+        if not cart_items:
+
+            return Response(
+                {
+                    "detail": "Your cart is empty.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --------------------------------------------------
+        # Validate products and calculate subtotal
+        # --------------------------------------------------
+
+        subtotal = Decimal("0.00")
+
+        for item in cart_items:
+
+            product = item.product
+
+            # Product availability
+            if not product.is_active:
+
+                return Response(
+                    {
+                        "detail": (
+                            f"{product.name} is "
+                            "no longer available."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Quantity validation
+            if item.quantity <= 0:
+
+                return Response(
+                    {
+                        "detail": (
+                            f"Invalid quantity for "
+                            f"{product.name}."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Stock validation
+            if product.stock_quantity < item.quantity:
+
+                return Response(
+                    {
+                        "detail": (
+                            f"Only "
+                            f"{product.stock_quantity} "
+                            f"units of "
+                            f"{product.name} "
+                            "are available."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            subtotal += (
+                product.price *
+                item.quantity
+            )
+
+        # --------------------------------------------------
+        # Calculate totals
+        # --------------------------------------------------
+
+        delivery_charge = DELIVERY_CHARGE
+
+        total_amount = (
+            subtotal +
+            delivery_charge
+        )
+
+        # --------------------------------------------------
+        # Create order
+        # --------------------------------------------------
+
+        order = Order.objects.create(
+            customer=request.user,
+            shipping_address=shipping_address,
+            payment_method=payment_method,
+            subtotal=subtotal,
+            delivery_charge=delivery_charge,
+            total_amount=total_amount,
+            status=Order.STATUS_PENDING,
+        )
+
+        # --------------------------------------------------
+        # Create order items
+        # --------------------------------------------------
+
+        order_items = []
+
+        for item in cart_items:
+
+            order_items.append(
+                OrderItem(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price=item.product.price,
+                )
+            )
+
+        OrderItem.objects.bulk_create(
+            order_items,
+        )
+
+        # ==================================================
+        # CASH ON DELIVERY
+        # ==================================================
+
+        if payment_method == Order.PAYMENT_COD:
+
+            # ----------------------------------------------
+            # Deduct stock immediately
+            # ----------------------------------------------
+
+            for item in cart_items:
+
+                product = item.product
+
+                product.stock_quantity -= (
+                    item.quantity
+                )
+
+                product.save(
+                    update_fields=[
+                        "stock_quantity",
+                    ],
+                )
+
+            # ----------------------------------------------
+            # Clear cart
+            # ----------------------------------------------
+
+            CartItem.objects.filter(
+                cart=cart,
+            ).delete()
+
+            # ----------------------------------------------
+            # COD order goes to Processing
+            # ----------------------------------------------
+
+            order.status = (
+                Order.STATUS_PROCESSING
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ],
+            )
+
+        # ==================================================
+        # SSLCommerz
+        # ==================================================
+
+        elif (
+            payment_method
+            == Order.PAYMENT_SSLCOMMERZ
+        ):
+
+            # ------------------------------------------------
+            # IMPORTANT
+            #
+            # Do NOT deduct stock here.
+            #
+            # Do NOT clear cart here.
+            #
+            # payments/views.py will:
+            #
+            # 1. Validate SSLCommerz payment
+            # 2. Lock order
+            # 3. Check stock again
+            # 4. Deduct stock
+            # 5. Mark payment successful
+            # 6. Set order Processing
+            # 7. Clear cart
+            # ------------------------------------------------
+
+            pass
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        response_serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            {
+                "message": (
+                    "Order created successfully."
+                ),
+                "order": response_serializer.data,
+                "payment_required": (
+                    payment_method
+                    == Order.PAYMENT_SSLCOMMERZ
+                ),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ==========================================================
+# CUSTOMER - ORDER DETAILS
+# ==========================================================
+
+class OrderDetailView(APIView):
+    """
+    GET /api/orders/<order_id>/
+
+    Customer can view only their own order.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request, order_id):
 
         order = get_object_or_404(
             Order.objects
-            .select_related("customer")
+            .select_related(
+                "customer",
+                "payment",
+            )
             .prefetch_related(
                 "items__product",
             ),
-            pk=pk,
+            id=order_id,
             customer=request.user,
         )
 
@@ -298,24 +411,23 @@ class OrderDetailView(APIView):
             serializer.data,
             status=status.HTTP_200_OK,
         )
-        # ==========================================================
+
+
+# ==========================================================
 # CUSTOMER - CANCEL ORDER
 # ==========================================================
 
 class CancelOrderView(APIView):
     """
-    POST /api/orders/<pk>/cancel/
+    POST /api/orders/<order_id>/cancel/
 
-    Customer can cancel only their own order.
+    Customer can cancel:
+        Pending
+        Processing
 
-    Rules:
-
-    • Pending        -> Can cancel
-    • Processing     -> Can cancel
-    • Delivered      -> Cannot cancel
-    • Cancelled      -> Cannot cancel
-
-    Stock is restored only if it was already deducted.
+    Customer cannot cancel:
+        Delivered
+        Already Cancelled
     """
 
     permission_classes = [
@@ -323,11 +435,16 @@ class CancelOrderView(APIView):
     ]
 
     @transaction.atomic
-    def post(self, request, pk):
+    def post(self, request, order_id):
+
+        # --------------------------------------------------
+        # Lock order
+        # --------------------------------------------------
 
         order = get_object_or_404(
-            Order.objects.select_for_update(),
-            pk=pk,
+            Order.objects
+            .select_for_update(),
+            id=order_id,
             customer=request.user,
         )
 
@@ -335,11 +452,16 @@ class CancelOrderView(APIView):
         # Already cancelled
         # --------------------------------------------------
 
-        if order.status == Order.STATUS_CANCELLED:
+        if (
+            order.status
+            == Order.STATUS_CANCELLED
+        ):
 
             return Response(
                 {
-                    "detail": "Order is already cancelled."
+                    "detail": (
+                        "Order is already cancelled."
+                    ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -348,82 +470,127 @@ class CancelOrderView(APIView):
         # Delivered orders cannot be cancelled
         # --------------------------------------------------
 
-        if order.status == Order.STATUS_DELIVERED:
+        if (
+            order.status
+            == Order.STATUS_DELIVERED
+        ):
 
             return Response(
                 {
                     "detail": (
-                        "Delivered orders cannot be cancelled."
-                    )
+                        "Delivered orders cannot "
+                        "be cancelled."
+                    ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # --------------------------------------------------
-        # Determine whether stock should be restored
+        # Check payment status
         # --------------------------------------------------
 
-        restore_stock = False
+        payment_success = False
 
-        # COD orders deduct stock immediately
-        if order.payment_method == Order.PAYMENT_COD:
-            restore_stock = True
+        try:
 
-        # SSLCommerz deducts stock only after success
-        elif (
-            hasattr(order, "payment")
-            and order.payment.status
-            == order.payment.STATUS_SUCCESS
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .get(
+                    order=order,
+                )
+            )
+
+            if (
+                payment.status
+                == Payment.STATUS_SUCCESS
+            ):
+                payment_success = True
+
+        except Payment.DoesNotExist:
+
+            payment = None
+
+        # --------------------------------------------------
+        # Determine whether stock was deducted
+        # --------------------------------------------------
+
+        stock_was_deducted = False
+
+        # COD stock is deducted when order is created
+        if (
+            order.payment_method
+            == Order.PAYMENT_COD
         ):
-            restore_stock = True
+            stock_was_deducted = True
+
+        # SSLCommerz stock is deducted after payment
+        elif payment_success:
+
+            stock_was_deducted = True
 
         # --------------------------------------------------
         # Restore stock
         # --------------------------------------------------
 
-        if restore_stock:
+        if stock_was_deducted:
 
-            order_items = (
+            order_items = list(
                 OrderItem.objects
-                .select_related("product")
+                .select_related(
+                    "product",
+                )
                 .select_for_update()
-                .filter(order=order)
+                .filter(
+                    order=order,
+                )
             )
 
             for item in order_items:
 
                 product = item.product
 
-                product.stock_quantity += item.quantity
+                product.stock_quantity += (
+                    item.quantity
+                )
 
                 product.save(
                     update_fields=[
                         "stock_quantity",
-                    ]
+                    ],
                 )
 
         # --------------------------------------------------
-        # Cancel payment (if pending)
+        # Cancel pending payment
         # --------------------------------------------------
 
-        if hasattr(order, "payment"):
+        if payment:
 
-            payment = order.payment
+            if (
+                payment.status
+                == Payment.STATUS_PENDING
+            ):
 
-            if payment.status == payment.STATUS_PENDING:
                 payment.mark_cancelled()
 
         # --------------------------------------------------
-        # Update order status
+        # Cancel order
         # --------------------------------------------------
 
-        order.status = Order.STATUS_CANCELLED
+        order.status = (
+            Order.STATUS_CANCELLED
+        )
 
         order.save(
             update_fields=[
                 "status",
-            ]
+                "updated_at",
+            ],
         )
+
+        # --------------------------------------------------
+        # Response
+        # --------------------------------------------------
 
         serializer = OrderSerializer(
             order,
@@ -434,12 +601,16 @@ class CancelOrderView(APIView):
 
         return Response(
             {
-                "message": "Order cancelled successfully.",
+                "message": (
+                    "Order cancelled successfully."
+                ),
                 "order": serializer.data,
             },
             status=status.HTTP_200_OK,
         )
-        # ==========================================================
+
+
+# ==========================================================
 # ADMIN - LIST ALL ORDERS
 # ==========================================================
 
@@ -466,19 +637,20 @@ class AdminOrderListView(APIView):
                 {
                     "detail": (
                         "Admin permission required."
-                    )
+                    ),
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         # --------------------------------------------------
-        # Fetch orders
+        # Get all orders
         # --------------------------------------------------
 
         orders = (
             Order.objects
             .select_related(
                 "customer",
+                "payment",
             )
             .prefetch_related(
                 "items__product",
@@ -500,7 +672,9 @@ class AdminOrderListView(APIView):
             serializer.data,
             status=status.HTTP_200_OK,
         )
-        # ==========================================================
+
+
+# ==========================================================
 # ADMIN - UPDATE ORDER STATUS
 # ==========================================================
 
@@ -510,8 +684,11 @@ class AdminOrderUpdateView(APIView):
 
     Admin can update order status.
 
-    If an order is cancelled after stock has already been
-    deducted, stock will automatically be restored.
+    Allowed statuses:
+        Pending
+        Processing
+        Delivered
+        Cancelled
     """
 
     permission_classes = [
@@ -519,7 +696,7 @@ class AdminOrderUpdateView(APIView):
     ]
 
     @transaction.atomic
-    def patch(self, request, pk):
+    def patch(self, request, order_id):
 
         # --------------------------------------------------
         # Admin permission
@@ -531,27 +708,34 @@ class AdminOrderUpdateView(APIView):
                 {
                     "detail": (
                         "Admin permission required."
-                    )
+                    ),
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         # --------------------------------------------------
-        # Get order
+        # Lock order
         # --------------------------------------------------
 
         order = get_object_or_404(
-            Order.objects.select_for_update(),
-            pk=pk,
+            Order.objects
+            .select_for_update(),
+            id=order_id,
         )
 
-        new_status = request.data.get(
-            "status",
-            "",
+        # --------------------------------------------------
+        # Get new status
+        # --------------------------------------------------
+
+        new_status = str(
+            request.data.get(
+                "status",
+                "",
+            )
         ).strip()
 
         # --------------------------------------------------
-        # Validate status
+        # Allowed statuses
         # --------------------------------------------------
 
         allowed_statuses = [
@@ -565,14 +749,18 @@ class AdminOrderUpdateView(APIView):
 
             return Response(
                 {
-                    "detail": "Invalid order status.",
-                    "allowed_values": allowed_statuses,
+                    "detail": (
+                        "Invalid order status."
+                    ),
+                    "allowed_values": (
+                        allowed_statuses
+                    ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # --------------------------------------------------
-        # No changes
+        # No change
         # --------------------------------------------------
 
         if order.status == new_status:
@@ -595,55 +783,119 @@ class AdminOrderUpdateView(APIView):
             )
 
         # --------------------------------------------------
-        # Restore stock if cancelling
+        # Prevent reopening cancelled orders
+        #
+        # This is important because stock may already
+        # have been restored when the order was cancelled.
         # --------------------------------------------------
 
         if (
-            new_status == Order.STATUS_CANCELLED
-            and order.status != Order.STATUS_CANCELLED
+            order.status
+            == Order.STATUS_CANCELLED
+            and new_status
+            != Order.STATUS_CANCELLED
         ):
 
-            restore_stock = False
+            return Response(
+                {
+                    "detail": (
+                        "Cancelled orders cannot "
+                        "be reopened."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --------------------------------------------------
+        # Delivered orders cannot move backwards
+        # --------------------------------------------------
+
+        if (
+            order.status
+            == Order.STATUS_DELIVERED
+            and new_status
+            != Order.STATUS_DELIVERED
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "Delivered orders cannot "
+                        "be moved to another status."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CANCEL ORDER
+        # ==================================================
+
+        if (
+            new_status
+            == Order.STATUS_CANCELLED
+        ):
 
             # ----------------------------------------------
-            # COD orders already deducted stock
+            # Check payment
             # ----------------------------------------------
 
-            if (
-                order.payment_method.lower()
-                in [
-                    "cash on delivery",
-                    "cod",
-                ]
-            ):
-                restore_stock = True
-
-            # ----------------------------------------------
-            # Online payment successful
-            # ----------------------------------------------
+            payment_success = False
 
             try:
 
+                payment = (
+                    Payment.objects
+                    .select_for_update()
+                    .get(
+                        order=order,
+                    )
+                )
+
                 if (
-                    order.payment.status
+                    payment.status
                     == Payment.STATUS_SUCCESS
                 ):
-                    restore_stock = True
+                    payment_success = True
 
             except Payment.DoesNotExist:
-                pass
+
+                payment = None
+
+            # ----------------------------------------------
+            # Determine whether stock was deducted
+            # ----------------------------------------------
+
+            stock_was_deducted = False
+
+            # COD
+            if (
+                order.payment_method
+                == Order.PAYMENT_COD
+            ):
+
+                stock_was_deducted = True
+
+            # SSLCommerz successful payment
+            elif payment_success:
+
+                stock_was_deducted = True
 
             # ----------------------------------------------
             # Restore stock
             # ----------------------------------------------
 
-            if restore_stock:
+            if stock_was_deducted:
 
-                order_items = (
+                order_items = list(
                     OrderItem.objects
-                    .select_related("product")
+                    .select_related(
+                        "product",
+                    )
                     .select_for_update()
-                    .filter(order=order)
+                    .filter(
+                        order=order,
+                    )
                 )
 
                 for item in order_items:
@@ -657,12 +909,25 @@ class AdminOrderUpdateView(APIView):
                     product.save(
                         update_fields=[
                             "stock_quantity",
-                        ]
+                        ],
                     )
 
-        # --------------------------------------------------
-        # Update status
-        # --------------------------------------------------
+            # ----------------------------------------------
+            # Cancel pending payment
+            # ----------------------------------------------
+
+            if payment:
+
+                if (
+                    payment.status
+                    == Payment.STATUS_PENDING
+                ):
+
+                    payment.mark_cancelled()
+
+        # ==================================================
+        # UPDATE ORDER STATUS
+        # ==================================================
 
         order.status = new_status
 
@@ -670,8 +935,12 @@ class AdminOrderUpdateView(APIView):
             update_fields=[
                 "status",
                 "updated_at",
-            ]
+            ],
         )
+
+        # --------------------------------------------------
+        # Response
+        # --------------------------------------------------
 
         serializer = OrderSerializer(
             order,

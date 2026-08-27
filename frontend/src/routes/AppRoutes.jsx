@@ -29,6 +29,9 @@ import Wishlist from "../pages/Customer/Wishlist";
 import Address from "../pages/Address/Address";
 import AddAddress from "../pages/Address/AddAddress";
 import EditAddress from "../pages/Address/EditAddress";
+import PaymentSuccess from "../pages/Checkout/PaymentSuccess";
+import PaymentFailed from "../pages/Checkout/PaymentFailed";
+import PaymentCancelled from "../pages/Checkout/PaymentCancelled";
 
 // ============================================================
 // ADMIN DASHBOARD
@@ -176,6 +179,24 @@ const AppRoutes = () => {
                             </ProtectedRoute>
                         }
                     />
+{/* ==================================================
+    PAYMENT RESULT PAGES
+================================================== */}
+
+<Route
+    path="/payment/success/"
+    element={<PaymentSuccess />}
+/>
+
+<Route
+    path="/payment/failed/"
+    element={<PaymentFailed />}
+/>
+
+<Route
+    path="/payment/cancelled/"
+    element={<PaymentCancelled />}
+/>
 
                     {/* ==================================================
                         CUSTOMER DASHBOARD
