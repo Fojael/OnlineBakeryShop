@@ -3,15 +3,19 @@ from rest_framework import serializers
 from .models import Order, OrderItem
 
 
-class OrderItemSerializer(serializers.ModelSerializer):
+# ==========================================================
+# ORDER ITEM SERIALIZER
+# ==========================================================
 
-    product_name = serializers.CharField(
-        source="product.name",
-        read_only=True,
-    )
+class OrderItemSerializer(serializers.ModelSerializer):
 
     product_id = serializers.IntegerField(
         source="product.id",
+        read_only=True,
+    )
+
+    product_name = serializers.CharField(
+        source="product.name",
         read_only=True,
     )
 
@@ -30,18 +34,15 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-        read_only_fields = [
-            "id",
-            "product_id",
-            "product_name",
-            "price",
-            "subtotal",
-            "created_at",
-        ]
+        read_only_fields = fields
 
     def get_subtotal(self, obj):
         return obj.subtotal
 
+
+# ==========================================================
+# ORDER SERIALIZER
+# ==========================================================
 
 class OrderSerializer(serializers.ModelSerializer):
 
@@ -62,6 +63,14 @@ class OrderSerializer(serializers.ModelSerializer):
 
     item_count = serializers.SerializerMethodField()
 
+    payment_status = serializers.SerializerMethodField()
+
+    transaction_id = serializers.SerializerMethodField()
+
+    is_paid = serializers.ReadOnlyField()
+
+    can_cancel = serializers.ReadOnlyField()
+
     class Meta:
         model = Order
 
@@ -71,29 +80,87 @@ class OrderSerializer(serializers.ModelSerializer):
             "customer_email",
             "shipping_address",
             "payment_method",
+            "payment_status",
+            "transaction_id",
             "subtotal",
             "delivery_charge",
             "total_amount",
             "status",
+            "is_paid",
+            "can_cancel",
             "items",
             "item_count",
             "created_at",
             "updated_at",
         ]
 
-        read_only_fields = [
-            "id",
-            "customer_name",
-            "customer_email",
-            "subtotal",
-            "delivery_charge",
-            "total_amount",
-            "status",
-            "items",
-            "item_count",
-            "created_at",
-            "updated_at",
-        ]
+        read_only_fields = fields
 
     def get_item_count(self, obj):
         return obj.items.count()
+
+    def get_payment_status(self, obj):
+
+        if hasattr(obj, "payment"):
+            return obj.payment.status
+
+        if obj.payment_method == Order.PAYMENT_COD:
+            return "Cash on Delivery"
+
+        return None
+
+    def get_transaction_id(self, obj):
+
+        if hasattr(obj, "payment"):
+            return obj.payment.transaction_id
+
+        return None
+
+
+# ==========================================================
+# ORDER CREATE SERIALIZER
+# ==========================================================
+
+class OrderCreateSerializer(serializers.ModelSerializer):
+    """
+    Used when customers create a new order.
+
+    Customer is automatically taken from the authenticated user.
+
+    Prices, subtotal, delivery charge and total are
+    calculated by the backend.
+    """
+
+    class Meta:
+        model = Order
+
+        fields = [
+            "shipping_address",
+            "payment_method",
+        ]
+
+    def validate_shipping_address(self, value):
+
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Shipping address is required."
+            )
+
+        return value
+
+    def validate_payment_method(self, value):
+
+        allowed = [
+            Order.PAYMENT_COD,
+            Order.PAYMENT_SSLCOMMERZ,
+            Order.PAYMENT_STRIPE,
+        ]
+
+        if value not in allowed:
+            raise serializers.ValidationError(
+                "Invalid payment method."
+            )
+
+        return value

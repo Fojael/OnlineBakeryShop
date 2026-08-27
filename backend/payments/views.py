@@ -21,15 +21,12 @@ from .services import SSLCommerzGateway
 
 
 # ==========================================================
-# Helper Functions
+# HELPER FUNCTIONS
 # ==========================================================
 
 def get_react_url(path):
     """
     Build React frontend URL.
-
-    Example:
-    http://localhost:5173/payment/success/
     """
 
     base_url = getattr(
@@ -46,7 +43,7 @@ def get_request_value(request, key, default=""):
     Read a value from POST or GET.
 
     SSLCommerz normally sends callback data through POST,
-    but accepting GET as fallback makes local testing easier.
+    but GET is accepted as a fallback for local testing.
     """
 
     value = request.POST.get(key)
@@ -68,6 +65,10 @@ def validate_sslcommerz_payment(payment, validation):
 
     if not validation:
         return False, "Empty validation response."
+
+    # ------------------------------------------------------
+    # Validate SSLCommerz status
+    # ------------------------------------------------------
 
     validation_status = str(
         validation.get("status", "")
@@ -113,31 +114,36 @@ def validate_sslcommerz_payment(payment, validation):
         validation.get("currency", "")
     ).upper()
 
-    if returned_currency != payment.currency.upper():
+    expected_currency = str(
+        payment.currency
+    ).upper()
+
+    if returned_currency != expected_currency:
         return False, "Payment currency mismatch."
 
     return True, ""
 
 
-def process_successful_payment(
-    payment,
-    validation,
-):
+def process_successful_payment(payment, validation):
     """
     Mark payment and order as successful.
 
-    Uses a database transaction to keep both records
-    consistent.
+    Both payment and order are updated inside
+    a database transaction.
     """
 
     with transaction.atomic():
 
         # --------------------------------------------------
-        # Do not process successful payment twice
+        # Prevent duplicate processing
         # --------------------------------------------------
 
         if payment.status == Payment.STATUS_SUCCESS:
             return
+
+        # --------------------------------------------------
+        # Mark payment successful
+        # --------------------------------------------------
 
         payment.mark_success(
             gateway_transaction_id=validation.get(
@@ -172,7 +178,7 @@ def process_successful_payment(
 
         order = payment.order
 
-        order.status = "Processing"
+        order.status = Order.STATUS_PROCESSING
 
         order.save(
             update_fields=[
@@ -210,10 +216,11 @@ class CreatePaymentView(APIView):
         )
 
         # --------------------------------------------------
-        # Check order amount
+        # Validate order amount
         # --------------------------------------------------
 
-        if not order.total_amount:
+        if order.total_amount is None:
+
             return Response(
                 {
                     "detail": "Order amount is invalid."
@@ -222,9 +229,13 @@ class CreatePaymentView(APIView):
             )
 
         if Decimal(str(order.total_amount)) <= 0:
+
             return Response(
                 {
-                    "detail": "Order amount must be greater than zero."
+                    "detail": (
+                        "Order amount must be "
+                        "greater than zero."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -234,6 +245,7 @@ class CreatePaymentView(APIView):
         # --------------------------------------------------
 
         try:
+
             payment = order.payment
 
         except Payment.DoesNotExist:
@@ -241,20 +253,25 @@ class CreatePaymentView(APIView):
             payment = None
 
         # --------------------------------------------------
-        # Do not create another payment for a paid order
+        # Prevent duplicate payment
         # --------------------------------------------------
 
-        if payment and payment.status == Payment.STATUS_SUCCESS:
+        if (
+            payment
+            and payment.status == Payment.STATUS_SUCCESS
+        ):
 
             return Response(
                 {
-                    "detail": "This order has already been paid."
+                    "detail": (
+                        "This order has already been paid."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # --------------------------------------------------
-        # Create payment object
+        # Create SSLCommerz session
         # --------------------------------------------------
 
         gateway = SSLCommerzGateway()
@@ -273,8 +290,7 @@ class CreatePaymentView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Unable to connect to "
-                        "SSLCommerz."
+                        "Unable to connect to SSLCommerz."
                     ),
                     "error": str(exc),
                 },
@@ -286,8 +302,7 @@ class CreatePaymentView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Unable to initialize "
-                        "payment."
+                        "Unable to initialize payment."
                     ),
                     "error": str(exc),
                 },
@@ -302,11 +317,9 @@ class CreatePaymentView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        gateway_response.get(
-                            "failedreason",
-                            "Unable to initialize payment.",
-                        )
+                    "detail": gateway_response.get(
+                        "failedreason",
+                        "Unable to initialize payment.",
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -360,7 +373,7 @@ class CreatePaymentView(APIView):
             )
 
         # --------------------------------------------------
-        # Return gateway URL to React
+        # Return payment URL
         # --------------------------------------------------
 
         return Response(
@@ -393,16 +406,14 @@ def payment_success(request):
     )
 
     # ------------------------------------------------------
-    # Check callback data
+    # Validate callback data
     # ------------------------------------------------------
 
     if not validation_id or not transaction_id:
 
         return Response(
             {
-                "detail": (
-                    "Invalid payment response."
-                )
+                "detail": "Invalid payment response."
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
@@ -429,7 +440,7 @@ def payment_success(request):
         )
 
     # ------------------------------------------------------
-    # Already successful
+    # Prevent duplicate processing
     # ------------------------------------------------------
 
     if payment.status == Payment.STATUS_SUCCESS:
@@ -441,6 +452,10 @@ def payment_success(request):
                     "Payment has already been completed."
                 ),
                 "order_id": payment.order_id,
+                "redirect_url": get_react_url(
+                    f"payment/success/"
+                    f"?order_id={payment.order_id}"
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -474,16 +489,14 @@ def payment_success(request):
 
         return Response(
             {
-                "detail": (
-                    "Payment validation error."
-                ),
+                "detail": "Payment validation error.",
                 "error": str(exc),
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     # ------------------------------------------------------
-    # Validate transaction
+    # Validate payment
     # ------------------------------------------------------
 
     is_valid, error_message = (
@@ -506,7 +519,7 @@ def payment_success(request):
         )
 
     # ------------------------------------------------------
-    # Mark successful
+    # Process successful payment
     # ------------------------------------------------------
 
     process_successful_payment(
@@ -528,7 +541,8 @@ def payment_success(request):
             "transaction_id": payment.transaction_id,
             "status": payment.status,
             "redirect_url": get_react_url(
-                f"payment/success/?order_id={payment.order_id}"
+                f"payment/success/"
+                f"?order_id={payment.order_id}"
             ),
         },
         status=status.HTTP_200_OK,
@@ -547,6 +561,8 @@ def payment_fail(request):
         "tran_id",
     )
 
+    order_id = None
+
     if transaction_id:
 
         try:
@@ -555,7 +571,7 @@ def payment_fail(request):
                 transaction_id=transaction_id
             )
 
-            # Do not overwrite successful payments
+            # Do not overwrite successful payment
             if payment.status != Payment.STATUS_SUCCESS:
 
                 payment.mark_failed()
@@ -564,11 +580,7 @@ def payment_fail(request):
 
         except Payment.DoesNotExist:
 
-            order_id = None
-
-    else:
-
-        order_id = None
+            pass
 
     return Response(
         {
@@ -595,6 +607,8 @@ def payment_cancel(request):
         "tran_id",
     )
 
+    order_id = None
+
     if transaction_id:
 
         try:
@@ -603,7 +617,7 @@ def payment_cancel(request):
                 transaction_id=transaction_id
             )
 
-            # Do not overwrite successful payments
+            # Do not overwrite successful payment
             if payment.status != Payment.STATUS_SUCCESS:
 
                 payment.mark_cancelled()
@@ -612,11 +626,7 @@ def payment_cancel(request):
 
         except Payment.DoesNotExist:
 
-            order_id = None
-
-    else:
-
-        order_id = None
+            pass
 
     return Response(
         {
@@ -640,8 +650,8 @@ def payment_ipn(request):
     """
     SSLCommerz Instant Payment Notification.
 
-    IPN is important because the browser callback should
-    not be treated as the only source of payment confirmation.
+    The IPN callback validates the transaction directly
+    with SSLCommerz before marking the payment successful.
     """
 
     transaction_id = get_request_value(
@@ -655,16 +665,14 @@ def payment_ipn(request):
     )
 
     # ------------------------------------------------------
-    # Check required information
+    # Validate IPN data
     # ------------------------------------------------------
 
     if not transaction_id or not validation_id:
 
         return Response(
             {
-                "detail": (
-                    "Invalid IPN request."
-                )
+                "detail": "Invalid IPN request."
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
@@ -691,7 +699,7 @@ def payment_ipn(request):
         )
 
     # ------------------------------------------------------
-    # Do not process again
+    # Prevent duplicate processing
     # ------------------------------------------------------
 
     if payment.status == Payment.STATUS_SUCCESS:
@@ -699,15 +707,15 @@ def payment_ipn(request):
         return Response(
             {
                 "success": True,
-                "message": (
-                    "Payment already processed."
-                ),
+                "message": "Payment already processed.",
+                "order_id": payment.order_id,
+                "transaction_id": payment.transaction_id,
             },
             status=status.HTTP_200_OK,
         )
 
     # ------------------------------------------------------
-    # Validate through SSLCommerz
+    # Validate payment through SSLCommerz
     # ------------------------------------------------------
 
     gateway = SSLCommerzGateway()
@@ -734,16 +742,14 @@ def payment_ipn(request):
 
         return Response(
             {
-                "detail": (
-                    "IPN validation error."
-                ),
+                "detail": "IPN validation error.",
                 "error": str(exc),
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     # ------------------------------------------------------
-    # Validate payment data
+    # Validate transaction data
     # ------------------------------------------------------
 
     is_valid, error_message = (
@@ -766,7 +772,7 @@ def payment_ipn(request):
         )
 
     # ------------------------------------------------------
-    # Mark payment successful
+    # Process successful payment
     # ------------------------------------------------------
 
     process_successful_payment(

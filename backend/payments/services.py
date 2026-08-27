@@ -17,14 +17,47 @@ class SSLCommerzGateway:
     """
 
     def __init__(self):
-        self.store_id = settings.SSLCOMMERZ_STORE_ID
-        self.store_password = settings.SSLCOMMERZ_STORE_PASSWORD
-        self.base_url = settings.SSLCOMMERZ_API_URL
+        # ======================================================
+        # SSLCommerz Configuration
+        # ======================================================
 
-        # SSLCommerz validation API
-        self.validation_url = (
-            "https://sandbox.sslcommerz.com"
-            "/validator/api/validationserverAPI.php"
+        self.store_id = getattr(
+            settings,
+            "SSLCOMMERZ_STORE_ID",
+            "",
+        )
+
+        self.store_password = getattr(
+            settings,
+            "SSLCOMMERZ_STORE_PASSWORD",
+            "",
+        )
+
+        self.base_url = getattr(
+            settings,
+            "SSLCOMMERZ_API_URL",
+            "https://sandbox.sslcommerz.com/gwprocess/v4/api.php",
+        )
+
+        # ------------------------------------------------------
+        # Validation API
+        # ------------------------------------------------------
+
+        self.validation_url = getattr(
+            settings,
+            "SSLCOMMERZ_VALIDATION_URL",
+            "https://sandbox.sslcommerz.com/"
+            "validator/api/validationserverAPI.php",
+        )
+
+        # ------------------------------------------------------
+        # Request timeout
+        # ------------------------------------------------------
+
+        self.timeout = getattr(
+            settings,
+            "SSLCOMMERZ_TIMEOUT",
+            30,
         )
 
     # ==========================================================
@@ -36,7 +69,7 @@ class SSLCommerzGateway:
         Generate a unique transaction ID.
 
         SSLCommerz requires tran_id to uniquely identify
-        the payment transaction.
+        a payment transaction.
         """
 
         return uuid.uuid4().hex.upper()
@@ -54,15 +87,17 @@ class SSLCommerzGateway:
         Create an SSLCommerz payment session.
 
         Returns:
-            transaction_id
-            SSLCommerz response
+            (
+                transaction_id,
+                sslcommerz_response
+            )
         """
 
         transaction_id = self.generate_transaction_id()
 
-        # ------------------------------------------------------
-        # Customer information
-        # ------------------------------------------------------
+        # ======================================================
+        # Customer Information
+        # ======================================================
 
         customer_name = (
             customer.get_full_name()
@@ -80,9 +115,12 @@ class SSLCommerzGateway:
             "",
         )
 
-        # ------------------------------------------------------
-        # Shipping address
-        # ------------------------------------------------------
+        if not customer_phone:
+            customer_phone = "01700000000"
+
+        # ======================================================
+        # Shipping Address
+        # ======================================================
 
         shipping_address = getattr(
             order,
@@ -93,30 +131,79 @@ class SSLCommerzGateway:
         if not shipping_address:
             shipping_address = "Dhaka, Bangladesh"
 
-        # ------------------------------------------------------
-        # Payment payload
-        # ------------------------------------------------------
+        # ======================================================
+        # Payment Amount
+        # ======================================================
+
+        total_amount = str(
+            order.total_amount
+        )
+
+        # ======================================================
+        # Callback URLs
+        # ======================================================
+
+        success_url = getattr(
+            settings,
+            "SSLCOMMERZ_SUCCESS_URL",
+            "",
+        )
+
+        fail_url = getattr(
+            settings,
+            "SSLCOMMERZ_FAIL_URL",
+            "",
+        )
+
+        cancel_url = getattr(
+            settings,
+            "SSLCOMMERZ_CANCEL_URL",
+            "",
+        )
+
+        ipn_url = getattr(
+            settings,
+            "SSLCOMMERZ_IPN_URL",
+            "",
+        )
+
+        # ======================================================
+        # SSLCommerz Payload
+        # ======================================================
 
         payload = {
+            # --------------------------------------------------
+            # Store Credentials
+            # --------------------------------------------------
+
             "store_id": self.store_id,
+
             "store_passwd": self.store_password,
 
-            "total_amount": str(
-                order.total_amount
-            ),
+            # --------------------------------------------------
+            # Transaction
+            # --------------------------------------------------
+
+            "total_amount": total_amount,
 
             "currency": "BDT",
 
             "tran_id": transaction_id,
 
+            # --------------------------------------------------
             # Callback URLs
-            "success_url": settings.SSLCOMMERZ_SUCCESS_URL,
-            "fail_url": settings.SSLCOMMERZ_FAIL_URL,
-            "cancel_url": settings.SSLCOMMERZ_CANCEL_URL,
-            "ipn_url": settings.SSLCOMMERZ_IPN_URL,
+            # --------------------------------------------------
+
+            "success_url": success_url,
+
+            "fail_url": fail_url,
+
+            "cancel_url": cancel_url,
+
+            "ipn_url": ipn_url,
 
             # --------------------------------------------------
-            # Product information
+            # Product Information
             # --------------------------------------------------
 
             "shipping_method": "Courier",
@@ -130,7 +217,7 @@ class SSLCommerzGateway:
             "product_profile": "general",
 
             # --------------------------------------------------
-            # Customer information
+            # Customer Information
             # --------------------------------------------------
 
             "cus_name": customer_name,
@@ -152,7 +239,7 @@ class SSLCommerzGateway:
             "cus_fax": "",
 
             # --------------------------------------------------
-            # Shipping information
+            # Shipping Information
             # --------------------------------------------------
 
             "ship_name": customer_name,
@@ -168,30 +255,35 @@ class SSLCommerzGateway:
             "ship_country": "Bangladesh",
         }
 
-        # ------------------------------------------------------
-        # Send request to SSLCommerz
-        # ------------------------------------------------------
+        # ======================================================
+        # Send Payment Request
+        # ======================================================
 
         response = requests.post(
             self.base_url,
             data=payload,
-            timeout=30,
+            timeout=self.timeout,
         )
 
-        # Raise exception for HTTP errors
+        # ------------------------------------------------------
+        # Raise HTTP errors
+        # ------------------------------------------------------
+
         response.raise_for_status()
 
-        # ------------------------------------------------------
-        # Parse response
-        # ------------------------------------------------------
+        # ======================================================
+        # Parse SSLCommerz Response
+        # ======================================================
 
         try:
+
             response_data = response.json()
 
-        except ValueError:
+        except ValueError as exc:
+
             raise requests.RequestException(
                 "SSLCommerz returned an invalid JSON response."
-            )
+            ) from exc
 
         return (
             transaction_id,
@@ -209,11 +301,27 @@ class SSLCommerzGateway:
         """
         Validate a completed SSLCommerz transaction.
 
-        SSLCommerz returns a validation ID (val_id)
-        after successful payment.
+        Parameters:
+            validation_id:
+                SSLCommerz val_id.
 
-        The backend uses this ID to verify the transaction.
+        Returns:
+            SSLCommerz validation response.
         """
+
+        # ======================================================
+        # Validate Input
+        # ======================================================
+
+        if not validation_id:
+
+            raise ValueError(
+                "SSLCommerz validation ID is required."
+            )
+
+        # ======================================================
+        # Validation Parameters
+        # ======================================================
 
         params = {
             "val_id": validation_id,
@@ -225,28 +333,34 @@ class SSLCommerzGateway:
             "format": "json",
         }
 
-        # ------------------------------------------------------
-        # Send validation request
-        # ------------------------------------------------------
+        # ======================================================
+        # Send Validation Request
+        # ======================================================
 
         response = requests.get(
             self.validation_url,
             params=params,
-            timeout=30,
+            timeout=self.timeout,
         )
+
+        # ------------------------------------------------------
+        # Raise HTTP errors
+        # ------------------------------------------------------
 
         response.raise_for_status()
 
-        # ------------------------------------------------------
-        # Parse response
-        # ------------------------------------------------------
+        # ======================================================
+        # Parse Response
+        # ======================================================
 
         try:
+
             response_data = response.json()
 
-        except ValueError:
+        except ValueError as exc:
+
             raise requests.RequestException(
                 "SSLCommerz validation returned invalid JSON."
-            )
+            ) from exc
 
         return response_data

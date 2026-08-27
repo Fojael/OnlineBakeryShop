@@ -212,15 +212,45 @@ SIMPLE_JWT = {
 # SSLCommerz Configuration
 # ==========================================================
 
-SSLCOMMERZ_STORE_ID = config("SSLCOMMERZ_STORE_ID")
-SSLCOMMERZ_STORE_PASSWORD = config("SSLCOMMERZ_STORE_PASSWORD")
+SSLCOMMERZ_STORE_ID = "your_store_id"
 
-SSLCOMMERZ_API_URL = config("SSLCOMMERZ_API_URL")
+SSLCOMMERZ_STORE_PASSWORD = "your_store_password"
 
-SSLCOMMERZ_SUCCESS_URL = config("SSLCOMMERZ_SUCCESS_URL")
-SSLCOMMERZ_FAIL_URL = config("SSLCOMMERZ_FAIL_URL")
-SSLCOMMERZ_CANCEL_URL = config("SSLCOMMERZ_CANCEL_URL")
-SSLCOMMERZ_IPN_URL = config("SSLCOMMERZ_IPN_URL")
+# Sandbox payment API
+SSLCOMMERZ_API_URL = (
+    "https://sandbox.sslcommerz.com/"
+    "gwprocess/v4/api.php"
+)
+
+# Sandbox validation API
+SSLCOMMERZ_VALIDATION_URL = (
+    "https://sandbox.sslcommerz.com/"
+    "validator/api/validationserverAPI.php"
+)
+
+SSLCOMMERZ_TIMEOUT = 30
+
+# ==========================================================
+# Payment Callback URLs
+# ==========================================================
+
+SSLCOMMERZ_SUCCESS_URL = (
+    "http://127.0.0.1:8000/api/payments/success/"
+)
+
+SSLCOMMERZ_FAIL_URL = (
+    "http://127.0.0.1:8000/api/payments/fail/"
+)
+
+SSLCOMMERZ_CANCEL_URL = (
+    "http://127.0.0.1:8000/api/payments/cancel/"
+)
+
+SSLCOMMERZ_IPN_URL = (
+    "http://127.0.0.1:8000/api/payments/ipn/"
+)
+
+FRONTEND_URL = "http://localhost:5173"
 # ==========================
 # LOGIN
 # ==========================
@@ -238,11 +268,3 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
 ]
-# ==========================================================
-# FRONTEND
-# ==========================================================
-
-FRONTEND_URL = config(
-    "FRONTEND_URL",
-    default="http://localhost:5173",
-)

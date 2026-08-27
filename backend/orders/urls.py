@@ -8,43 +8,50 @@ from .views import (
     AdminOrderUpdateView,
 )
 
+app_name = "orders"
 
 urlpatterns = [
-    # =========================================================
-    # ADMIN ORDERS
-    # =========================================================
+    # ==========================================================
+    # CUSTOMER
+    # ==========================================================
 
-    path(
-        "admin/",
-        AdminOrderListView.as_view(),
-        name="admin-orders",
-    ),
-
-    path(
-        "admin/<int:pk>/",
-        AdminOrderUpdateView.as_view(),
-        name="admin-order-update",
-    ),
-
-    # =========================================================
-    # CUSTOMER ORDERS
-    # =========================================================
-
+    # GET    /api/orders/
+    # POST   /api/orders/
     path(
         "",
         OrderListCreateView.as_view(),
-        name="orders",
+        name="order-list-create",
     ),
 
+    # GET /api/orders/<order_id>/
     path(
-        "<int:pk>/",
+        "<int:order_id>/",
         OrderDetailView.as_view(),
         name="order-detail",
     ),
 
+    # POST /api/orders/<order_id>/cancel/
     path(
-        "<int:pk>/cancel/",
+        "<int:order_id>/cancel/",
         CancelOrderView.as_view(),
         name="cancel-order",
+    ),
+
+    # ==========================================================
+    # ADMIN
+    # ==========================================================
+
+    # GET /api/orders/admin/
+    path(
+        "admin/",
+        AdminOrderListView.as_view(),
+        name="admin-order-list",
+    ),
+
+    # PATCH /api/orders/admin/<order_id>/
+    path(
+        "admin/<int:order_id>/",
+        AdminOrderUpdateView.as_view(),
+        name="admin-order-update",
     ),
 ]
