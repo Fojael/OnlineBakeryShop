@@ -1,11 +1,10 @@
-
 from decimal import Decimal
 
 import requests
 
 from django.conf import settings
 from django.db import transaction
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status
@@ -27,6 +26,13 @@ from .services import SSLCommerzGateway
 def get_react_url(path):
     """
     Build React frontend URL.
+
+    Example:
+        FRONTEND_URL = "http://localhost:5173"
+
+        get_react_url("payment/success/")
+        ->
+        http://localhost:5173/payment/success/
     """
 
     base_url = getattr(
@@ -104,7 +110,6 @@ def validate_sslcommerz_payment(
     ).upper()
 
     if validation_status != "VALID":
-
         return (
             False,
             "SSLCommerz validation failed.",
@@ -126,7 +131,6 @@ def validate_sslcommerz_payment(
     ).strip()
 
     if returned_transaction_id != expected_transaction_id:
-
         return (
             False,
             "Transaction ID mismatch.",
@@ -137,7 +141,6 @@ def validate_sslcommerz_payment(
     # ------------------------------------------------------
 
     try:
-
         returned_amount = Decimal(
             str(
                 validation.get(
@@ -151,7 +154,6 @@ def validate_sslcommerz_payment(
         ValueError,
         TypeError,
     ):
-
         return (
             False,
             "Invalid payment amount.",
@@ -164,7 +166,6 @@ def validate_sslcommerz_payment(
     )
 
     if returned_amount != expected_amount:
-
         return (
             False,
             "Payment amount mismatch.",
@@ -186,7 +187,6 @@ def validate_sslcommerz_payment(
     ).upper().strip()
 
     if returned_currency != expected_currency:
-
         return (
             False,
             "Payment currency mismatch.",
@@ -215,7 +215,7 @@ def process_successful_payment(
     5. Deducts stock.
     6. Marks payment as successful.
     7. Updates order status to Processing.
-    8. Clears the customer's cart.
+    8. Clears customer's cart.
 
     Everything is handled inside one database transaction.
     """
@@ -243,7 +243,6 @@ def process_successful_payment(
         # --------------------------------------------------
 
         if payment.status == Payment.STATUS_SUCCESS:
-
             return payment
 
         # --------------------------------------------------
@@ -274,7 +273,6 @@ def process_successful_payment(
         )
 
         if not order_items:
-
             raise ValueError(
                 "Order does not contain any items."
             )
@@ -282,7 +280,6 @@ def process_successful_payment(
         # --------------------------------------------------
         # Check stock again
         #
-        # Important:
         # Stock may have changed while payment was pending.
         # --------------------------------------------------
 
@@ -292,14 +289,12 @@ def process_successful_payment(
 
             # Product must still be active
             if not product.is_active:
-
                 raise ValueError(
                     f"{product.name} is no longer available."
                 )
 
             # Current stock check
             if product.stock_quantity < item.quantity:
-
                 raise ValueError(
                     f"Insufficient stock for "
                     f"{product.name}. "
@@ -607,7 +602,10 @@ class CreatePaymentView(APIView):
                 "GatewayPageURL"
             )
             or gateway_response.get(
-                "GatewayPageURL"
+                "gatewayPageURL"
+            )
+            or gateway_response.get(
+                "gateway_page_url"
             )
         )
 
@@ -721,11 +719,19 @@ def payment_success(request):
     SSLCommerz success callback.
 
     SSLCommerz sends:
+
         tran_id
         val_id
 
     The backend validates the transaction directly
     with SSLCommerz before completing the order.
+
+    IMPORTANT:
+
+    This endpoint redirects the customer's browser
+    to the React PaymentSuccess page.
+
+    It does NOT return JSON to the browser.
     """
 
     validation_id = get_request_value(
@@ -744,14 +750,11 @@ def payment_success(request):
 
     if not validation_id or not transaction_id:
 
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Invalid payment response."
-                ),
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                "?reason=invalid_payment_response"
+            )
         )
 
     # ------------------------------------------------------
@@ -773,41 +776,28 @@ def payment_success(request):
 
     except Payment.DoesNotExist:
 
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Payment transaction "
-                    "not found."
-                ),
-            },
-            status=status.HTTP_404_NOT_FOUND,
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                "?reason=payment_not_found"
+            )
         )
 
     # ------------------------------------------------------
     # Already successful
+    #
+    # This prevents duplicate stock deduction.
     # ------------------------------------------------------
 
     if payment.status == Payment.STATUS_SUCCESS:
 
-        return Response(
-            {
-                "success": True,
-                "message": (
-                    "Payment has already "
-                    "been completed."
-                ),
-                "order_id": payment.order_id,
-                "transaction_id": (
-                    payment.transaction_id
-                ),
-                "status": payment.status,
-                "redirect_url": get_react_url(
-                    "payment/success/"
-                    f"?order_id={payment.order_id}"
-                ),
-            },
-            status=status.HTTP_200_OK,
+        return redirect(
+            get_react_url(
+                "payment/success/"
+                f"?order_id={payment.order_id}"
+                f"&payment_id={payment.id}"
+                f"&transaction_id={payment.transaction_id}"
+            )
         )
 
     # ------------------------------------------------------
@@ -824,31 +814,24 @@ def payment_success(request):
             )
         )
 
-    except requests.RequestException as exc:
+    except requests.RequestException:
 
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Unable to validate payment "
-                    "with SSLCommerz."
-                ),
-                "error": str(exc),
-            },
-            status=status.HTTP_502_BAD_GATEWAY,
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                f"?order_id={payment.order_id}"
+                "&reason=gateway_validation_error"
+            )
         )
 
-    except Exception as exc:
+    except Exception:
 
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Payment validation error."
-                ),
-                "error": str(exc),
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                f"?order_id={payment.order_id}"
+                "&reason=payment_validation_error"
+            )
         )
 
     # ------------------------------------------------------
@@ -866,12 +849,12 @@ def payment_success(request):
 
         payment.mark_failed()
 
-        return Response(
-            {
-                "success": False,
-                "detail": error_message,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                f"?order_id={payment.order_id}"
+                "&reason=validation_failed"
+            )
         )
 
     # ------------------------------------------------------
@@ -885,52 +868,39 @@ def payment_success(request):
             validation,
         )
 
-    except ValueError as exc:
+    except ValueError:
 
-        return Response(
-            {
-                "success": False,
-                "detail": str(exc),
-                "order_id": payment.order_id,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    except Exception as exc:
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Unable to complete payment."
-                ),
-                "error": str(exc),
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # ------------------------------------------------------
-    # Success response
-    # ------------------------------------------------------
-
-    return Response(
-        {
-            "success": True,
-            "message": (
-                "Payment completed successfully."
-            ),
-            "order_id": payment.order_id,
-            "transaction_id": (
-                payment.transaction_id
-            ),
-            "payment_id": payment.id,
-            "status": payment.status,
-            "redirect_url": get_react_url(
-                "payment/success/"
+        return redirect(
+            get_react_url(
+                "payment/failed/"
                 f"?order_id={payment.order_id}"
-            ),
-        },
-        status=status.HTTP_200_OK,
+                "&reason=order_processing_failed"
+            )
+        )
+
+    except Exception:
+
+        return redirect(
+            get_react_url(
+                "payment/failed/"
+                f"?order_id={payment.order_id}"
+                "&reason=payment_processing_failed"
+            )
+        )
+
+    # ------------------------------------------------------
+    # SUCCESS
+    #
+    # Browser is redirected to React.
+    # ------------------------------------------------------
+
+    return redirect(
+        get_react_url(
+            "payment/success/"
+            f"?order_id={payment.order_id}"
+            f"&payment_id={payment.id}"
+            f"&transaction_id={payment.transaction_id}"
+        )
     )
 
 
@@ -942,6 +912,9 @@ def payment_success(request):
 def payment_fail(request):
     """
     SSLCommerz failed payment callback.
+
+    This endpoint updates the Payment record and then
+    redirects the customer's browser to React.
     """
 
     transaction_id = get_request_value(
@@ -950,6 +923,7 @@ def payment_fail(request):
     )
 
     order_id = None
+    payment_id = None
 
     if transaction_id:
 
@@ -958,6 +932,9 @@ def payment_fail(request):
             payment = Payment.objects.get(
                 transaction_id=transaction_id,
             )
+
+            payment_id = payment.id
+            order_id = payment.order_id
 
             # ----------------------------------------------
             # Never overwrite successful payment
@@ -970,22 +947,38 @@ def payment_fail(request):
 
                 payment.mark_failed()
 
-            order_id = payment.order_id
-
         except Payment.DoesNotExist:
 
             pass
 
-    return Response(
-        {
-            "success": False,
-            "message": "Payment failed.",
-            "order_id": order_id,
-            "redirect_url": get_react_url(
-                "payment/failed/"
-            ),
-        },
-        status=status.HTTP_200_OK,
+    # ------------------------------------------------------
+    # Build React URL
+    # ------------------------------------------------------
+
+    query_params = []
+
+    if order_id:
+        query_params.append(
+            f"order_id={order_id}"
+        )
+
+    if payment_id:
+        query_params.append(
+            f"payment_id={payment_id}"
+        )
+
+    query_params.append(
+        "reason=payment_failed"
+    )
+
+    query_string = "&".join(
+        query_params
+    )
+
+    return redirect(
+        get_react_url(
+            f"payment/failed/?{query_string}"
+        )
     )
 
 
@@ -997,6 +990,9 @@ def payment_fail(request):
 def payment_cancel(request):
     """
     SSLCommerz cancelled payment callback.
+
+    This endpoint updates the Payment record and then
+    redirects the customer's browser to React.
     """
 
     transaction_id = get_request_value(
@@ -1005,6 +1001,7 @@ def payment_cancel(request):
     )
 
     order_id = None
+    payment_id = None
 
     if transaction_id:
 
@@ -1013,6 +1010,9 @@ def payment_cancel(request):
             payment = Payment.objects.get(
                 transaction_id=transaction_id,
             )
+
+            payment_id = payment.id
+            order_id = payment.order_id
 
             # ----------------------------------------------
             # Never overwrite successful payment
@@ -1025,22 +1025,38 @@ def payment_cancel(request):
 
                 payment.mark_cancelled()
 
-            order_id = payment.order_id
-
         except Payment.DoesNotExist:
 
             pass
 
-    return Response(
-        {
-            "success": False,
-            "message": "Payment cancelled.",
-            "order_id": order_id,
-            "redirect_url": get_react_url(
-                "payment/cancelled/"
-            ),
-        },
-        status=status.HTTP_200_OK,
+    # ------------------------------------------------------
+    # Build React URL
+    # ------------------------------------------------------
+
+    query_params = []
+
+    if order_id:
+        query_params.append(
+            f"order_id={order_id}"
+        )
+
+    if payment_id:
+        query_params.append(
+            f"payment_id={payment_id}"
+        )
+
+    query_params.append(
+        "reason=payment_cancelled"
+    )
+
+    query_string = "&".join(
+        query_params
+    )
+
+    return redirect(
+        get_react_url(
+            f"payment/cancelled/?{query_string}"
+        )
     )
 
 
@@ -1053,7 +1069,10 @@ def payment_ipn(request):
     """
     SSLCommerz Instant Payment Notification.
 
-    IPN is validated directly with SSLCommerz.
+    IPN is server-to-server.
+
+    Therefore this endpoint DOES NOT redirect
+    the browser.
 
     On successful validation:
 
@@ -1135,6 +1154,7 @@ def payment_ipn(request):
                 "transaction_id": (
                     payment.transaction_id
                 ),
+                "status": payment.status,
             },
             status=status.HTTP_200_OK,
         )
@@ -1240,6 +1260,8 @@ def payment_ipn(request):
 
     # ------------------------------------------------------
     # IPN success
+    #
+    # Keep this as JSON because IPN is server-to-server.
     # ------------------------------------------------------
 
     return Response(
@@ -1252,6 +1274,7 @@ def payment_ipn(request):
             "transaction_id": (
                 payment.transaction_id
             ),
+            "payment_id": payment.id,
             "status": payment.status,
         },
         status=status.HTTP_200_OK,

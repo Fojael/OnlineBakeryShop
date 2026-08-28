@@ -8,39 +8,37 @@ from .views import (
     payment_ipn,
 )
 
-app_name = "payments"
 
 urlpatterns = [
-    # ==========================================================
-    # Create Payment Session
-    # POST /api/payments/create/<order_id>/
-    # ==========================================================
+
+    # Create payment
     path(
-        "create/<int:order_id>/",
+        "payments/create/<int:order_id>/",
         CreatePaymentView.as_view(),
         name="create-payment",
     ),
 
-    # ==========================================================
-    # SSLCommerz Callback URLs
-    # ==========================================================
+    # SSLCommerz callbacks
     path(
-        "success/",
+        "payments/success/",
         payment_success,
         name="payment-success",
     ),
+
     path(
-        "fail/",
+        "payments/fail/",
         payment_fail,
         name="payment-fail",
     ),
+
     path(
-        "cancel/",
+        "payments/cancel/",
         payment_cancel,
         name="payment-cancel",
     ),
+
     path(
-        "ipn/",
+        "payments/ipn/",
         payment_ipn,
         name="payment-ipn",
     ),

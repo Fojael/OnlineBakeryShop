@@ -5,6 +5,7 @@ import {
 
 import {
     Link,
+    useNavigate,
     useSearchParams,
 } from "react-router-dom";
 
@@ -12,40 +13,41 @@ import { toast } from "react-toastify";
 
 import {
     checkPaymentStatus,
-    getPayment,
-    getPaymentId,
     getOrderId,
     getTransactionId,
-    getPaymentStatus,
-    isPaymentSuccessful,
-    getPaymentErrorMessage,
 } from "../../services/paymentService";
 
 
 const PaymentSuccess = () => {
 
-    const [
-        searchParams
-    ] = useSearchParams();
+    const navigate = useNavigate();
+
+    const [searchParams] =
+        useSearchParams();
+
+    const [loading, setLoading] =
+        useState(true);
+
+    const [payment, setPayment] =
+        useState(null);
+
+    const [error, setError] =
+        useState("");
 
 
-    const [
-        loading,
-        setLoading
-    ] = useState(true);
+    // =========================================================
+    // PAYMENT ID
+    // =========================================================
+
+    const paymentId =
+        searchParams.get("payment_id") ||
+        searchParams.get("paymentId") ||
+        searchParams.get("id");
 
 
-    const [
-        payment,
-        setPayment
-    ] = useState(null);
-
-
-    const [
-        error,
-        setError
-    ] = useState("");
-
+    // =========================================================
+    // CHECK PAYMENT
+    // =========================================================
 
     useEffect(() => {
 
@@ -54,6 +56,23 @@ const PaymentSuccess = () => {
 
         const verifyPayment = async () => {
 
+            if (!paymentId) {
+
+                if (mounted) {
+
+                    setError(
+                        "Payment information was not found."
+                    );
+
+                    setLoading(false);
+
+                }
+
+                return;
+
+            }
+
+
             try {
 
                 setLoading(true);
@@ -61,99 +80,30 @@ const PaymentSuccess = () => {
                 setError("");
 
 
-                // ==================================================
-                // GET PAYMENT ID
-                // ==================================================
-
-                const paymentId =
-                    searchParams.get(
-                        "payment_id"
-                    ) ||
-                    searchParams.get(
-                        "paymentId"
-                    ) ||
-                    sessionStorage.getItem(
-                        "pending_payment_id"
-                    );
-
-
-                if (!paymentId) {
-
-                    throw new Error(
-                        "Payment information was not found."
-                    );
-
-                }
-
-
-                // ==================================================
-                // CHECK PAYMENT STATUS
-                // ==================================================
-
                 const response =
                     await checkPaymentStatus(
                         paymentId
                     );
 
 
-                console.log(
-                    "Payment status:",
-                    response.data
-                );
-
-
-                if (mounted) {
-
-                    setPayment(
-                        response.data
-                    );
-
+                if (!mounted) {
+                    return;
                 }
 
 
-                // ==================================================
-                // CHECK STATUS
-                // ==================================================
-
-                const status =
-                    getPaymentStatus(
-                        response
-                    );
+                const paymentData =
+                    response?.data || {};
 
 
-                if (
-                    !isPaymentSuccessful(
-                        status
-                    )
-                ) {
-
-                    throw new Error(
-                        "Payment has not been confirmed yet."
-                    );
-
-                }
-
-
-                // ==================================================
-                // CLEAN SESSION
-                // ==================================================
-
-                sessionStorage.removeItem(
-                    "pending_payment_id"
-                );
-
-                sessionStorage.removeItem(
-                    "pending_order_id"
-                );
-
-                sessionStorage.removeItem(
-                    "pending_payment_method"
+                setPayment(
+                    paymentData
                 );
 
 
                 toast.success(
                     "Payment completed successfully!"
                 );
+
 
             } catch (err) {
 
@@ -163,15 +113,23 @@ const PaymentSuccess = () => {
                 );
 
 
-                if (mounted) {
-
-                    setError(
-                        getPaymentErrorMessage(
-                            err
-                        )
-                    );
-
+                if (!mounted) {
+                    return;
                 }
+
+
+                setError(
+                    err?.response?.data?.detail ||
+                    err?.response?.data?.message ||
+                    "Unable to verify payment."
+                );
+
+
+                toast.error(
+                    err?.response?.data?.detail ||
+                    err?.response?.data?.message ||
+                    "Unable to verify payment."
+                );
 
             } finally {
 
@@ -186,7 +144,7 @@ const PaymentSuccess = () => {
         };
 
 
-        verifyPayment();
+        void verifyPayment();
 
 
         return () => {
@@ -195,12 +153,23 @@ const PaymentSuccess = () => {
 
         };
 
-    }, [searchParams]);
+    }, [paymentId]);
 
 
-    // ==========================================================
+    // =========================================================
+    // EXTRACT ORDER / TRANSACTION
+    // =========================================================
+
+    const orderId =
+        getOrderId(payment);
+
+    const transactionId =
+        getTransactionId(payment);
+
+
+    // =========================================================
     // LOADING
-    // ==========================================================
+    // =========================================================
 
     if (loading) {
 
@@ -208,20 +177,24 @@ const PaymentSuccess = () => {
 
             <div className="container py-5">
 
-                <div className="card shadow-sm">
+                <div className="card border-0 shadow-sm">
 
                     <div className="card-body text-center py-5">
 
                         <div
                             className="spinner-border text-success"
                             role="status"
-                        />
+                        >
+                            <span className="visually-hidden">
+                                Verifying payment...
+                            </span>
+                        </div>
 
-                        <h4 className="mt-3">
+                        <h4 className="mt-4">
                             Verifying Payment...
                         </h4>
 
-                        <p className="text-muted">
+                        <p className="text-muted mb-0">
                             Please wait while we confirm
                             your payment.
                         </p>
@@ -237,9 +210,9 @@ const PaymentSuccess = () => {
     }
 
 
-    // ==========================================================
+    // =========================================================
     // ERROR
-    // ==========================================================
+    // =========================================================
 
     if (error) {
 
@@ -247,17 +220,17 @@ const PaymentSuccess = () => {
 
             <div className="container py-5">
 
-                <div className="card shadow-sm">
+                <div className="card border-0 shadow-sm">
 
                     <div className="card-body text-center py-5">
 
                         <div
-                            className="display-3 mb-3"
+                            className="display-1 text-danger"
                         >
-                            ⚠️
+                            ✕
                         </div>
 
-                        <h2>
+                        <h2 className="mt-3">
                             Payment Verification Failed
                         </h2>
 
@@ -267,18 +240,21 @@ const PaymentSuccess = () => {
 
                         <div className="d-flex justify-content-center gap-2">
 
-                            <Link
-                                to="/orders"
+                            <button
+                                type="button"
                                 className="btn btn-primary"
+                                onClick={() =>
+                                    navigate("/checkout")
+                                }
                             >
-                                View Orders
-                            </Link>
+                                Back to Checkout
+                            </button>
 
                             <Link
-                                to="/products"
+                                to="/orders"
                                 className="btn btn-outline-secondary"
                             >
-                                Continue Shopping
+                                My Orders
                             </Link>
 
                         </div>
@@ -294,29 +270,9 @@ const PaymentSuccess = () => {
     }
 
 
-    // ==========================================================
-    // PAYMENT DATA
-    // ==========================================================
-
-    const paymentId =
-        getPaymentId(payment);
-
-
-    const orderId =
-        getOrderId(payment);
-
-
-    const transactionId =
-        getTransactionId(payment);
-
-
-    const status =
-        getPaymentStatus(payment);
-
-
-    // ==========================================================
+    // =========================================================
     // SUCCESS PAGE
-    // ==========================================================
+    // =========================================================
 
     return (
 
@@ -326,78 +282,101 @@ const PaymentSuccess = () => {
 
                 <div className="col-lg-7">
 
-                    <div className="card shadow-sm border-0">
+                    <div className="card border-0 shadow-sm">
 
                         <div className="card-body text-center py-5">
 
-                            <div className="display-1">
-                                ✅
+                            <div
+                                className="display-1 text-success"
+                            >
+                                ✓
                             </div>
 
-                            <h1 className="text-success mt-3">
+                            <h1 className="fw-bold mt-3">
                                 Payment Successful!
                             </h1>
 
                             <p className="text-muted">
                                 Your payment has been
-                                successfully confirmed.
+                                successfully processed.
                             </p>
 
 
-                            <hr />
+                            {/* =================================
+                                PAYMENT INFORMATION
+                            ================================= */}
+
+                            <div className="card bg-light mt-4">
+
+                                <div className="card-body text-start">
+
+                                    <h5 className="mb-3">
+                                        Payment Information
+                                    </h5>
 
 
-                            {orderId && (
+                                    {paymentId && (
 
-                                <p>
-                                    <strong>
-                                        Order ID:
-                                    </strong>{" "}
-                                    #{orderId}
-                                </p>
+                                        <div className="d-flex justify-content-between mb-2">
 
-                            )}
+                                            <span>
+                                                Payment ID
+                                            </span>
 
+                                            <strong>
+                                                {paymentId}
+                                            </strong>
 
-                            {paymentId && (
+                                        </div>
 
-                                <p>
-                                    <strong>
-                                        Payment ID:
-                                    </strong>{" "}
-                                    #{paymentId}
-                                </p>
-
-                            )}
+                                    )}
 
 
-                            {transactionId && (
+                                    {orderId && (
 
-                                <p>
-                                    <strong>
-                                        Transaction ID:
-                                    </strong>{" "}
-                                    {transactionId}
-                                </p>
+                                        <div className="d-flex justify-content-between mb-2">
 
-                            )}
+                                            <span>
+                                                Order ID
+                                            </span>
 
+                                            <strong>
+                                                #{orderId}
+                                            </strong>
 
-                            {status && (
+                                        </div>
 
-                                <p>
-                                    <strong>
-                                        Status:
-                                    </strong>{" "}
-                                    {status}
-                                </p>
-
-                            )}
+                                    )}
 
 
-                            <div className="d-grid gap-2 mt-4">
+                                    {transactionId && (
 
-                                {orderId && (
+                                        <div className="d-flex justify-content-between">
+
+                                            <span>
+                                                Transaction ID
+                                            </span>
+
+                                            <strong>
+                                                {transactionId}
+                                            </strong>
+
+                                        </div>
+
+                                    )}
+
+                                </div>
+
+                            </div>
+
+
+                            {/* =================================
+                                ACTIONS
+                            ================================= */}
+
+                            <div className="d-flex flex-column flex-sm-row justify-content-center gap-2 mt-4">
+
+                                {orderId ? (
 
                                     <Link
                                         to={`/orders/${orderId}`}
@@ -406,18 +385,21 @@ const PaymentSuccess = () => {
                                         View Order
                                     </Link>
 
+                                ) : (
+
+                                    <Link
+                                        to="/orders"
+                                        className="btn btn-success btn-lg"
+                                    >
+                                        My Orders
+                                    </Link>
+
                                 )}
 
-                                <Link
-                                    to="/orders"
-                                    className="btn btn-outline-primary"
-                                >
-                                    My Orders
-                                </Link>
 
                                 <Link
                                     to="/products"
-                                    className="btn btn-outline-secondary"
+                                    className="btn btn-outline-primary btn-lg"
                                 >
                                     Continue Shopping
                                 </Link>

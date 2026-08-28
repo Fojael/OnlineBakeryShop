@@ -1,26 +1,10 @@
-import {
-    useEffect,
-    useState,
-} from "react";
-
-import {
-    Link,
-    useNavigate,
-} from "react-router-dom";
-
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-import {
-    getCart,
-} from "../../services/cartService";
-
-import {
-    getAddresses,
-} from "../../services/addressService";
-
-import {
-    createOrder,
-} from "../../services/orderService";
+import { getCart } from "../../services/cartService";
+import { getAddresses } from "../../services/addressService";
+import { createOrder } from "../../services/orderService";
 
 import {
     createPayment,
@@ -31,34 +15,24 @@ import {
 
 
 const Checkout = () => {
-
     const navigate = useNavigate();
-
 
     // ==========================================================
     // STATE
     // ==========================================================
 
-    const [loading, setLoading] =
-        useState(true);
+    const [loading, setLoading] = useState(true);
+    const [placingOrder, setPlacingOrder] = useState(false);
 
-    const [placingOrder, setPlacingOrder] =
-        useState(false);
+    const [cart, setCart] = useState(null);
+    const [addresses, setAddresses] = useState([]);
 
-    const [cart, setCart] =
-        useState(null);
-
-    const [addresses, setAddresses] =
-        useState([]);
-
-    const [selectedAddress, setSelectedAddress] =
-        useState(null);
+    const [selectedAddress, setSelectedAddress] = useState(null);
 
     const [paymentMethod, setPaymentMethod] =
         useState("Cash on Delivery");
 
-    const [error, setError] =
-        useState("");
+    const [error, setError] = useState("");
 
 
     // ==========================================================
@@ -66,134 +40,84 @@ const Checkout = () => {
     // ==========================================================
 
     useEffect(() => {
-
         let mounted = true;
 
-
         const loadCheckout = async () => {
-
             try {
-
                 setLoading(true);
-
                 setError("");
-
 
                 // ==================================================
                 // LOAD CART
                 // ==================================================
 
-                const cartResponse =
-                    await getCart();
-
-                const cartData =
-                    cartResponse.data;
-
+                const cartResponse = await getCart();
+                const cartData = cartResponse?.data ?? null;
 
                 // ==================================================
                 // LOAD ADDRESSES
                 // ==================================================
 
-                const addressResponse =
-                    await getAddresses();
+                const addressResponse = await getAddresses();
 
-                const addressList =
-                    Array.isArray(
-                        addressResponse.data
-                    )
-                        ? addressResponse.data
-                        : [];
-
+                const addressList = Array.isArray(
+                    addressResponse?.data
+                )
+                    ? addressResponse.data
+                    : [];
 
                 if (!mounted) {
                     return;
                 }
 
-
                 setCart(cartData);
-
-                setAddresses(
-                    addressList
-                );
-
+                setAddresses(addressList);
 
                 // ==================================================
                 // SELECT DEFAULT ADDRESS
                 // ==================================================
 
-                const defaultAddress =
-                    addressList.find(
-                        (address) =>
-                            address.is_default === true
-                    );
-
+                const defaultAddress = addressList.find(
+                    (address) =>
+                        address.is_default === true
+                );
 
                 if (defaultAddress) {
-
-                    setSelectedAddress(
-                        defaultAddress.id
-                    );
-
-                } else if (
-                    addressList.length > 0
-                ) {
-
-                    setSelectedAddress(
-                        addressList[0].id
-                    );
-
+                    setSelectedAddress(defaultAddress.id);
+                } else if (addressList.length > 0) {
+                    setSelectedAddress(addressList[0].id);
                 } else {
-
-                    setSelectedAddress(
-                        null
-                    );
-
+                    setSelectedAddress(null);
                 }
 
             } catch (err) {
-
                 console.error(
                     "Checkout loading error:",
                     err
                 );
 
-
                 if (mounted) {
-
                     const message =
                         err?.response?.data?.detail ||
+                        err?.response?.data?.message ||
                         "Unable to load checkout information.";
 
                     setError(message);
 
-                    toast.error(
-                        message
-                    );
-
+                    toast.error(message);
                 }
-
             } finally {
-
                 if (mounted) {
-
                     setLoading(false);
-
                 }
-
             }
-
         };
-
 
         loadCheckout();
 
-
         return () => {
-
             mounted = false;
-
         };
-
     }, []);
 
 
@@ -201,73 +125,56 @@ const Checkout = () => {
     // CART ITEMS
     // ==========================================================
 
-    const cartItems =
-        Array.isArray(cart?.items)
-            ? cart.items
-            : [];
+    const cartItems = Array.isArray(cart?.items)
+        ? cart.items
+        : [];
 
 
     // ==========================================================
     // CALCULATE SUBTOTAL
     // ==========================================================
 
-    const subtotal =
-        cartItems.reduce(
-            (total, item) => {
+    const subtotal = cartItems.reduce(
+        (total, item) => {
+            const price = Number(
+                item.product_price ??
+                item.price ??
+                item.product?.price ??
+                0
+            );
 
-                const price =
-                    Number(
-                        item.product_price ??
-                        item.price ??
-                        item.product?.price ??
-                        0
-                    );
+            const quantity = Number(
+                item.quantity ?? 0
+            );
 
-
-                const quantity =
-                    Number(
-                        item.quantity ?? 0
-                    );
-
-
-                return (
-                    total +
-                    price * quantity
-                );
-
-            },
-            0
-        );
+            return total + price * quantity;
+        },
+        0
+    );
 
 
     // ==========================================================
     // DELIVERY CHARGE
     // ==========================================================
 
-    const deliveryCharge =
-        subtotal > 0
-            ? 60
-            : 0;
+    const deliveryCharge = subtotal > 0 ? 60 : 0;
 
 
     // ==========================================================
     // GRAND TOTAL
     // ==========================================================
 
-    const grandTotal =
-        subtotal +
-        deliveryCharge;
+    const grandTotal = subtotal + deliveryCharge;
 
 
     // ==========================================================
     // SELECTED ADDRESS
     // ==========================================================
 
-    const selectedAddressData =
-        addresses.find(
-            (address) =>
-                address.id === selectedAddress
-        );
+    const selectedAddressData = addresses.find(
+        (address) =>
+            address.id === selectedAddress
+    );
 
 
     // ==========================================================
@@ -275,34 +182,20 @@ const Checkout = () => {
     // ==========================================================
 
     const buildShippingAddress = () => {
-
         if (!selectedAddressData) {
-
             return "";
-
         }
 
-
-        const address =
-            selectedAddressData;
-
+        const address = selectedAddressData;
 
         return [
-
             address.full_name,
-
             address.phone,
-
             address.address_line,
-
             address.upazila,
-
             address.district,
-
             address.division,
-
             address.postal_code,
-
         ]
             .filter(
                 (value) =>
@@ -311,7 +204,6 @@ const Checkout = () => {
                     String(value).trim() !== ""
             )
             .join(", ");
-
     };
 
 
@@ -326,9 +218,7 @@ const Checkout = () => {
         // ======================================================
 
         if (placingOrder) {
-
             return;
-
         }
 
 
@@ -337,13 +227,11 @@ const Checkout = () => {
         // ======================================================
 
         if (!selectedAddressData) {
-
             toast.error(
                 "Please select a delivery address."
             );
 
             return;
-
         }
 
 
@@ -352,13 +240,11 @@ const Checkout = () => {
         // ======================================================
 
         if (cartItems.length === 0) {
-
             toast.error(
                 "Your cart is empty."
             );
 
             return;
-
         }
 
 
@@ -369,56 +255,40 @@ const Checkout = () => {
         const shippingAddress =
             buildShippingAddress();
 
-
         if (!shippingAddress) {
-
             toast.error(
                 "Please provide a valid delivery address."
             );
 
             return;
-
         }
 
 
         try {
-
             setPlacingOrder(true);
-
             setError("");
 
 
             // ==================================================
-            // STEP 1
-            // CREATE ORDER
+            // STEP 1: CREATE ORDER
             // ==================================================
 
             const orderData = {
-
-                shipping_address:
-                    shippingAddress,
-
-                payment_method:
-                    paymentMethod,
-
+                shipping_address: shippingAddress,
+                payment_method: paymentMethod,
             };
-
 
             console.log(
                 "Creating order:",
                 orderData
             );
 
-
             const orderResponse =
-                await createOrder(
-                    orderData
-                );
-
+                await createOrder(orderData);
 
             console.log(
                 "Order response:",
-                orderResponse.data
+                orderResponse?.data
             );
 
 
@@ -431,15 +301,11 @@ const Checkout = () => {
                 orderResponse?.data?.order_id ??
                 orderResponse?.data?.id;
 
-
             if (!orderId) {
-
                 throw new Error(
                     "Order was created but no order ID was returned by the server."
                 );
-
             }
-
 
             console.log(
                 "Created Order ID:",
@@ -455,33 +321,20 @@ const Checkout = () => {
                 paymentMethod ===
                 "Cash on Delivery"
             ) {
-
                 toast.success(
                     "🎉 Order placed successfully!"
                 );
-
 
                 navigate(
                     `/orders/${orderId}`
                 );
 
-
                 return;
-
             }
 
 
             // ==================================================
             // ONLINE PAYMENT
-            // ==================================================
-            //
-            // Supported:
-            //
-            // bKash
-            // Nagad
-            // Rocket
-            // Credit Card
-            //
             // ==================================================
 
             toast.info(
@@ -490,49 +343,34 @@ const Checkout = () => {
 
 
             // ==================================================
-            // STEP 2
-            // CREATE PAYMENT
+            // STEP 2: CREATE PAYMENT
             // ==================================================
 
             const paymentData = {
-
-                order_id:
-                    orderId,
-
-                payment_method:
-                    paymentMethod,
-
+                order_id: orderId,
+                payment_method: paymentMethod,
             };
-
 
             console.log(
                 "Creating payment:",
                 paymentData
             );
 
-
             const paymentResponse =
-                await createPayment(
-                    paymentData
-                );
-
+                await createPayment(paymentData);
 
             console.log(
                 "Payment response:",
-                paymentResponse.data
+                paymentResponse?.data
             );
 
 
             // ==================================================
-            // STEP 3
-            // GET PAYMENT ID
+            // STEP 3: GET PAYMENT ID
             // ==================================================
 
             const paymentId =
-                getPaymentId(
-                    paymentResponse
-                );
-
+                getPaymentId(paymentResponse);
 
             console.log(
                 "Payment ID:",
@@ -541,15 +379,13 @@ const Checkout = () => {
 
 
             // ==================================================
-            // STEP 4
-            // GET PAYMENT URL
+            // STEP 4: GET PAYMENT URL
             // ==================================================
 
             const paymentUrl =
                 getPaymentRedirectUrl(
                     paymentResponse
                 );
-
 
             console.log(
                 "Payment URL:",
@@ -562,51 +398,32 @@ const Checkout = () => {
             // ==================================================
 
             if (!paymentUrl) {
-
                 throw new Error(
                     "Payment gateway URL was not returned by the server."
                 );
-
             }
 
 
             // ==================================================
-            // SAVE PENDING PAYMENT
+            // SAVE PENDING PAYMENT INFORMATION
             // ==================================================
 
             if (paymentId) {
-
                 sessionStorage.setItem(
                     "pending_payment_id",
                     String(paymentId)
                 );
-
             }
-
-
-            // ==================================================
-            // SAVE ORDER ID
-            // ==================================================
 
             sessionStorage.setItem(
                 "pending_order_id",
                 String(orderId)
             );
 
-
-            // ==================================================
-            // SAVE PAYMENT METHOD
-            // ==================================================
-
             sessionStorage.setItem(
                 "pending_payment_method",
                 paymentMethod
             );
-
-
-            // ==================================================
-            // SAVE PAYMENT URL
-            // ==================================================
 
             sessionStorage.setItem(
                 "pending_payment_url",
@@ -615,20 +432,16 @@ const Checkout = () => {
 
 
             // ==================================================
-            // STEP 5
-            // REDIRECT TO PAYMENT GATEWAY
+            // STEP 5: REDIRECT TO PAYMENT GATEWAY
             // ==================================================
 
             console.log(
                 "Redirecting to payment gateway..."
             );
 
-
-            window.location.href =
-                paymentUrl;
+            window.location.href = paymentUrl;
 
         } catch (err) {
-
             console.error(
                 "Place order/payment error:",
                 err
@@ -640,24 +453,15 @@ const Checkout = () => {
             // ==================================================
 
             const message =
-                getPaymentErrorMessage(
-                    err
-                );
-
+                getPaymentErrorMessage(err);
 
             setError(message);
 
-
-            toast.error(
-                message
-            );
+            toast.error(message);
 
         } finally {
-
             setPlacingOrder(false);
-
         }
-
     };
 
 
@@ -666,31 +470,24 @@ const Checkout = () => {
     // ==========================================================
 
     if (loading) {
-
         return (
-
             <div className="container py-5 text-center">
 
                 <div
                     className="spinner-border text-primary"
                     role="status"
                 >
-
                     <span className="visually-hidden">
                         Loading...
                     </span>
-
                 </div>
-
 
                 <h5 className="mt-3">
                     Loading Checkout...
                 </h5>
 
             </div>
-
         );
-
     }
 
 
@@ -699,9 +496,7 @@ const Checkout = () => {
     // ==========================================================
 
     if (cartItems.length === 0) {
-
         return (
-
             <div className="container py-5">
 
                 <div className="card border-0 shadow-sm">
@@ -712,19 +507,14 @@ const Checkout = () => {
                             🛒
                         </h1>
 
-
                         <h3>
                             Your Cart is Empty
                         </h3>
 
-
                         <p className="text-muted">
-
                             Add some bakery products
                             before checkout.
-
                         </p>
-
 
                         <Link
                             to="/products"
@@ -738,9 +528,7 @@ const Checkout = () => {
                 </div>
 
             </div>
-
         );
-
     }
 
 
@@ -749,9 +537,7 @@ const Checkout = () => {
     // ==========================================================
 
     return (
-
         <div className="container py-5">
-
 
             {/* ==================================================
                 HEADER
@@ -763,12 +549,9 @@ const Checkout = () => {
                     🛒 Checkout
                 </h2>
 
-
                 <p className="text-muted">
-
                     Complete your order by selecting
                     your delivery address and payment method.
-
                 </p>
 
             </div>
@@ -779,7 +562,6 @@ const Checkout = () => {
             ================================================== */}
 
             {error && (
-
                 <div className="alert alert-danger">
 
                     <strong>
@@ -789,7 +571,6 @@ const Checkout = () => {
                     {error}
 
                 </div>
-
             )}
 
 
@@ -817,7 +598,6 @@ const Checkout = () => {
                                     📍 Delivery Address
                                 </h4>
 
-
                                 <Link
                                     to="/address/add"
                                     className="btn btn-sm btn-outline-primary"
@@ -840,15 +620,11 @@ const Checkout = () => {
                                         No Delivery Address
                                     </h5>
 
-
                                     <p className="text-muted">
-
                                         Please add a delivery
                                         address before placing
                                         your order.
-
                                     </p>
-
 
                                     <Link
                                         to="/address/add"
@@ -908,7 +684,6 @@ const Checkout = () => {
                                                                 }
                                                             />
 
-
                                                             <label
                                                                 className="form-check-label w-100"
                                                                 htmlFor={`address-${address.id}`}
@@ -922,15 +697,10 @@ const Checkout = () => {
                                                                         }
                                                                     </strong>
 
-
                                                                     {address.is_default && (
-
                                                                         <span className="badge bg-success">
-
                                                                             Default
-
                                                                         </span>
-
                                                                     )}
 
                                                                 </div>
@@ -945,14 +715,12 @@ const Checkout = () => {
                                                                         }
                                                                     </div>
 
-
                                                                     <div>
                                                                         📍{" "}
                                                                         {
                                                                             address.address_line
                                                                         }
                                                                     </div>
-
 
                                                                     <div>
 
@@ -970,7 +738,6 @@ const Checkout = () => {
                                                                         }
 
                                                                     </div>
-
 
                                                                     <div>
 
@@ -1073,7 +840,6 @@ const Checkout = () => {
                                             }
                                         />
 
-
                                         <label
                                             className="form-check-label"
                                             htmlFor="cod"
@@ -1083,12 +849,9 @@ const Checkout = () => {
                                                 💵 Cash on Delivery
                                             </strong>
 
-
                                             <div className="text-muted small">
-
                                                 Pay after receiving
                                                 your order.
-
                                             </div>
 
                                         </label>
@@ -1106,8 +869,7 @@ const Checkout = () => {
 
                             <div
                                 className={`card payment-card mb-3 ${
-                                    paymentMethod ===
-                                    "bKash"
+                                    paymentMethod === "bKash"
                                         ? "border-primary shadow-sm"
                                         : ""
                                 }`}
@@ -1115,9 +877,7 @@ const Checkout = () => {
                                     cursor: "pointer",
                                 }}
                                 onClick={() =>
-                                    setPaymentMethod(
-                                        "bKash"
-                                    )
+                                    setPaymentMethod("bKash")
                                 }
                             >
 
@@ -1142,7 +902,6 @@ const Checkout = () => {
                                             }
                                         />
 
-
                                         <label
                                             className="form-check-label"
                                             htmlFor="bkash"
@@ -1152,12 +911,9 @@ const Checkout = () => {
                                                 📱 bKash
                                             </strong>
 
-
                                             <div className="text-muted small">
-
                                                 Pay using your
                                                 bKash account.
-
                                             </div>
 
                                         </label>
@@ -1175,8 +931,7 @@ const Checkout = () => {
 
                             <div
                                 className={`card payment-card mb-3 ${
-                                    paymentMethod ===
-                                    "Nagad"
+                                    paymentMethod === "Nagad"
                                         ? "border-primary shadow-sm"
                                         : ""
                                 }`}
@@ -1184,9 +939,7 @@ const Checkout = () => {
                                     cursor: "pointer",
                                 }}
                                 onClick={() =>
-                                    setPaymentMethod(
-                                        "Nagad"
-                                    )
+                                    setPaymentMethod("Nagad")
                                 }
                             >
 
@@ -1211,7 +964,6 @@ const Checkout = () => {
                                             }
                                         />
 
-
                                         <label
                                             className="form-check-label"
                                             htmlFor="nagad"
@@ -1221,12 +973,9 @@ const Checkout = () => {
                                                 📲 Nagad
                                             </strong>
 
-
                                             <div className="text-muted small">
-
                                                 Mobile payment
                                                 with Nagad.
-
                                             </div>
 
                                         </label>
@@ -1244,8 +993,7 @@ const Checkout = () => {
 
                             <div
                                 className={`card payment-card mb-3 ${
-                                    paymentMethod ===
-                                    "Rocket"
+                                    paymentMethod === "Rocket"
                                         ? "border-primary shadow-sm"
                                         : ""
                                 }`}
@@ -1253,9 +1001,7 @@ const Checkout = () => {
                                     cursor: "pointer",
                                 }}
                                 onClick={() =>
-                                    setPaymentMethod(
-                                        "Rocket"
-                                    )
+                                    setPaymentMethod("Rocket")
                                 }
                             >
 
@@ -1280,7 +1026,6 @@ const Checkout = () => {
                                             }
                                         />
 
-
                                         <label
                                             className="form-check-label"
                                             htmlFor="rocket"
@@ -1290,12 +1035,9 @@ const Checkout = () => {
                                                 🚀 Rocket
                                             </strong>
 
-
                                             <div className="text-muted small">
-
                                                 Pay using Rocket
                                                 mobile banking.
-
                                             </div>
 
                                         </label>
@@ -1313,8 +1055,7 @@ const Checkout = () => {
 
                             <div
                                 className={`card payment-card ${
-                                    paymentMethod ===
-                                    "Credit Card"
+                                    paymentMethod === "Credit Card"
                                         ? "border-primary shadow-sm"
                                         : ""
                                 }`}
@@ -1349,7 +1090,6 @@ const Checkout = () => {
                                             }
                                         />
 
-
                                         <label
                                             className="form-check-label"
                                             htmlFor="credit-card"
@@ -1359,12 +1099,9 @@ const Checkout = () => {
                                                 💳 Credit Card
                                             </strong>
 
-
                                             <div className="text-muted small">
-
                                                 Secure online
                                                 card payment.
-
                                             </div>
 
                                         </label>
@@ -1381,7 +1118,7 @@ const Checkout = () => {
                             ================================================== */}
 
                             {paymentMethod ===
-                                "Cash on Delivery" ? (
+                            "Cash on Delivery" ? (
 
                                 <div className="alert alert-success mt-3 mb-0">
 
@@ -1390,12 +1127,10 @@ const Checkout = () => {
                                     </strong>
 
                                     <div className="small mt-1">
-
                                         Your order will be
                                         placed immediately.
                                         Pay when the order is
                                         delivered.
-
                                     </div>
 
                                 </div>
@@ -1409,15 +1144,13 @@ const Checkout = () => {
                                     </strong>
 
                                     <div className="small mt-1">
-
                                         After clicking
                                         <strong>
                                             {" "}Pay Now
-                                        </strong>,
-                                        you will be redirected
+                                        </strong>
+                                        , you will be redirected
                                         to the selected payment
                                         gateway.
-
                                     </div>
 
                                 </div>
@@ -1441,9 +1174,7 @@ const Checkout = () => {
                                 Delivering To:
                             </strong>
 
-
                             <hr className="my-2" />
-
 
                             <div>
                                 {
@@ -1451,20 +1182,17 @@ const Checkout = () => {
                                 }
                             </div>
 
-
                             <div>
                                 {
                                     selectedAddressData.phone
                                 }
                             </div>
 
-
                             <div>
                                 {
                                     selectedAddressData.address_line
                                 }
                             </div>
-
 
                             <div>
 
@@ -1482,7 +1210,6 @@ const Checkout = () => {
                                 }
 
                             </div>
-
 
                             <div>
 
@@ -1538,71 +1265,52 @@ const Checkout = () => {
                                 CART ITEMS
                             ================================================== */}
 
-                            {cartItems.map(
-                                (item) => {
+                            {cartItems.map((item) => {
 
-                                    const price =
-                                        Number(
-                                            item.product_price ??
-                                            item.price ??
-                                            item.product?.price ??
-                                            0
-                                        );
+                                const price = Number(
+                                    item.product_price ??
+                                    item.price ??
+                                    item.product?.price ??
+                                    0
+                                );
 
+                                const quantity = Number(
+                                    item.quantity ?? 0
+                                );
 
-                                    const quantity =
-                                        Number(
-                                            item.quantity ?? 0
-                                        );
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className="d-flex justify-content-between mb-3"
+                                    >
 
-
-                                    return (
-
-                                        <div
-                                            key={item.id}
-                                            className="d-flex justify-content-between mb-3"
-                                        >
-
-                                            <div>
-
-                                                <strong>
-
-                                                    {
-                                                        item.product_name ??
-                                                        item.product?.name ??
-                                                        "Product"
-                                                    }
-
-                                                </strong>
-
-
-                                                <div className="small text-muted">
-
-                                                    Qty:{" "}
-                                                    {quantity}
-
-                                                </div>
-
-                                            </div>
-
+                                        <div>
 
                                             <strong>
-
-                                                ৳{" "}
-
-                                                {(
-                                                    price *
-                                                    quantity
-                                                ).toFixed(2)}
-
+                                                {
+                                                    item.product_name ??
+                                                    item.product?.name ??
+                                                    "Product"
+                                                }
                                             </strong>
+
+                                            <div className="small text-muted">
+                                                Qty: {quantity}
+                                            </div>
 
                                         </div>
 
-                                    );
+                                        <strong>
+                                            ৳{" "}
+                                            {(
+                                                price *
+                                                quantity
+                                            ).toFixed(2)}
+                                        </strong>
 
-                                }
-                            )}
+                                    </div>
+                                );
+                            })}
 
 
                             <hr />
@@ -1615,11 +1323,8 @@ const Checkout = () => {
                             <div className="mt-3">
 
                                 <label className="form-label fw-semibold">
-
                                     Coupon Code
-
                                 </label>
-
 
                                 <div className="input-group">
 
@@ -1629,7 +1334,6 @@ const Checkout = () => {
                                         placeholder="Enter coupon code"
                                         disabled
                                     />
-
 
                                     <button
                                         type="button"
@@ -1641,11 +1345,8 @@ const Checkout = () => {
 
                                 </div>
 
-
                                 <small className="text-muted">
-
                                     Coupon support coming soon.
-
                                 </small>
 
                             </div>
@@ -1664,12 +1365,8 @@ const Checkout = () => {
                                     Subtotal
                                 </span>
 
-
                                 <strong>
-
-                                    ৳
-                                    {subtotal.toFixed(2)}
-
+                                    ৳ {subtotal.toFixed(2)}
                                 </strong>
 
                             </div>
@@ -1685,12 +1382,8 @@ const Checkout = () => {
                                     Delivery Charge
                                 </span>
 
-
                                 <strong>
-
-                                    ৳
-                                    {deliveryCharge.toFixed(2)}
-
+                                    ৳ {deliveryCharge.toFixed(2)}
                                 </strong>
 
                             </div>
@@ -1709,12 +1402,8 @@ const Checkout = () => {
                                     Grand Total
                                 </h5>
 
-
                                 <h5 className="text-primary">
-
-                                    ৳
-                                    {grandTotal.toFixed(2)}
-
+                                    ৳ {grandTotal.toFixed(2)}
                                 </h5>
 
                             </div>
@@ -1730,12 +1419,9 @@ const Checkout = () => {
                                     ✓ Secure Checkout
                                 </strong>
 
-
                                 <div className="small mt-1">
-
                                     Your order information
                                     is processed securely.
-
                                 </div>
 
                             </div>
@@ -1748,9 +1434,7 @@ const Checkout = () => {
                             <button
                                 type="button"
                                 className="btn btn-primary btn-lg w-100 mt-4"
-                                onClick={
-                                    handlePlaceOrder
-                                }
+                                onClick={handlePlaceOrder}
                                 disabled={
                                     placingOrder ||
                                     !selectedAddress ||
@@ -1761,7 +1445,6 @@ const Checkout = () => {
                                 {placingOrder ? (
 
                                     <>
-
                                         <span
                                             className="spinner-border spinner-border-sm me-2"
                                             role="status"
@@ -1769,21 +1452,22 @@ const Checkout = () => {
                                         />
 
                                         {paymentMethod ===
-                                            "Cash on Delivery"
+                                        "Cash on Delivery"
                                             ? "Placing Order..."
                                             : "Creating Payment..."}
-
                                     </>
 
                                 ) : (
 
                                     paymentMethod ===
-                                        "Cash on Delivery"
+                                    "Cash on Delivery"
+
                                         ? (
                                             <>
                                                 🛍 Place Order
                                             </>
                                         )
+
                                         : (
                                             <>
                                                 💳 Pay Now
@@ -1815,9 +1499,7 @@ const Checkout = () => {
             </div>
 
         </div>
-
     );
-
 };
 
 

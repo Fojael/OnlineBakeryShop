@@ -1,49 +1,23 @@
 import api from "./api";
 
-// ============================================================
-// PAYMENT SERVICE
-// ============================================================
-//
-// Backend base URL:
-//
-// http://127.0.0.1:8000/api/
-//
-// Payment endpoints:
-//
-// GET     /api/payments/
-// POST    /api/payments/create/
-// GET     /api/payments/<id>/
-// GET     /api/payments/<id>/status/
-// POST    /api/payments/<id>/confirm/
-// POST    /api/payments/<id>/cancel/
-// POST    /api/payments/<id>/retry/
-//
-// ============================================================
-
 
 // ============================================================
 // CREATE PAYMENT
 // ============================================================
-//
-// Used for online payment methods:
-//
-// - bKash
-// - Nagad
-// - Rocket
-// - Credit Card
-//
-// Example:
-//
-// const response = await createPayment({
-//     order_id: orderId,
-//     payment_method: "bKash"
-// });
-//
-// ============================================================
 
-export const createPayment = async (paymentData) => {
+export const createPayment = async (
+    orderId,
+    paymentData = {}
+) => {
+
+    if (!orderId) {
+        throw new Error(
+            "Order ID is required."
+        );
+    }
+
     return await api.post(
-        "payments/create/",
+        `payments/create/${orderId}/`,
         paymentData
     );
 };
@@ -52,12 +26,11 @@ export const createPayment = async (paymentData) => {
 // ============================================================
 // GET SINGLE PAYMENT
 // ============================================================
-//
-// GET /api/payments/<paymentId>/
-//
-// ============================================================
 
-export const getPayment = async (paymentId) => {
+export const getPayment = async (
+    paymentId
+) => {
+
     if (!paymentId) {
         throw new Error(
             "Payment ID is required."
@@ -73,20 +46,11 @@ export const getPayment = async (paymentId) => {
 // ============================================================
 // GET PAYMENT STATUS
 // ============================================================
-//
-// GET /api/payments/<paymentId>/status/
-//
-// Used by:
-//
-// PaymentSuccess.jsx
-// PaymentFailed.jsx
-// PaymentCancelled.jsx
-//
-// ============================================================
 
 export const checkPaymentStatus = async (
     paymentId
 ) => {
+
     if (!paymentId) {
         throw new Error(
             "Payment ID is required."
@@ -102,15 +66,12 @@ export const checkPaymentStatus = async (
 // ============================================================
 // CONFIRM PAYMENT
 // ============================================================
-//
-// POST /api/payments/<paymentId>/confirm/
-//
-// ============================================================
 
 export const confirmPayment = async (
     paymentId,
     paymentData = {}
 ) => {
+
     if (!paymentId) {
         throw new Error(
             "Payment ID is required."
@@ -127,15 +88,12 @@ export const confirmPayment = async (
 // ============================================================
 // CANCEL PAYMENT
 // ============================================================
-//
-// POST /api/payments/<paymentId>/cancel/
-//
-// ============================================================
 
 export const cancelPayment = async (
     paymentId,
     paymentData = {}
 ) => {
+
     if (!paymentId) {
         throw new Error(
             "Payment ID is required."
@@ -152,17 +110,12 @@ export const cancelPayment = async (
 // ============================================================
 // RETRY PAYMENT
 // ============================================================
-//
-// POST /api/payments/<paymentId>/retry/
-//
-// Used from PaymentFailed.jsx.
-//
-// ============================================================
 
 export const retryPayment = async (
     paymentId,
     paymentData = {}
 ) => {
+
     if (!paymentId) {
         throw new Error(
             "Payment ID is required."
@@ -179,14 +132,9 @@ export const retryPayment = async (
 // ============================================================
 // GET CUSTOMER PAYMENTS
 // ============================================================
-//
-// GET /api/payments/
-//
-// Returns payments belonging to the authenticated customer.
-//
-// ============================================================
 
 export const getPayments = async () => {
+
     return await api.get(
         "payments/"
     );
@@ -196,52 +144,44 @@ export const getPayments = async () => {
 // ============================================================
 // PAYMENT ERROR MESSAGE
 // ============================================================
-//
-// Converts Django/DRF errors into a readable message.
-//
-// ============================================================
 
 export const getPaymentErrorMessage = (
     error
 ) => {
+
     const data =
         error?.response?.data;
 
-    // --------------------------------------------------------
-    // DETAIL
-    // --------------------------------------------------------
 
     if (data?.detail) {
+
         return String(
             data.detail
         );
+
     }
 
-    // --------------------------------------------------------
-    // MESSAGE
-    // --------------------------------------------------------
 
     if (data?.message) {
+
         return String(
             data.message
         );
+
     }
 
-    // --------------------------------------------------------
-    // ERROR
-    // --------------------------------------------------------
 
     if (data?.error) {
+
         return String(
             data.error
         );
+
     }
 
-    // --------------------------------------------------------
-    // NON-FIELD ERROR
-    // --------------------------------------------------------
 
     if (data?.non_field_errors) {
+
         return Array.isArray(
             data.non_field_errors
         )
@@ -249,53 +189,51 @@ export const getPaymentErrorMessage = (
             : String(
                 data.non_field_errors
             );
+
     }
 
-    // --------------------------------------------------------
-    // VALIDATION ERRORS
-    // --------------------------------------------------------
 
     if (
         data &&
         typeof data === "object"
     ) {
-        const messages = Object.values(
-            data
-        )
-            .flat(Infinity)
-            .filter(
-                (message) =>
-                    message !== null &&
-                    message !== undefined &&
-                    String(message).trim() !== ""
-            )
-            .map(
-                (message) =>
-                    String(message)
-            );
+
+        const messages =
+            Object.values(data)
+                .flat(Infinity)
+                .filter(
+                    (message) =>
+                        message !== null &&
+                        message !== undefined &&
+                        String(message).trim() !== ""
+                )
+                .map(
+                    (message) =>
+                        String(message)
+                );
+
 
         if (messages.length > 0) {
+
             return messages.join(" ");
+
         }
+
     }
 
-    // --------------------------------------------------------
-    // NETWORK ERROR
-    // --------------------------------------------------------
 
     if (
         error?.request &&
         !error?.response
     ) {
+
         return (
             "Unable to connect to the payment server. " +
             "Please check your internet connection and try again."
         );
+
     }
 
-    // --------------------------------------------------------
-    // DEFAULT
-    // --------------------------------------------------------
 
     return (
         "Unable to process the payment. Please try again."
@@ -304,44 +242,16 @@ export const getPaymentErrorMessage = (
 
 
 // ============================================================
-// EXTRACT PAYMENT REDIRECT URL
-// ============================================================
-//
-// Supports different backend response structures.
-//
-// Possible responses:
-//
-// {
-//     payment_url: "..."
-// }
-//
-// OR:
-//
-// {
-//     redirect_url: "..."
-// }
-//
-// OR:
-//
-// {
-//     checkout_url: "..."
-// }
-//
-// OR:
-//
-// {
-//     payment: {
-//         payment_url: "..."
-//     }
-// }
-//
+// GET PAYMENT REDIRECT URL
 // ============================================================
 
 export const getPaymentRedirectUrl = (
     response
 ) => {
+
     const data =
         response?.data ?? response;
+
 
     return (
         data?.payment_url ||
@@ -360,14 +270,16 @@ export const getPaymentRedirectUrl = (
 
 
 // ============================================================
-// EXTRACT PAYMENT ID
+// GET PAYMENT ID
 // ============================================================
 
 export const getPaymentId = (
     response
 ) => {
+
     const data =
         response?.data ?? response;
+
 
     return (
         data?.payment_id ??
@@ -380,14 +292,16 @@ export const getPaymentId = (
 
 
 // ============================================================
-// EXTRACT ORDER ID
+// GET ORDER ID
 // ============================================================
 
 export const getOrderId = (
     response
 ) => {
+
     const data =
         response?.data ?? response;
+
 
     return (
         data?.order_id ??
@@ -401,14 +315,16 @@ export const getOrderId = (
 
 
 // ============================================================
-// EXTRACT TRANSACTION ID
+// GET TRANSACTION ID
 // ============================================================
 
 export const getTransactionId = (
     response
 ) => {
+
     const data =
         response?.data ?? response;
+
 
     return (
         data?.transaction_id ??
@@ -426,30 +342,16 @@ export const getTransactionId = (
 
 
 // ============================================================
-// EXTRACT PAYMENT STATUS
-// ============================================================
-//
-// Handles responses such as:
-//
-// {
-//     status: "success"
-// }
-//
-// OR:
-//
-// {
-//     payment: {
-//         status: "success"
-//     }
-// }
-//
+// GET PAYMENT STATUS
 // ============================================================
 
 export const getPaymentStatus = (
     response
 ) => {
+
     const data =
         response?.data ?? response;
+
 
     return (
         data?.status ??
@@ -463,15 +365,17 @@ export const getPaymentStatus = (
 
 
 // ============================================================
-// PAYMENT STATUS NORMALIZER
+// NORMALIZE PAYMENT STATUS
 // ============================================================
 
 export const normalizePaymentStatus = (
     status
 ) => {
+
     if (!status) {
         return "";
     }
+
 
     return String(status)
         .toLowerCase()
@@ -481,14 +385,16 @@ export const normalizePaymentStatus = (
 
 
 // ============================================================
-// CHECK SUCCESSFUL PAYMENT
+// CHECK SUCCESS
 // ============================================================
 
 export const isPaymentSuccessful = (
     status
 ) => {
+
     const normalizedStatus =
         normalizePaymentStatus(status);
+
 
     return [
         "success",
@@ -506,14 +412,16 @@ export const isPaymentSuccessful = (
 
 
 // ============================================================
-// CHECK FAILED PAYMENT
+// CHECK FAILED
 // ============================================================
 
 export const isPaymentFailed = (
     status
 ) => {
+
     const normalizedStatus =
         normalizePaymentStatus(status);
+
 
     return [
         "failed",
@@ -530,14 +438,16 @@ export const isPaymentFailed = (
 
 
 // ============================================================
-// CHECK CANCELLED PAYMENT
+// CHECK CANCELLED
 // ============================================================
 
 export const isPaymentCancelled = (
     status
 ) => {
+
     const normalizedStatus =
         normalizePaymentStatus(status);
+
 
     return [
         "cancelled",
@@ -552,14 +462,16 @@ export const isPaymentCancelled = (
 
 
 // ============================================================
-// CHECK PENDING PAYMENT
+// CHECK PENDING
 // ============================================================
 
 export const isPaymentPending = (
     status
 ) => {
+
     const normalizedStatus =
         normalizePaymentStatus(status);
+
 
     return [
         "pending",
@@ -575,17 +487,15 @@ export const isPaymentPending = (
 
 
 // ============================================================
-// EXTRACT COMPLETE PAYMENT INFORMATION
-// ============================================================
-//
-// Useful for payment result pages.
-//
+// EXTRACT COMPLETE PAYMENT DATA
 // ============================================================
 
 export const extractPaymentData = (
     response
 ) => {
+
     return {
+
         paymentId:
             getPaymentId(response),
 
@@ -600,6 +510,7 @@ export const extractPaymentData = (
 
         redirectUrl:
             getPaymentRedirectUrl(response),
+
     };
 };
 
@@ -609,6 +520,7 @@ export const extractPaymentData = (
 // ============================================================
 
 const paymentService = {
+
     createPayment,
 
     getPayment,
@@ -646,6 +558,8 @@ const paymentService = {
     isPaymentPending,
 
     extractPaymentData,
+
 };
+
 
 export default paymentService;
