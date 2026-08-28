@@ -9,139 +9,272 @@ import {
     useSearchParams,
 } from "react-router-dom";
 
-import { toast } from "react-toastify";
+import {
+    toast,
+} from "react-toastify";
 
 import {
     checkPaymentStatus,
     getOrderId,
     getTransactionId,
+    getPaymentStatus,
+    isPaymentSuccessful,
+    isPaymentFailed,
+    isPaymentCancelled,
 } from "../../services/paymentService";
 
 
 const PaymentSuccess = () => {
 
-    const navigate = useNavigate();
-
-    const [searchParams] =
-        useSearchParams();
-
-    const [loading, setLoading] =
-        useState(true);
-
-    const [payment, setPayment] =
-        useState(null);
-
-    const [error, setError] =
-        useState("");
+    const navigate =
+        useNavigate();
 
 
-    // =========================================================
+    const [
+        searchParams,
+    ] = useSearchParams();
+
+
+    const [
+        loading,
+        setLoading,
+    ] = useState(true);
+
+
+    const [
+        payment,
+        setPayment,
+    ] = useState(null);
+
+
+    const [
+        error,
+        setError,
+    ] = useState("");
+
+
+    // ==========================================================
     // PAYMENT ID
-    // =========================================================
+    // ==========================================================
 
     const paymentId =
         searchParams.get("payment_id") ||
         searchParams.get("paymentId") ||
-        searchParams.get("id");
+        searchParams.get("id") ||
+        sessionStorage.getItem(
+            "pending_payment_id"
+        );
 
 
-    // =========================================================
-    // CHECK PAYMENT
-    // =========================================================
+    // ==========================================================
+    // CLEAN PENDING PAYMENT DATA
+    // ==========================================================
+
+    const clearPendingPayment =
+        () => {
+
+            sessionStorage.removeItem(
+                "pending_payment_id"
+            );
+
+            sessionStorage.removeItem(
+                "pending_order_id"
+            );
+
+            sessionStorage.removeItem(
+                "pending_payment_method"
+            );
+
+            sessionStorage.removeItem(
+                "pending_payment_url"
+            );
+
+        };
+
+
+    // ==========================================================
+    // VERIFY PAYMENT
+    // ==========================================================
 
     useEffect(() => {
 
         let mounted = true;
 
 
-        const verifyPayment = async () => {
+        const verifyPayment =
+            async () => {
 
-            if (!paymentId) {
+                if (!paymentId) {
 
-                if (mounted) {
+                    if (mounted) {
 
-                    setError(
-                        "Payment information was not found."
-                    );
+                        setError(
+                            "Payment information was not found."
+                        );
 
-                    setLoading(false);
+                        setLoading(false);
 
-                }
+                    }
 
-                return;
-
-            }
-
-
-            try {
-
-                setLoading(true);
-
-                setError("");
-
-
-                const response =
-                    await checkPaymentStatus(
-                        paymentId
-                    );
-
-
-                if (!mounted) {
                     return;
                 }
 
 
-                const paymentData =
-                    response?.data || {};
+                try {
+
+                    setLoading(true);
+
+                    setError("");
 
 
-                setPayment(
-                    paymentData
-                );
+                    // ==================================================
+                    // CHECK PAYMENT WITH BACKEND
+                    // ==================================================
+
+                    const response =
+                        await checkPaymentStatus(
+                            paymentId
+                        );
 
 
-                toast.success(
-                    "Payment completed successfully!"
-                );
+                    if (!mounted) {
+                        return;
+                    }
 
 
-            } catch (err) {
-
-                console.error(
-                    "Payment verification error:",
-                    err
-                );
+                    const paymentData =
+                        response?.data ?? {};
 
 
-                if (!mounted) {
-                    return;
+                    setPayment(
+                        paymentData
+                    );
+
+
+                    // ==================================================
+                    // GET STATUS
+                    // ==================================================
+
+                    const status =
+                        getPaymentStatus(
+                            paymentData
+                        );
+
+
+                    console.log(
+                        "Payment status:",
+                        status
+                    );
+
+
+                    // ==================================================
+                    // SUCCESS
+                    // ==================================================
+
+                    if (
+                        isPaymentSuccessful(
+                            status
+                        )
+                    ) {
+
+                        toast.success(
+                            "Payment completed successfully!"
+                        );
+
+
+                        clearPendingPayment();
+
+                    }
+
+                    // ==================================================
+                    // FAILED
+                    // ==================================================
+
+                    else if (
+                        isPaymentFailed(
+                            status
+                        )
+                    ) {
+
+                        setError(
+                            "Your payment failed. Please try again."
+                        );
+
+                        toast.error(
+                            "Payment failed."
+                        );
+
+                    }
+
+                    // ==================================================
+                    // CANCELLED
+                    // ==================================================
+
+                    else if (
+                        isPaymentCancelled(
+                            status
+                        )
+                    ) {
+
+                        setError(
+                            "The payment was cancelled."
+                        );
+
+                        toast.warning(
+                            "Payment was cancelled."
+                        );
+
+                    }
+
+                    // ==================================================
+                    // PENDING / UNKNOWN
+                    // ==================================================
+
+                    else {
+
+                        setError(
+                            "Payment is still being processed. Please check your order status."
+                        );
+
+                        toast.info(
+                            "Payment verification is still pending."
+                        );
+
+                    }
+
+
+                } catch (err) {
+
+                    console.error(
+                        "Payment verification error:",
+                        err
+                    );
+
+
+                    if (!mounted) {
+                        return;
+                    }
+
+
+                    const message =
+                        err?.response?.data?.detail ||
+                        err?.response?.data?.message ||
+                        "Unable to verify payment.";
+
+
+                    setError(message);
+
+                    toast.error(message);
+
+                } finally {
+
+                    if (mounted) {
+                        setLoading(false);
+                    }
+
                 }
 
-
-                setError(
-                    err?.response?.data?.detail ||
-                    err?.response?.data?.message ||
-                    "Unable to verify payment."
-                );
-
-
-                toast.error(
-                    err?.response?.data?.detail ||
-                    err?.response?.data?.message ||
-                    "Unable to verify payment."
-                );
-
-            } finally {
-
-                if (mounted) {
-
-                    setLoading(false);
-
-                }
-
-            }
-
-        };
+            };
 
 
         void verifyPayment();
@@ -156,20 +289,31 @@ const PaymentSuccess = () => {
     }, [paymentId]);
 
 
-    // =========================================================
-    // EXTRACT ORDER / TRANSACTION
-    // =========================================================
+    // ==========================================================
+    // EXTRACT PAYMENT INFORMATION
+    // ==========================================================
 
     const orderId =
-        getOrderId(payment);
+        getOrderId(
+            payment
+        );
+
 
     const transactionId =
-        getTransactionId(payment);
+        getTransactionId(
+            payment
+        );
 
 
-    // =========================================================
+    const paymentStatus =
+        getPaymentStatus(
+            payment
+        );
+
+
+    // ==========================================================
     // LOADING
-    // =========================================================
+    // ==========================================================
 
     if (loading) {
 
@@ -185,14 +329,18 @@ const PaymentSuccess = () => {
                             className="spinner-border text-success"
                             role="status"
                         >
+
                             <span className="visually-hidden">
                                 Verifying payment...
                             </span>
+
                         </div>
+
 
                         <h4 className="mt-4">
                             Verifying Payment...
                         </h4>
+
 
                         <p className="text-muted mb-0">
                             Please wait while we confirm
@@ -210,9 +358,9 @@ const PaymentSuccess = () => {
     }
 
 
-    // =========================================================
-    // ERROR
-    // =========================================================
+    // ==========================================================
+    // FAILED / PENDING / CANCELLED
+    // ==========================================================
 
     if (error) {
 
@@ -220,42 +368,93 @@ const PaymentSuccess = () => {
 
             <div className="container py-5">
 
-                <div className="card border-0 shadow-sm">
+                <div className="row justify-content-center">
 
-                    <div className="card-body text-center py-5">
+                    <div className="col-lg-7">
 
-                        <div
-                            className="display-1 text-danger"
-                        >
-                            ✕
-                        </div>
+                        <div className="card border-0 shadow-sm">
 
-                        <h2 className="mt-3">
-                            Payment Verification Failed
-                        </h2>
+                            <div className="card-body text-center py-5">
 
-                        <p className="text-muted">
-                            {error}
-                        </p>
+                                <div className="display-1 text-warning">
+                                    ⚠️
+                                </div>
 
-                        <div className="d-flex justify-content-center gap-2">
 
-                            <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={() =>
-                                    navigate("/checkout")
-                                }
-                            >
-                                Back to Checkout
-                            </button>
+                                <h2 className="mt-3">
+                                    Payment Verification
+                                </h2>
 
-                            <Link
-                                to="/orders"
-                                className="btn btn-outline-secondary"
-                            >
-                                My Orders
-                            </Link>
+
+                                <p className="text-muted">
+                                    {error}
+                                </p>
+
+
+                                {paymentId && (
+
+                                    <p>
+                                        Payment ID:{" "}
+                                        <strong>
+                                            #{paymentId}
+                                        </strong>
+                                    </p>
+
+                                )}
+
+
+                                {paymentStatus && (
+
+                                    <p>
+
+                                        Status:{" "}
+
+                                        <span className="badge bg-warning text-dark">
+
+                                            {String(
+                                                paymentStatus
+                                            )}
+
+                                        </span>
+
+                                    </p>
+
+                                )}
+
+
+                                <div className="d-flex justify-content-center gap-2 flex-wrap mt-4">
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={() =>
+                                            navigate(
+                                                "/checkout"
+                                            )
+                                        }
+                                    >
+                                        Back to Checkout
+                                    </button>
+
+
+                                    <Link
+                                        to="/orders"
+                                        className="btn btn-outline-secondary"
+                                    >
+                                        My Orders
+                                    </Link>
+
+
+                                    <Link
+                                        to="/products"
+                                        className="btn btn-outline-primary"
+                                    >
+                                        Continue Shopping
+                                    </Link>
+
+                                </div>
+
+                            </div>
 
                         </div>
 
@@ -270,9 +469,9 @@ const PaymentSuccess = () => {
     }
 
 
-    // =========================================================
+    // ==========================================================
     // SUCCESS PAGE
-    // =========================================================
+    // ==========================================================
 
     return (
 
@@ -286,15 +485,18 @@ const PaymentSuccess = () => {
 
                         <div className="card-body text-center py-5">
 
-                            <div
-                                className="display-1 text-success"
-                            >
+
+                            {/* SUCCESS ICON */}
+
+                            <div className="display-1 text-success">
                                 ✓
                             </div>
+
 
                             <h1 className="fw-bold mt-3">
                                 Payment Successful!
                             </h1>
+
 
                             <p className="text-muted">
                                 Your payment has been
@@ -302,9 +504,7 @@ const PaymentSuccess = () => {
                             </p>
 
 
-                            {/* =================================
-                                PAYMENT INFORMATION
-                            ================================= */}
+                            {/* PAYMENT INFORMATION */}
 
                             <div className="card bg-light mt-4">
 
@@ -351,7 +551,7 @@ const PaymentSuccess = () => {
 
                                     {transactionId && (
 
-                                        <div className="d-flex justify-content-between">
+                                        <div className="d-flex justify-content-between mb-2">
 
                                             <span>
                                                 Transaction ID
@@ -365,14 +565,33 @@ const PaymentSuccess = () => {
 
                                     )}
 
+
+                                    {paymentStatus && (
+
+                                        <div className="d-flex justify-content-between">
+
+                                            <span>
+                                                Status
+                                            </span>
+
+                                            <span className="badge bg-success">
+
+                                                {String(
+                                                    paymentStatus
+                                                )}
+
+                                            </span>
+
+                                        </div>
+
+                                    )}
+
                                 </div>
 
                             </div>
 
 
-                            {/* =================================
-                                ACTIONS
-                            ================================= */}
+                            {/* ACTIONS */}
 
                             <div className="d-flex flex-column flex-sm-row justify-content-center gap-2 mt-4">
 

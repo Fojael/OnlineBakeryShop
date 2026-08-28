@@ -1,11 +1,12 @@
 import {
+    useEffect,
+    useRef,
+} from "react";
+
+import {
     Link,
     useSearchParams,
 } from "react-router-dom";
-
-import {
-    useEffect,
-} from "react";
 
 import {
     cancelPayment,
@@ -15,45 +16,61 @@ import {
 const PaymentCancelled = () => {
 
     const [
-        searchParams
+        searchParams,
     ] = useSearchParams();
+
+
+    const cancellationSent =
+        useRef(false);
 
 
     useEffect(() => {
 
+        if (cancellationSent.current) {
+            return;
+        }
+
+        cancellationSent.current = true;
+
+
         const paymentId =
-            searchParams.get(
-                "payment_id"
-            ) ||
-            searchParams.get(
-                "paymentId"
-            ) ||
+            searchParams.get("payment_id") ||
+            searchParams.get("paymentId") ||
+            searchParams.get("id") ||
             sessionStorage.getItem(
                 "pending_payment_id"
             );
 
 
         // ======================================================
-        // NOTIFY BACKEND
+        // CANCEL PAYMENT ON BACKEND
         // ======================================================
 
-        if (paymentId) {
+        const cancelPendingPayment =
+            async () => {
 
-            cancelPayment(
-                paymentId
-            )
-                .then(
-                    (response) => {
+                if (!paymentId) {
+
+                    console.log(
+                        "No payment ID found for cancellation."
+                    );
+
+                } else {
+
+                    try {
+
+                        const response =
+                            await cancelPayment(
+                                paymentId
+                            );
+
 
                         console.log(
                             "Payment cancelled:",
-                            response.data
+                            response?.data
                         );
 
-                    }
-                )
-                .catch(
-                    (error) => {
+                    } catch (error) {
 
                         console.error(
                             "Payment cancellation error:",
@@ -61,22 +78,35 @@ const PaymentCancelled = () => {
                         );
 
                     }
+
+                }
+
+
+                // ==================================================
+                // CLEAN PAYMENT SESSION DATA
+                // ==================================================
+
+                sessionStorage.removeItem(
+                    "pending_payment_id"
                 );
 
-        }
+                sessionStorage.removeItem(
+                    "pending_order_id"
+                );
+
+                sessionStorage.removeItem(
+                    "pending_payment_method"
+                );
+
+                sessionStorage.removeItem(
+                    "pending_payment_url"
+                );
+
+            };
 
 
-        // ======================================================
-        // CLEAN PENDING PAYMENT
-        // ======================================================
+        void cancelPendingPayment();
 
-        sessionStorage.removeItem(
-            "pending_payment_id"
-        );
-
-        sessionStorage.removeItem(
-            "pending_payment_method"
-        );
 
     }, [searchParams]);
 
@@ -97,9 +127,11 @@ const PaymentCancelled = () => {
                                 ⚠️
                             </div>
 
+
                             <h1 className="text-warning mt-3">
                                 Payment Cancelled
                             </h1>
+
 
                             <p className="text-muted">
                                 You cancelled the payment
@@ -123,9 +155,9 @@ const PaymentCancelled = () => {
                                     </li>
 
                                     <li>
-                                        You can try placing
-                                        the payment again if
-                                        supported.
+                                        You can try making
+                                        the payment again
+                                        if supported.
                                     </li>
 
                                     <li>

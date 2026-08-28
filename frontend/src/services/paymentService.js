@@ -11,15 +11,19 @@ export const createPayment = async (
 ) => {
 
     if (!orderId) {
+
         throw new Error(
             "Order ID is required."
         );
+
     }
+
 
     return await api.post(
         `payments/create/${orderId}/`,
         paymentData
     );
+
 };
 
 
@@ -32,14 +36,18 @@ export const getPayment = async (
 ) => {
 
     if (!paymentId) {
+
         throw new Error(
             "Payment ID is required."
         );
+
     }
+
 
     return await api.get(
         `payments/${paymentId}/`
     );
+
 };
 
 
@@ -52,14 +60,18 @@ export const checkPaymentStatus = async (
 ) => {
 
     if (!paymentId) {
+
         throw new Error(
             "Payment ID is required."
         );
+
     }
+
 
     return await api.get(
         `payments/${paymentId}/status/`
     );
+
 };
 
 
@@ -73,15 +85,19 @@ export const confirmPayment = async (
 ) => {
 
     if (!paymentId) {
+
         throw new Error(
             "Payment ID is required."
         );
+
     }
+
 
     return await api.post(
         `payments/${paymentId}/confirm/`,
         paymentData
     );
+
 };
 
 
@@ -95,15 +111,19 @@ export const cancelPayment = async (
 ) => {
 
     if (!paymentId) {
+
         throw new Error(
             "Payment ID is required."
         );
+
     }
+
 
     return await api.post(
         `payments/${paymentId}/cancel/`,
         paymentData
     );
+
 };
 
 
@@ -117,15 +137,19 @@ export const retryPayment = async (
 ) => {
 
     if (!paymentId) {
+
         throw new Error(
             "Payment ID is required."
         );
+
     }
+
 
     return await api.post(
         `payments/${paymentId}/retry/`,
         paymentData
     );
+
 };
 
 
@@ -138,11 +162,12 @@ export const getPayments = async () => {
     return await api.get(
         "payments/"
     );
+
 };
 
 
 // ============================================================
-// PAYMENT ERROR MESSAGE
+// GET PAYMENT ERROR MESSAGE
 // ============================================================
 
 export const getPaymentErrorMessage = (
@@ -153,6 +178,10 @@ export const getPaymentErrorMessage = (
         error?.response?.data;
 
 
+    // ----------------------------------------------------------
+    // DETAIL
+    // ----------------------------------------------------------
+
     if (data?.detail) {
 
         return String(
@@ -161,6 +190,10 @@ export const getPaymentErrorMessage = (
 
     }
 
+
+    // ----------------------------------------------------------
+    // MESSAGE
+    // ----------------------------------------------------------
 
     if (data?.message) {
 
@@ -171,6 +204,10 @@ export const getPaymentErrorMessage = (
     }
 
 
+    // ----------------------------------------------------------
+    // ERROR
+    // ----------------------------------------------------------
+
     if (data?.error) {
 
         return String(
@@ -179,6 +216,10 @@ export const getPaymentErrorMessage = (
 
     }
 
+
+    // ----------------------------------------------------------
+    // NON FIELD ERRORS
+    // ----------------------------------------------------------
 
     if (data?.non_field_errors) {
 
@@ -192,6 +233,10 @@ export const getPaymentErrorMessage = (
 
     }
 
+
+    // ----------------------------------------------------------
+    // DJANGO REST FRAMEWORK VALIDATION ERRORS
+    // ----------------------------------------------------------
 
     if (
         data &&
@@ -222,6 +267,10 @@ export const getPaymentErrorMessage = (
     }
 
 
+    // ----------------------------------------------------------
+    // NETWORK ERROR
+    // ----------------------------------------------------------
+
     if (
         error?.request &&
         !error?.response
@@ -235,9 +284,14 @@ export const getPaymentErrorMessage = (
     }
 
 
+    // ----------------------------------------------------------
+    // DEFAULT
+    // ----------------------------------------------------------
+
     return (
         "Unable to process the payment. Please try again."
     );
+
 };
 
 
@@ -254,18 +308,31 @@ export const getPaymentRedirectUrl = (
 
 
     return (
+
         data?.payment_url ||
+
         data?.redirect_url ||
+
         data?.checkout_url ||
+
         data?.gateway_url ||
+
         data?.url ||
+
         data?.payment?.payment_url ||
+
         data?.payment?.redirect_url ||
+
         data?.payment?.checkout_url ||
+
         data?.payment?.gateway_url ||
+
         data?.payment?.url ||
+
         null
+
     );
+
 };
 
 
@@ -282,12 +349,23 @@ export const getPaymentId = (
 
 
     return (
+
         data?.payment_id ??
+
         data?.paymentId ??
+
         data?.payment?.id ??
+
+        data?.payment?.payment_id ??
+
+        data?.payment?.paymentId ??
+
         data?.id ??
+
         null
+
     );
+
 };
 
 
@@ -304,13 +382,23 @@ export const getOrderId = (
 
 
     return (
+
         data?.order_id ??
+
         data?.orderId ??
+
         data?.payment?.order_id ??
+
+        data?.payment?.orderId ??
+
         data?.payment?.order?.id ??
+
         data?.order?.id ??
+
         null
+
     );
+
 };
 
 
@@ -327,17 +415,31 @@ export const getTransactionId = (
 
 
     return (
+
         data?.transaction_id ??
+
         data?.transactionId ??
+
         data?.trx_id ??
+
         data?.trxID ??
+
         data?.transaction?.id ??
+
         data?.payment?.transaction_id ??
+
         data?.payment?.transactionId ??
+
         data?.payment?.trx_id ??
+
         data?.payment?.trxID ??
+
+        data?.payment?.transaction?.id ??
+
         null
+
     );
+
 };
 
 
@@ -354,13 +456,23 @@ export const getPaymentStatus = (
 
 
     return (
+
         data?.status ??
+
         data?.payment_status ??
+
         data?.paymentStatus ??
+
         data?.payment?.status ??
+
         data?.payment?.payment_status ??
+
+        data?.payment?.paymentStatus ??
+
         null
+
     );
+
 };
 
 
@@ -372,8 +484,13 @@ export const normalizePaymentStatus = (
     status
 ) => {
 
-    if (!status) {
+    if (
+        status === null ||
+        status === undefined
+    ) {
+
         return "";
+
     }
 
 
@@ -381,6 +498,7 @@ export const normalizePaymentStatus = (
         .toLowerCase()
         .trim()
         .replace(/[\s-]+/g, "_");
+
 };
 
 
@@ -393,21 +511,37 @@ export const isPaymentSuccessful = (
 ) => {
 
     const normalizedStatus =
-        normalizePaymentStatus(status);
+        normalizePaymentStatus(
+            status
+        );
 
 
     return [
+
         "success",
+
         "successful",
+
         "completed",
+
         "complete",
+
         "paid",
+
         "confirmed",
+
         "payment_success",
+
         "payment_successful",
+
+        "succeeded",
+
+        "approved",
+
     ].includes(
         normalizedStatus
     );
+
 };
 
 
@@ -420,20 +554,33 @@ export const isPaymentFailed = (
 ) => {
 
     const normalizedStatus =
-        normalizePaymentStatus(status);
+        normalizePaymentStatus(
+            status
+        );
 
 
     return [
+
         "failed",
+
         "failure",
+
         "error",
+
         "declined",
+
         "rejected",
+
         "payment_failed",
+
         "payment_failure",
+
+        "cancelled_by_gateway",
+
     ].includes(
         normalizedStatus
     );
+
 };
 
 
@@ -446,18 +593,31 @@ export const isPaymentCancelled = (
 ) => {
 
     const normalizedStatus =
-        normalizePaymentStatus(status);
+        normalizePaymentStatus(
+            status
+        );
 
 
     return [
+
         "cancelled",
+
         "canceled",
+
         "cancel",
+
         "payment_cancelled",
+
         "payment_canceled",
+
+        "user_cancelled",
+
+        "user_canceled",
+
     ].includes(
         normalizedStatus
     );
+
 };
 
 
@@ -470,19 +630,33 @@ export const isPaymentPending = (
 ) => {
 
     const normalizedStatus =
-        normalizePaymentStatus(status);
+        normalizePaymentStatus(
+            status
+        );
 
 
     return [
+
         "pending",
+
         "processing",
+
         "initiated",
+
         "created",
+
         "awaiting_payment",
+
         "payment_pending",
+
+        "in_progress",
+
+        "initiated_payment",
+
     ].includes(
         normalizedStatus
     );
+
 };
 
 
@@ -497,21 +671,32 @@ export const extractPaymentData = (
     return {
 
         paymentId:
-            getPaymentId(response),
+            getPaymentId(
+                response
+            ),
 
         orderId:
-            getOrderId(response),
+            getOrderId(
+                response
+            ),
 
         transactionId:
-            getTransactionId(response),
+            getTransactionId(
+                response
+            ),
 
         status:
-            getPaymentStatus(response),
+            getPaymentStatus(
+                response
+            ),
 
         redirectUrl:
-            getPaymentRedirectUrl(response),
+            getPaymentRedirectUrl(
+                response
+            ),
 
     };
+
 };
 
 

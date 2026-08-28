@@ -7,11 +7,14 @@ import {
     useSearchParams,
 } from "react-router-dom";
 
-import { toast } from "react-toastify";
+import {
+    toast,
+} from "react-toastify";
 
 import {
     retryPayment,
     getPaymentRedirectUrl,
+    getPaymentId,
     getPaymentErrorMessage,
 } from "../../services/paymentService";
 
@@ -19,29 +22,51 @@ import {
 const PaymentFailed = () => {
 
     const [
-        searchParams
+        searchParams,
     ] = useSearchParams();
 
 
     const [
         retrying,
-        setRetrying
+        setRetrying,
     ] = useState(false);
 
 
+    // ==========================================================
+    // GET PAYMENT ID
+    // ==========================================================
+
     const paymentId =
-        searchParams.get(
-            "payment_id"
-        ) ||
-        searchParams.get(
-            "paymentId"
-        ) ||
+        searchParams.get("payment_id") ||
+        searchParams.get("paymentId") ||
+        searchParams.get("id") ||
         sessionStorage.getItem(
             "pending_payment_id"
         );
 
 
+    // ==========================================================
+    // GET ORDER ID
+    // ==========================================================
+
+    const orderId =
+        searchParams.get("order_id") ||
+        searchParams.get("orderId") ||
+        sessionStorage.getItem(
+            "pending_order_id"
+        );
+
+
+    // ==========================================================
+    // RETRY PAYMENT
+    // ==========================================================
+
     const handleRetry = async () => {
+
+        if (retrying) {
+            return;
+        }
+
 
         if (!paymentId) {
 
@@ -50,7 +75,6 @@ const PaymentFailed = () => {
             );
 
             return;
-
         }
 
 
@@ -58,6 +82,10 @@ const PaymentFailed = () => {
 
             setRetrying(true);
 
+
+            // ==================================================
+            // CREATE NEW PAYMENT SESSION
+            // ==================================================
 
             const response =
                 await retryPayment(
@@ -67,9 +95,23 @@ const PaymentFailed = () => {
 
             console.log(
                 "Retry payment response:",
-                response.data
+                response?.data
             );
 
+
+            // ==================================================
+            // GET NEW PAYMENT ID
+            // ==================================================
+
+            const newPaymentId =
+                getPaymentId(
+                    response
+                );
+
+
+            // ==================================================
+            // GET PAYMENT URL
+            // ==================================================
 
             const paymentUrl =
                 getPaymentRedirectUrl(
@@ -86,6 +128,40 @@ const PaymentFailed = () => {
             }
 
 
+            // ==================================================
+            // SAVE NEW PAYMENT INFORMATION
+            // ==================================================
+
+            if (newPaymentId) {
+
+                sessionStorage.setItem(
+                    "pending_payment_id",
+                    String(newPaymentId)
+                );
+
+            }
+
+
+            if (orderId) {
+
+                sessionStorage.setItem(
+                    "pending_order_id",
+                    String(orderId)
+                );
+
+            }
+
+
+            sessionStorage.setItem(
+                "pending_payment_url",
+                paymentUrl
+            );
+
+
+            // ==================================================
+            // REDIRECT
+            // ==================================================
+
             toast.info(
                 "Redirecting to payment gateway..."
             );
@@ -93,6 +169,7 @@ const PaymentFailed = () => {
 
             window.location.href =
                 paymentUrl;
+
 
         } catch (error) {
 
@@ -133,9 +210,11 @@ const PaymentFailed = () => {
                                 ❌
                             </div>
 
+
                             <h1 className="text-danger mt-3">
                                 Payment Failed
                             </h1>
+
 
                             <p className="text-muted">
                                 Unfortunately, your payment
@@ -153,6 +232,33 @@ const PaymentFailed = () => {
                                 </p>
 
                             )}
+
+
+                            {orderId && (
+
+                                <p className="text-muted">
+                                    Order ID:{" "}
+                                    <strong>
+                                        #{orderId}
+                                    </strong>
+                                </p>
+
+                            )}
+
+
+                            <div className="alert alert-warning text-start">
+
+                                <strong>
+                                    Payment was not completed.
+                                </strong>
+
+                                <div className="small mt-1">
+                                    You can try the payment
+                                    again or check your order
+                                    status.
+                                </div>
+
+                            </div>
 
 
                             <div className="d-grid gap-2 mt-4">
@@ -173,8 +279,11 @@ const PaymentFailed = () => {
                                         {retrying ? (
 
                                             <>
+
                                                 <span
                                                     className="spinner-border spinner-border-sm me-2"
+                                                    role="status"
+                                                    aria-hidden="true"
                                                 />
 
                                                 Creating new payment...
@@ -207,6 +316,14 @@ const PaymentFailed = () => {
                                     className="btn btn-outline-secondary"
                                 >
                                     Continue Shopping
+                                </Link>
+
+
+                                <Link
+                                    to="/cart"
+                                    className="btn btn-outline-dark"
+                                >
+                                    Back to Cart
                                 </Link>
 
                             </div>

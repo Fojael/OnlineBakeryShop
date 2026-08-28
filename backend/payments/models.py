@@ -6,15 +6,22 @@ from orders.models import Order
 
 class Payment(models.Model):
 
-    # ======================================================
-    # PAYMENT GATEWAY
-    # ======================================================
+    # ==========================================================
+    # GATEWAY
+    # ==========================================================
 
     GATEWAY_SSLCOMMERZ = "SSLCommerz"
 
-    # ======================================================
-    # PAYMENT STATUS
-    # ======================================================
+    GATEWAY_CHOICES = [
+        (
+            GATEWAY_SSLCOMMERZ,
+            "SSLCommerz",
+        ),
+    ]
+
+    # ==========================================================
+    # STATUS
+    # ==========================================================
 
     STATUS_PENDING = "Pending"
     STATUS_SUCCESS = "Success"
@@ -22,15 +29,27 @@ class Payment(models.Model):
     STATUS_CANCELLED = "Cancelled"
 
     STATUS_CHOICES = [
-        (STATUS_PENDING, "Pending"),
-        (STATUS_SUCCESS, "Success"),
-        (STATUS_FAILED, "Failed"),
-        (STATUS_CANCELLED, "Cancelled"),
+        (
+            STATUS_PENDING,
+            "Pending",
+        ),
+        (
+            STATUS_SUCCESS,
+            "Success",
+        ),
+        (
+            STATUS_FAILED,
+            "Failed",
+        ),
+        (
+            STATUS_CANCELLED,
+            "Cancelled",
+        ),
     ]
 
-    # ======================================================
+    # ==========================================================
     # ORDER
-    # ======================================================
+    # ==========================================================
 
     order = models.OneToOneField(
         Order,
@@ -38,22 +57,24 @@ class Payment(models.Model):
         related_name="payment",
     )
 
-    # ======================================================
+    # ==========================================================
     # PAYMENT INFORMATION
-    # ======================================================
+    # ==========================================================
 
     transaction_id = models.CharField(
         max_length=100,
         unique=True,
+        db_index=True,
     )
 
     gateway = models.CharField(
         max_length=50,
+        choices=GATEWAY_CHOICES,
         default=GATEWAY_SSLCOMMERZ,
     )
 
     amount = models.DecimalField(
-        max_digits=10,
+        max_digits=12,
         decimal_places=2,
     )
 
@@ -66,41 +87,52 @@ class Payment(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default=STATUS_PENDING,
+        db_index=True,
     )
 
-    # ======================================================
-    # SSLCOMMERZ DATA
-    # ======================================================
+    # ==========================================================
+    # SSLCommerz DATA
+    # ==========================================================
 
     gateway_transaction_id = models.CharField(
         max_length=120,
         blank=True,
+        default="",
     )
 
     bank_transaction_id = models.CharField(
         max_length=120,
         blank=True,
+        default="",
     )
 
     validation_id = models.CharField(
         max_length=120,
         blank=True,
+        default="",
     )
 
     card_type = models.CharField(
         max_length=100,
         blank=True,
+        default="",
     )
 
     card_brand = models.CharField(
         max_length=100,
         blank=True,
+        default="",
     )
 
     card_issuer = models.CharField(
         max_length=150,
         blank=True,
+        default="",
     )
+
+    # ==========================================================
+    # TIMESTAMPS
+    # ==========================================================
 
     paid_at = models.DateTimeField(
         null=True,
@@ -115,14 +147,28 @@ class Payment(models.Model):
         auto_now=True,
     )
 
+    # ==========================================================
+    # META
+    # ==========================================================
+
     class Meta:
+
         ordering = [
             "-created_at",
         ]
 
-    # ======================================================
+        indexes = [
+            models.Index(
+                fields=["status", "created_at"]
+            ),
+            models.Index(
+                fields=["gateway", "status"]
+            ),
+        ]
+
+    # ==========================================================
     # PROPERTIES
-    # ======================================================
+    # ==========================================================
 
     @property
     def is_pending(self):
@@ -140,9 +186,9 @@ class Payment(models.Model):
     def is_cancelled(self):
         return self.status == self.STATUS_CANCELLED
 
-    # ======================================================
-    # SUCCESS
-    # ======================================================
+    # ==========================================================
+    # MARK SUCCESS
+    # ==========================================================
 
     def mark_success(
         self,
@@ -157,22 +203,31 @@ class Payment(models.Model):
         self.status = self.STATUS_SUCCESS
 
         self.gateway_transaction_id = (
-            gateway_transaction_id
+            gateway_transaction_id or ""
         )
 
         self.bank_transaction_id = (
-            bank_transaction_id
+            bank_transaction_id or ""
         )
 
-        self.validation_id = validation_id
+        self.validation_id = (
+            validation_id or ""
+        )
 
-        self.card_type = card_type
+        self.card_type = (
+            card_type or ""
+        )
 
-        self.card_brand = card_brand
+        self.card_brand = (
+            card_brand or ""
+        )
 
-        self.card_issuer = card_issuer
+        self.card_issuer = (
+            card_issuer or ""
+        )
 
-        self.paid_at = timezone.now()
+        if not self.paid_at:
+            self.paid_at = timezone.now()
 
         self.save(
             update_fields=[
@@ -188,11 +243,14 @@ class Payment(models.Model):
             ]
         )
 
-    # ======================================================
-    # FAILED
-    # ======================================================
+    # ==========================================================
+    # MARK FAILED
+    # ==========================================================
 
     def mark_failed(self):
+
+        if self.status == self.STATUS_SUCCESS:
+            return
 
         self.status = self.STATUS_FAILED
 
@@ -203,11 +261,14 @@ class Payment(models.Model):
             ]
         )
 
-    # ======================================================
-    # CANCELLED
-    # ======================================================
+    # ==========================================================
+    # MARK CANCELLED
+    # ==========================================================
 
     def mark_cancelled(self):
+
+        if self.status == self.STATUS_SUCCESS:
+            return
 
         self.status = self.STATUS_CANCELLED
 
@@ -218,9 +279,9 @@ class Payment(models.Model):
             ]
         )
 
-    # ======================================================
+    # ==========================================================
     # STRING
-    # ======================================================
+    # ==========================================================
 
     def __str__(self):
 

@@ -209,48 +209,66 @@ SIMPLE_JWT = {
 }
 
 # ==========================================================
-# SSLCommerz Configuration
+# FRONTEND
 # ==========================================================
 
-SSLCOMMERZ_STORE_ID = "your_store_id"
+FRONTEND_URL = "http://localhost:5173"
 
-SSLCOMMERZ_STORE_PASSWORD = "your_store_password"
 
-# Sandbox payment API
+# ==========================================================
+# SSLCommerz
+# ==========================================================
+
+SSLCOMMERZ_STORE_ID = "YOUR_STORE_ID"
+
+SSLCOMMERZ_STORE_PASSWORD = "YOUR_STORE_PASSWORD"
+
+
+# ==========================================================
+# SANDBOX
+# ==========================================================
+
 SSLCOMMERZ_API_URL = (
     "https://sandbox.sslcommerz.com/"
     "gwprocess/v4/api.php"
 )
 
-# Sandbox validation API
 SSLCOMMERZ_VALIDATION_URL = (
     "https://sandbox.sslcommerz.com/"
     "validator/api/validationserverAPI.php"
 )
 
-SSLCOMMERZ_TIMEOUT = 30
 
 # ==========================================================
-# Payment Callback URLs
+# CALLBACK URLs
 # ==========================================================
 
 SSLCOMMERZ_SUCCESS_URL = (
-    "http://127.0.0.1:8000/api/payments/success/"
+    "http://localhost:8000/"
+    "api/payments/success/"
 )
 
 SSLCOMMERZ_FAIL_URL = (
-    "http://127.0.0.1:8000/api/payments/fail/"
+    "http://localhost:8000/"
+    "api/payments/fail/"
 )
 
 SSLCOMMERZ_CANCEL_URL = (
-    "http://127.0.0.1:8000/api/payments/cancel/"
+    "http://localhost:8000/"
+    "api/payments/cancel/"
 )
 
 SSLCOMMERZ_IPN_URL = (
-    "http://127.0.0.1:8000/api/payments/ipn/"
+    "http://localhost:8000/"
+    "api/payments/ipn/"
 )
 
-FRONTEND_URL = "http://localhost:5173"
+
+# ==========================================================
+# REQUEST TIMEOUT
+# ==========================================================
+
+SSLCOMMERZ_TIMEOUT = 30
 # ==========================
 # LOGIN
 # ==========================

@@ -15,6 +15,7 @@ import {
 
 
 const Checkout = () => {
+
     const navigate = useNavigate();
 
     // ==========================================================
@@ -40,63 +41,89 @@ const Checkout = () => {
     // ==========================================================
 
     useEffect(() => {
+
         let mounted = true;
 
         const loadCheckout = async () => {
+
             try {
+
                 setLoading(true);
                 setError("");
 
-                // ==================================================
+                // --------------------------------------------------
                 // LOAD CART
-                // ==================================================
+                // --------------------------------------------------
 
                 const cartResponse = await getCart();
-                const cartData = cartResponse?.data ?? null;
 
-                // ==================================================
+                const cartData =
+                    cartResponse?.data ?? null;
+
+
+                // --------------------------------------------------
                 // LOAD ADDRESSES
-                // ==================================================
+                // --------------------------------------------------
 
-                const addressResponse = await getAddresses();
+                const addressResponse =
+                    await getAddresses();
 
-                const addressList = Array.isArray(
-                    addressResponse?.data
-                )
-                    ? addressResponse.data
-                    : [];
+                const addressList =
+                    Array.isArray(addressResponse?.data)
+                        ? addressResponse.data
+                        : [];
+
 
                 if (!mounted) {
                     return;
                 }
 
+
                 setCart(cartData);
                 setAddresses(addressList);
 
-                // ==================================================
-                // SELECT DEFAULT ADDRESS
-                // ==================================================
 
-                const defaultAddress = addressList.find(
-                    (address) =>
-                        address.is_default === true
-                );
+                // --------------------------------------------------
+                // SELECT DEFAULT ADDRESS
+                // --------------------------------------------------
+
+                const defaultAddress =
+                    addressList.find(
+                        (address) =>
+                            address.is_default === true
+                    );
+
 
                 if (defaultAddress) {
-                    setSelectedAddress(defaultAddress.id);
-                } else if (addressList.length > 0) {
-                    setSelectedAddress(addressList[0].id);
+
+                    setSelectedAddress(
+                        defaultAddress.id
+                    );
+
+                } else if (
+                    addressList.length > 0
+                ) {
+
+                    setSelectedAddress(
+                        addressList[0].id
+                    );
+
                 } else {
+
                     setSelectedAddress(null);
+
                 }
 
             } catch (err) {
+
                 console.error(
                     "Checkout loading error:",
                     err
                 );
 
+
                 if (mounted) {
+
                     const message =
                         err?.response?.data?.detail ||
                         err?.response?.data?.message ||
@@ -106,18 +133,24 @@ const Checkout = () => {
 
                     toast.error(message);
                 }
+
             } finally {
+
                 if (mounted) {
                     setLoading(false);
                 }
+
             }
         };
 
+
         loadCheckout();
+
 
         return () => {
             mounted = false;
         };
+
     }, []);
 
 
@@ -125,77 +158,122 @@ const Checkout = () => {
     // CART ITEMS
     // ==========================================================
 
-    const cartItems = Array.isArray(cart?.items)
-        ? cart.items
-        : [];
+    const cartItems =
+        Array.isArray(cart?.items)
+            ? cart.items
+            : [];
+
+
+    // ==========================================================
+    // GET ITEM PRICE
+    // ==========================================================
+
+    const getItemPrice = (item) => {
+
+        return Number(
+            item?.product_price ??
+            item?.price ??
+            item?.product?.price ??
+            0
+        );
+
+    };
+
+
+    // ==========================================================
+    // GET ITEM QUANTITY
+    // ==========================================================
+
+    const getItemQuantity = (item) => {
+
+        return Number(
+            item?.quantity ?? 0
+        );
+
+    };
 
 
     // ==========================================================
     // CALCULATE SUBTOTAL
     // ==========================================================
 
-    const subtotal = cartItems.reduce(
-        (total, item) => {
-            const price = Number(
-                item.product_price ??
-                item.price ??
-                item.product?.price ??
-                0
-            );
+    const subtotal =
+        cartItems.reduce(
+            (total, item) => {
 
-            const quantity = Number(
-                item.quantity ?? 0
-            );
+                const price =
+                    getItemPrice(item);
 
-            return total + price * quantity;
-        },
-        0
-    );
+                const quantity =
+                    getItemQuantity(item);
+
+                return (
+                    total +
+                    price * quantity
+                );
+
+            },
+            0
+        );
 
 
     // ==========================================================
     // DELIVERY CHARGE
     // ==========================================================
 
-    const deliveryCharge = subtotal > 0 ? 60 : 0;
+    const deliveryCharge =
+        subtotal > 0 ? 60 : 0;
 
 
     // ==========================================================
     // GRAND TOTAL
     // ==========================================================
 
-    const grandTotal = subtotal + deliveryCharge;
+    const grandTotal =
+        subtotal + deliveryCharge;
 
 
     // ==========================================================
     // SELECTED ADDRESS
     // ==========================================================
 
-    const selectedAddressData = addresses.find(
-        (address) =>
-            address.id === selectedAddress
-    );
+    const selectedAddressData =
+        addresses.find(
+            (address) =>
+                address.id === selectedAddress
+        );
 
 
     // ==========================================================
-    // FORMAT SHIPPING ADDRESS
+    // BUILD SHIPPING ADDRESS
     // ==========================================================
 
     const buildShippingAddress = () => {
+
         if (!selectedAddressData) {
             return "";
         }
 
-        const address = selectedAddressData;
+        const address =
+            selectedAddressData;
+
 
         return [
+
             address.full_name,
+
             address.phone,
+
             address.address_line,
+
             address.upazila,
+
             address.district,
+
             address.division,
+
             address.postal_code,
+
         ]
             .filter(
                 (value) =>
@@ -208,25 +286,79 @@ const Checkout = () => {
 
 
     // ==========================================================
+    // SAVE PENDING PAYMENT
+    // ==========================================================
+
+    const savePendingPayment = ({
+        paymentId,
+        orderId,
+        paymentMethod,
+        paymentUrl,
+    }) => {
+
+        if (paymentId) {
+
+            sessionStorage.setItem(
+                "pending_payment_id",
+                String(paymentId)
+            );
+
+        }
+
+
+        if (orderId) {
+
+            sessionStorage.setItem(
+                "pending_order_id",
+                String(orderId)
+            );
+
+        }
+
+
+        if (paymentMethod) {
+
+            sessionStorage.setItem(
+                "pending_payment_method",
+                paymentMethod
+            );
+
+        }
+
+
+        if (paymentUrl) {
+
+            sessionStorage.setItem(
+                "pending_payment_url",
+                paymentUrl
+            );
+
+        }
+
+    };
+
+
+    // ==========================================================
     // PLACE ORDER
     // ==========================================================
 
     const handlePlaceOrder = async () => {
 
-        // ======================================================
+        // ------------------------------------------------------
         // PREVENT DOUBLE CLICK
-        // ======================================================
+        // ------------------------------------------------------
 
         if (placingOrder) {
             return;
         }
 
 
-        // ======================================================
+        // ------------------------------------------------------
         // CHECK ADDRESS
-        // ======================================================
+        // ------------------------------------------------------
 
         if (!selectedAddressData) {
+
             toast.error(
                 "Please select a delivery address."
             );
@@ -235,11 +367,12 @@ const Checkout = () => {
         }
 
 
-        // ======================================================
+        // ------------------------------------------------------
         // CHECK CART
-        // ======================================================
+        // ------------------------------------------------------
 
         if (cartItems.length === 0) {
+
             toast.error(
                 "Your cart is empty."
             );
@@ -248,14 +381,16 @@ const Checkout = () => {
         }
 
 
-        // ======================================================
+        // ------------------------------------------------------
         // BUILD SHIPPING ADDRESS
-        // ======================================================
+        // ------------------------------------------------------
 
         const shippingAddress =
             buildShippingAddress();
 
+
         if (!shippingAddress) {
+
             toast.error(
                 "Please provide a valid delivery address."
             );
@@ -265,6 +400,7 @@ const Checkout = () => {
 
 
         try {
+
             setPlacingOrder(true);
             setError("");
 
@@ -274,17 +410,27 @@ const Checkout = () => {
             // ==================================================
 
             const orderData = {
-                shipping_address: shippingAddress,
-                payment_method: paymentMethod,
+
+                shipping_address:
+                    shippingAddress,
+
+                payment_method:
+                    paymentMethod,
+
             };
+
 
             console.log(
                 "Creating order:",
                 orderData
             );
 
+
             const orderResponse =
-                await createOrder(orderData);
+                await createOrder(
+                    orderData
+                );
+
 
             console.log(
                 "Order response:",
@@ -299,13 +445,18 @@ const Checkout = () => {
             const orderId =
                 orderResponse?.data?.order?.id ??
                 orderResponse?.data?.order_id ??
+                orderResponse?.data?.orderId ??
                 orderResponse?.data?.id;
 
+
             if (!orderId) {
+
                 throw new Error(
                     "Order was created but no order ID was returned by the server."
                 );
+
             }
+
 
             console.log(
                 "Created Order ID:",
@@ -321,13 +472,16 @@ const Checkout = () => {
                 paymentMethod ===
                 "Cash on Delivery"
             ) {
+
                 toast.success(
                     "🎉 Order placed successfully!"
                 );
 
+
                 navigate(
                     `/orders/${orderId}`
                 );
+
 
                 return;
             }
@@ -344,20 +498,33 @@ const Checkout = () => {
 
             // ==================================================
             // STEP 2: CREATE PAYMENT
+            // IMPORTANT:
+            // createPayment(orderId, paymentData)
             // ==================================================
 
             const paymentData = {
-                order_id: orderId,
-                payment_method: paymentMethod,
+
+                payment_method:
+                    paymentMethod,
+
             };
+
 
             console.log(
                 "Creating payment:",
-                paymentData
+                {
+                    orderId,
+                    paymentData,
+                }
             );
 
+
             const paymentResponse =
-                await createPayment(paymentData);
+                await createPayment(
+                    orderId,
+                    paymentData
+                );
+
 
             console.log(
                 "Payment response:",
@@ -370,7 +537,10 @@ const Checkout = () => {
             // ==================================================
 
             const paymentId =
-                getPaymentId(paymentResponse);
+                getPaymentId(
+                    paymentResponse
+                );
+
 
             console.log(
                 "Payment ID:",
@@ -387,6 +557,7 @@ const Checkout = () => {
                     paymentResponse
                 );
 
+
             console.log(
                 "Payment URL:",
                 paymentUrl
@@ -398,70 +569,68 @@ const Checkout = () => {
             // ==================================================
 
             if (!paymentUrl) {
+
                 throw new Error(
                     "Payment gateway URL was not returned by the server."
                 );
+
             }
 
 
             // ==================================================
-            // SAVE PENDING PAYMENT INFORMATION
+            // SAVE PENDING PAYMENT
             // ==================================================
 
-            if (paymentId) {
-                sessionStorage.setItem(
-                    "pending_payment_id",
-                    String(paymentId)
-                );
-            }
+            savePendingPayment({
 
-            sessionStorage.setItem(
-                "pending_order_id",
-                String(orderId)
-            );
+                paymentId,
 
-            sessionStorage.setItem(
-                "pending_payment_method",
-                paymentMethod
-            );
+                orderId,
 
-            sessionStorage.setItem(
-                "pending_payment_url",
-                paymentUrl
-            );
+                paymentMethod,
+
+                paymentUrl,
+
+            });
 
 
             // ==================================================
-            // STEP 5: REDIRECT TO PAYMENT GATEWAY
+            // REDIRECT TO PAYMENT GATEWAY
             // ==================================================
 
             console.log(
                 "Redirecting to payment gateway..."
             );
 
-            window.location.href = paymentUrl;
+
+            window.location.href =
+                paymentUrl;
+
 
         } catch (err) {
+
             console.error(
                 "Place order/payment error:",
                 err
             );
 
 
-            // ==================================================
-            // GET READABLE ERROR
-            // ==================================================
-
             const message =
-                getPaymentErrorMessage(err);
+                getPaymentErrorMessage(
+                    err
+                );
+
 
             setError(message);
 
             toast.error(message);
 
         } finally {
+
             setPlacingOrder(false);
+
         }
+
     };
 
 
@@ -470,16 +639,20 @@ const Checkout = () => {
     // ==========================================================
 
     if (loading) {
+
         return (
+
             <div className="container py-5 text-center">
 
                 <div
                     className="spinner-border text-primary"
                     role="status"
                 >
+
                     <span className="visually-hidden">
                         Loading...
                     </span>
+
                 </div>
 
                 <h5 className="mt-3">
@@ -487,7 +660,9 @@ const Checkout = () => {
                 </h5>
 
             </div>
+
         );
+
     }
 
 
@@ -496,7 +671,9 @@ const Checkout = () => {
     // ==========================================================
 
     if (cartItems.length === 0) {
+
         return (
+
             <div className="container py-5">
 
                 <div className="card border-0 shadow-sm">
@@ -528,7 +705,9 @@ const Checkout = () => {
                 </div>
 
             </div>
+
         );
+
     }
 
 
@@ -537,11 +716,10 @@ const Checkout = () => {
     // ==========================================================
 
     return (
+
         <div className="container py-5">
 
-            {/* ==================================================
-                HEADER
-            ================================================== */}
+            {/* HEADER */}
 
             <div className="mb-4">
 
@@ -557,11 +735,10 @@ const Checkout = () => {
             </div>
 
 
-            {/* ==================================================
-                ERROR
-            ================================================== */}
+            {/* ERROR */}
 
             {error && (
+
                 <div className="alert alert-danger">
 
                     <strong>
@@ -571,6 +748,7 @@ const Checkout = () => {
                     {error}
 
                 </div>
+
             )}
 
 
@@ -584,9 +762,7 @@ const Checkout = () => {
                 <div className="col-lg-8">
 
 
-                    {/* ==================================================
-                        DELIVERY ADDRESS
-                    ================================================== */}
+                    {/* ADDRESS */}
 
                     <div className="card border-0 shadow-sm mb-4">
 
@@ -649,8 +825,7 @@ const Checkout = () => {
 
                                                 <div
                                                     className={`card h-100 ${
-                                                        selectedAddress ===
-                                                        address.id
+                                                        selectedAddress === address.id
                                                             ? "border-primary shadow-sm"
                                                             : "border-light"
                                                     }`}
@@ -698,9 +873,11 @@ const Checkout = () => {
                                                                     </strong>
 
                                                                     {address.is_default && (
+
                                                                         <span className="badge bg-success">
                                                                             Default
                                                                         </span>
+
                                                                     )}
 
                                                                 </div>
@@ -729,7 +906,7 @@ const Checkout = () => {
                                                                         }
 
                                                                         {address.upazila &&
-                                                                            address.district
+                                                                        address.district
                                                                             ? ", "
                                                                             : ""}
 
@@ -746,7 +923,7 @@ const Checkout = () => {
                                                                         }
 
                                                                         {address.division &&
-                                                                            address.postal_code
+                                                                        address.postal_code
                                                                             ? " - "
                                                                             : ""}
 
@@ -798,9 +975,7 @@ const Checkout = () => {
                         <div className="card-body">
 
 
-                            {/* ==================================================
-                                CASH ON DELIVERY
-                            ================================================== */}
+                            {/* COD */}
 
                             <div
                                 className={`card payment-card mb-3 ${
@@ -863,9 +1038,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                BKASH
-                            ================================================== */}
+                            {/* BKASH */}
 
                             <div
                                 className={`card payment-card mb-3 ${
@@ -925,9 +1098,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                NAGAD
-                            ================================================== */}
+                            {/* NAGAD */}
 
                             <div
                                 className={`card payment-card mb-3 ${
@@ -987,9 +1158,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                ROCKET
-                            ================================================== */}
+                            {/* ROCKET */}
 
                             <div
                                 className={`card payment-card mb-3 ${
@@ -1049,13 +1218,12 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                CREDIT CARD
-                            ================================================== */}
+                            {/* CREDIT CARD */}
 
                             <div
                                 className={`card payment-card ${
-                                    paymentMethod === "Credit Card"
+                                    paymentMethod ===
+                                    "Credit Card"
                                         ? "border-primary shadow-sm"
                                         : ""
                                 }`}
@@ -1113,9 +1281,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                PAYMENT INFORMATION
-                            ================================================== */}
+                            {/* PAYMENT INFO */}
 
                             {paymentMethod ===
                             "Cash on Delivery" ? (
@@ -1162,9 +1328,7 @@ const Checkout = () => {
                     </div>
 
 
-                    {/* ==================================================
-                        ADDRESS PREVIEW
-                    ================================================== */}
+                    {/* ADDRESS PREVIEW */}
 
                     {selectedAddressData && (
 
@@ -1201,7 +1365,7 @@ const Checkout = () => {
                                 }
 
                                 {selectedAddressData.upazila &&
-                                    selectedAddressData.district
+                                selectedAddressData.district
                                     ? ", "
                                     : ""}
 
@@ -1218,7 +1382,7 @@ const Checkout = () => {
                                 }
 
                                 {selectedAddressData.division &&
-                                    selectedAddressData.postal_code
+                                selectedAddressData.postal_code
                                     ? " - "
                                     : ""}
 
@@ -1261,24 +1425,19 @@ const Checkout = () => {
                         <div className="card-body">
 
 
-                            {/* ==================================================
-                                CART ITEMS
-                            ================================================== */}
+                            {/* CART ITEMS */}
 
                             {cartItems.map((item) => {
 
-                                const price = Number(
-                                    item.product_price ??
-                                    item.price ??
-                                    item.product?.price ??
-                                    0
-                                );
+                                const price =
+                                    getItemPrice(item);
 
-                                const quantity = Number(
-                                    item.quantity ?? 0
-                                );
+                                const quantity =
+                                    getItemQuantity(item);
+
 
                                 return (
+
                                     <div
                                         key={item.id}
                                         className="d-flex justify-content-between mb-3"
@@ -1309,16 +1468,16 @@ const Checkout = () => {
                                         </strong>
 
                                     </div>
+
                                 );
+
                             })}
 
 
                             <hr />
 
 
-                            {/* ==================================================
-                                COUPON
-                            ================================================== */}
+                            {/* COUPON */}
 
                             <div className="mt-3">
 
@@ -1355,9 +1514,7 @@ const Checkout = () => {
                             <hr />
 
 
-                            {/* ==================================================
-                                SUBTOTAL
-                            ================================================== */}
+                            {/* SUBTOTAL */}
 
                             <div className="d-flex justify-content-between mb-2">
 
@@ -1372,9 +1529,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                DELIVERY CHARGE
-                            ================================================== */}
+                            {/* DELIVERY */}
 
                             <div className="d-flex justify-content-between mb-2">
 
@@ -1392,9 +1547,7 @@ const Checkout = () => {
                             <hr />
 
 
-                            {/* ==================================================
-                                GRAND TOTAL
-                            ================================================== */}
+                            {/* GRAND TOTAL */}
 
                             <div className="d-flex justify-content-between">
 
@@ -1409,9 +1562,7 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                SECURE CHECKOUT
-                            ================================================== */}
+                            {/* SECURE CHECKOUT */}
 
                             <div className="alert alert-success mt-3 mb-0">
 
@@ -1427,14 +1578,14 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================================
-                                PLACE ORDER / PAYMENT BUTTON
-                            ================================================== */}
+                            {/* PLACE ORDER */}
 
                             <button
                                 type="button"
                                 className="btn btn-primary btn-lg w-100 mt-4"
-                                onClick={handlePlaceOrder}
+                                onClick={
+                                    handlePlaceOrder
+                                }
                                 disabled={
                                     placingOrder ||
                                     !selectedAddress ||
@@ -1445,6 +1596,7 @@ const Checkout = () => {
                                 {placingOrder ? (
 
                                     <>
+
                                         <span
                                             className="spinner-border spinner-border-sm me-2"
                                             role="status"
@@ -1455,6 +1607,7 @@ const Checkout = () => {
                                         "Cash on Delivery"
                                             ? "Placing Order..."
                                             : "Creating Payment..."}
+
                                     </>
 
                                 ) : (
@@ -1479,9 +1632,7 @@ const Checkout = () => {
                             </button>
 
 
-                            {/* ==================================================
-                                BACK TO CART
-                            ================================================== */}
+                            {/* BACK TO CART */}
 
                             <Link
                                 to="/cart"
@@ -1499,7 +1650,9 @@ const Checkout = () => {
             </div>
 
         </div>
+
     );
+
 };
 
 

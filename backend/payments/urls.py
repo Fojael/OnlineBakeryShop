@@ -11,14 +11,20 @@ from .views import (
 
 urlpatterns = [
 
-    # Create payment
+    # ======================================================
+    # CREATE PAYMENT
+    # ======================================================
+
     path(
         "payments/create/<int:order_id>/",
         CreatePaymentView.as_view(),
         name="create-payment",
     ),
 
-    # SSLCommerz callbacks
+    # ======================================================
+    # SSLCommerz CALLBACKS
+    # ======================================================
+
     path(
         "payments/success/",
         payment_success,
@@ -36,6 +42,10 @@ urlpatterns = [
         payment_cancel,
         name="payment-cancel",
     ),
+
+    # ======================================================
+    # IPN
+    # ======================================================
 
     path(
         "payments/ipn/",
