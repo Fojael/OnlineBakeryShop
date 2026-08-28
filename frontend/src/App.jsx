@@ -1,44 +1,25 @@
-import {
-    BrowserRouter,
-    Routes,
-    Route,
-} from "react-router-dom";
-
-import PaymentSuccess from "./pages/PaymentSuccess";
-import PaymentFailed from "./pages/PaymentFailed";
-import PaymentCancelled from "./pages/PaymentCancelled";
+import AppRoutes from "./routes/AppRoutes";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 
 function App() {
-
     return (
+        <>
+            <AppRoutes />
 
-        <BrowserRouter>
-
-            <Routes>
-
-                {/* Other routes */}
-
-                <Route
-                    path="/payment/success/"
-                    element={<PaymentSuccess />}
-                />
-
-                <Route
-                    path="/payment/failed/"
-                    element={<PaymentFailed />}
-                />
-
-                <Route
-                    path="/payment/cancelled/"
-                    element={<PaymentCancelled />}
-                />
-
-            </Routes>
-
-        </BrowserRouter>
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                pauseOnHover
+                draggable
+                theme="colored"
+            />
+        </>
     );
 }
-
 
 export default App;
