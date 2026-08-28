@@ -1,103 +1,198 @@
-import { Link, useSearchParams } from "react-router-dom";
+import {
+    useState,
+} from "react";
+
+import {
+    Link,
+    useSearchParams,
+} from "react-router-dom";
+
+import { toast } from "react-toastify";
+
+import {
+    retryPayment,
+    getPaymentRedirectUrl,
+    getPaymentErrorMessage,
+} from "../../services/paymentService";
+
 
 const PaymentFailed = () => {
-    const [searchParams] = useSearchParams();
 
-    const orderId = searchParams.get("order_id");
-    const transactionId = searchParams.get("tran_id");
+    const [
+        searchParams
+    ] = useSearchParams();
+
+
+    const [
+        retrying,
+        setRetrying
+    ] = useState(false);
+
+
+    const paymentId =
+        searchParams.get(
+            "payment_id"
+        ) ||
+        searchParams.get(
+            "paymentId"
+        ) ||
+        sessionStorage.getItem(
+            "pending_payment_id"
+        );
+
+
+    const handleRetry = async () => {
+
+        if (!paymentId) {
+
+            toast.error(
+                "Payment information was not found."
+            );
+
+            return;
+
+        }
+
+
+        try {
+
+            setRetrying(true);
+
+
+            const response =
+                await retryPayment(
+                    paymentId
+                );
+
+
+            console.log(
+                "Retry payment response:",
+                response.data
+            );
+
+
+            const paymentUrl =
+                getPaymentRedirectUrl(
+                    response
+                );
+
+
+            if (!paymentUrl) {
+
+                throw new Error(
+                    "Payment gateway URL was not returned."
+                );
+
+            }
+
+
+            toast.info(
+                "Redirecting to payment gateway..."
+            );
+
+
+            window.location.href =
+                paymentUrl;
+
+        } catch (error) {
+
+            console.error(
+                "Retry payment error:",
+                error
+            );
+
+
+            toast.error(
+                getPaymentErrorMessage(
+                    error
+                )
+            );
+
+        } finally {
+
+            setRetrying(false);
+
+        }
+
+    };
+
 
     return (
+
         <div className="container py-5">
 
             <div className="row justify-content-center">
 
-                <div className="col-md-7 col-lg-6">
+                <div className="col-lg-7">
 
-                    <div className="card border-0 shadow-sm">
+                    <div className="card shadow-sm border-0">
 
-                        <div className="card-body text-center p-5">
+                        <div className="card-body text-center py-5">
 
-                            {/* ==================================================
-                                FAILED ICON
-                            ================================================== */}
-
-                            <div
-                                className="rounded-circle bg-danger bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-4"
-                                style={{
-                                    width: "90px",
-                                    height: "90px",
-                                }}
-                            >
-                                <span
-                                    className="text-danger"
-                                    style={{
-                                        fontSize: "45px",
-                                    }}
-                                >
-                                    ✕
-                                </span>
+                            <div className="display-1">
+                                ❌
                             </div>
 
-                            {/* ==================================================
-                                TITLE
-                            ================================================== */}
-
-                            <h2 className="fw-bold text-danger">
+                            <h1 className="text-danger mt-3">
                                 Payment Failed
-                            </h2>
-
-                            <p className="text-muted mt-3">
-                                Unfortunately, your payment could not
-                                be completed.
-                            </p>
+                            </h1>
 
                             <p className="text-muted">
-                                Please try again or choose another
-                                payment method.
+                                Unfortunately, your payment
+                                could not be completed.
                             </p>
 
-                            {/* ==================================================
-                                PAYMENT INFORMATION
-                            ================================================== */}
 
-                            {(orderId || transactionId) && (
-                                <div className="alert alert-light border text-start mt-4">
+                            {paymentId && (
 
-                                    {orderId && (
-                                        <div className="mb-2">
-                                            <strong>
-                                                Order ID:
-                                            </strong>{" "}
-                                            #{orderId}
-                                        </div>
-                                    )}
+                                <p>
+                                    Payment ID:{" "}
+                                    <strong>
+                                        #{paymentId}
+                                    </strong>
+                                </p>
 
-                                    {transactionId && (
-                                        <div>
-                                            <strong>
-                                                Transaction ID:
-                                            </strong>{" "}
-                                            {transactionId}
-                                        </div>
-                                    )}
-
-                                </div>
                             )}
 
-                            {/* ==================================================
-                                ACTION BUTTONS
-                            ================================================== */}
 
                             <div className="d-grid gap-2 mt-4">
 
-                                {orderId && (
-                                    <Link
-                                        to={`/checkout?order_id=${orderId}`}
-                                        className="btn btn-primary"
+                                {paymentId && (
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-lg"
+                                        onClick={
+                                            handleRetry
+                                        }
+                                        disabled={
+                                            retrying
+                                        }
                                     >
-                                        Try Payment Again
-                                    </Link>
+
+                                        {retrying ? (
+
+                                            <>
+                                                <span
+                                                    className="spinner-border spinner-border-sm me-2"
+                                                />
+
+                                                Creating new payment...
+
+                                            </>
+
+                                        ) : (
+
+                                            <>
+                                                🔄 Try Payment Again
+                                            </>
+
+                                        )}
+
+                                    </button>
+
                                 )}
+
 
                                 <Link
                                     to="/orders"
@@ -105,6 +200,7 @@ const PaymentFailed = () => {
                                 >
                                     View My Orders
                                 </Link>
+
 
                                 <Link
                                     to="/products"
@@ -124,7 +220,10 @@ const PaymentFailed = () => {
             </div>
 
         </div>
+
     );
+
 };
+
 
 export default PaymentFailed;

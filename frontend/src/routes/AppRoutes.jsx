@@ -184,18 +184,30 @@ const AppRoutes = () => {
 ================================================== */}
 
 <Route
-    path="/payment/success/"
-    element={<PaymentSuccess />}
+    path="/checkout/success"
+    element={
+        <ProtectedRoute>
+            <PaymentSuccess />
+        </ProtectedRoute>
+    }
 />
 
 <Route
-    path="/payment/failed/"
-    element={<PaymentFailed />}
+    path="/checkout/failed"
+    element={
+        <ProtectedRoute>
+            <PaymentFailed />
+        </ProtectedRoute>
+    }
 />
 
 <Route
-    path="/payment/cancelled/"
-    element={<PaymentCancelled />}
+    path="/checkout/cancelled"
+    element={
+        <ProtectedRoute>
+            <PaymentCancelled />
+        </ProtectedRoute>
+    }
 />
 
                     {/* ==================================================

@@ -44,8 +44,6 @@ const Cart = () => {
 
     const fetchCart = useCallback(async () => {
         try {
-            setLoading(true);
-
             const response = await getCart();
 
             setCart(response.data);
@@ -80,13 +78,63 @@ const Cart = () => {
         }
     }, [navigate]);
 
-    useEffect(() => {
-        const timer = window.setTimeout(() => {
-            void fetchCart();
-        }, 0);
+    // =========================================================
+    // INITIAL CART LOAD
+    // =========================================================
 
-        return () => window.clearTimeout(timer);
-    }, [fetchCart]);
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadCart = async () => {
+            try {
+                const response = await getCart();
+
+                if (!cancelled) {
+                    setCart(response.data);
+                }
+            } catch (error) {
+                console.error(
+                    "Failed to load cart:",
+                    error
+                );
+
+                if (cancelled) {
+                    return;
+                }
+
+                if (
+                    error?.response?.status === 401
+                ) {
+                    localStorage.removeItem("access");
+                    localStorage.removeItem("refresh");
+
+                    toast.info(
+                        "Please login to continue."
+                    );
+
+                    navigate("/login");
+                    return;
+                }
+
+                toast.error(
+                    error?.response?.data?.detail ||
+                        "Failed to load cart."
+                );
+
+                setCart(null);
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        loadCart();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [navigate]);
 
     // =========================================================
     // UPDATE QUANTITY
@@ -110,8 +158,15 @@ const Cart = () => {
                 );
 
             setCart(response.data);
+
+            toast.success(
+                "Cart quantity updated."
+            );
         } catch (error) {
-            console.error(error);
+            console.error(
+                "Failed to update quantity:",
+                error
+            );
 
             toast.error(
                 error?.response?.data?.detail ||
@@ -140,7 +195,10 @@ const Cart = () => {
 
             await fetchCart();
         } catch (error) {
-            console.error(error);
+            console.error(
+                "Failed to remove item:",
+                error
+            );
 
             toast.error(
                 error?.response?.data?.detail ||
@@ -174,6 +232,10 @@ const Cart = () => {
         );
     }
 
+    // =========================================================
+    // CART ITEMS
+    // =========================================================
+
     const cartItems = Array.isArray(cart?.items)
         ? cart.items
         : [];
@@ -187,13 +249,20 @@ const Cart = () => {
             <div className="container py-5">
                 <div className="card shadow-sm">
                     <div className="card-body text-center py-5">
+                        <div
+                            className="display-4 mb-3"
+                            aria-hidden="true"
+                        >
+                            🛒
+                        </div>
+
                         <h3 className="mb-3">
                             Your Cart is Empty
                         </h3>
 
                         <p className="text-muted mb-4">
-                            Add products to your
-                            cart to continue shopping.
+                            Add products to your cart
+                            to continue shopping.
                         </p>
 
                         <Link
@@ -208,10 +277,14 @@ const Cart = () => {
         );
     }
 
+    // =========================================================
+    // RENDER
+    // =========================================================
+
     return (
         <div className="container py-5">
 
-            {/* ================================================
+            {/* =================================================
                 HEADER
             ================================================= */}
 
@@ -238,6 +311,10 @@ const Cart = () => {
                 </Link>
             </div>
 
+            {/* =================================================
+                CART CARD
+            ================================================= */}
+
             <div className="card shadow">
 
                 <div className="card-header bg-primary text-white">
@@ -253,6 +330,10 @@ const Cart = () => {
                         const product =
                             item.product;
 
+                        // =========================================
+                        // IMAGE
+                        // =========================================
+
                         const imageUrl =
                             product?.image
                                 ? product.image.startsWith(
@@ -262,30 +343,56 @@ const Cart = () => {
                                     : `${API_BASE_URL}${product.image}`
                                 : FALLBACK_IMAGE;
 
+                        // =========================================
+                        // PRODUCT DATA
+                        // =========================================
+
                         const stockQuantity =
                             Number(
-                                product?.stock_quantity ||
+                                product?.stock_quantity ??
                                     0
                             );
 
                         const quantity =
                             Number(
-                                item.quantity || 0
+                                item.quantity ?? 0
                             );
 
                         const price =
                             Number(
-                                product?.price || 0
+                                product?.price ??
+                                    item.product_price ??
+                                    item.price ??
+                                    0
                             );
 
+                        // =========================================
+                        // SUBTOTAL
+                        // =========================================
+
+                        const calculatedSubtotal =
+                            price * quantity;
+
                         const subtotal =
-                            Number(
-                                item.subtotal || 0
-                            );
+                            item.subtotal !==
+                                undefined &&
+                            item.subtotal !== null
+                                ? Number(
+                                      item.subtotal
+                                  )
+                                : calculatedSubtotal;
+
+                        // =========================================
+                        // AVAILABILITY
+                        // =========================================
 
                         const isAvailable =
                             product?.is_available ===
                             true;
+
+                        // =========================================
+                        // LOADING STATES
+                        // =========================================
 
                         const isUpdating =
                             updatingId === item.id;
@@ -293,21 +400,29 @@ const Cart = () => {
                         const isRemoving =
                             removingId === item.id;
 
+                        // =========================================
+                        // INCREASE QUANTITY
+                        // =========================================
+
                         const canIncrease =
                             isAvailable &&
                             quantity <
                                 stockQuantity;
-                                                        return (
+
+                        return (
                             <div
                                 key={item.id}
                                 className="row align-items-center border-bottom py-4"
                             >
+
                                 {/* =================================
                                     PRODUCT
                                 ================================= */}
 
                                 <div className="col-md-5 mb-3 mb-md-0">
+
                                     <div className="d-flex align-items-center">
+
                                         <img
                                             src={imageUrl}
                                             alt={
@@ -320,20 +435,28 @@ const Cart = () => {
                                                 height: "80px",
                                                 objectFit: "cover",
                                             }}
-                                            onError={(e) => {
-                                                e.currentTarget.src =
-                                                    FALLBACK_IMAGE;
+                                            onError={(event) => {
+                                                if (
+                                                    event
+                                                        .currentTarget
+                                                        .src !==
+                                                    FALLBACK_IMAGE
+                                                ) {
+                                                    event.currentTarget.src =
+                                                        FALLBACK_IMAGE;
+                                                }
                                             }}
                                         />
 
                                         <div>
+
                                             <h5 className="mb-1">
                                                 {product?.name ||
                                                     "Product"}
                                             </h5>
 
                                             <p className="text-muted mb-1">
-                                                ৳
+                                                ৳{" "}
                                                 {price.toFixed(
                                                     2
                                                 )}
@@ -348,8 +471,11 @@ const Cart = () => {
                                                     Unavailable
                                                 </span>
                                             )}
+
                                         </div>
+
                                     </div>
+
                                 </div>
 
                                 {/* =================================
@@ -357,11 +483,13 @@ const Cart = () => {
                                 ================================= */}
 
                                 <div className="col-md-3 mb-3 mb-md-0">
+
                                     <label className="form-label fw-semibold">
                                         Quantity
                                     </label>
 
                                     <div className="d-flex align-items-center gap-2">
+
                                         <button
                                             type="button"
                                             className="btn btn-outline-secondary"
@@ -379,6 +507,7 @@ const Cart = () => {
                                                         1
                                                 )
                                             }
+                                            aria-label="Decrease quantity"
                                         >
                                             −
                                         </button>
@@ -408,24 +537,29 @@ const Cart = () => {
                                                         1
                                                 )
                                             }
+                                            aria-label="Increase quantity"
                                         >
                                             +
                                         </button>
+
                                     </div>
 
                                     <small className="text-muted">
                                         Stock:{" "}
-                                        {
-                                            stockQuantity
-                                        }
+                                        {stockQuantity}
                                     </small>
 
                                     {isUpdating && (
                                         <div className="mt-2">
-                                            <span className="spinner-border spinner-border-sm text-primary me-2"></span>
+                                            <span
+                                                className="spinner-border spinner-border-sm text-primary me-2"
+                                                role="status"
+                                            />
+
                                             Updating...
                                         </div>
                                     )}
+
                                 </div>
 
                                 {/* =================================
@@ -433,16 +567,18 @@ const Cart = () => {
                                 ================================= */}
 
                                 <div className="col-md-2 mb-3 mb-md-0">
+
                                     <span className="text-muted d-block">
                                         Subtotal
                                     </span>
 
                                     <h5 className="mb-0">
-                                        ৳
+                                        ৳{" "}
                                         {subtotal.toFixed(
                                             2
                                         )}
                                     </h5>
+
                                 </div>
 
                                 {/* =================================
@@ -450,6 +586,7 @@ const Cart = () => {
                                 ================================= */}
 
                                 <div className="col-md-2 text-md-end">
+
                                     <button
                                         type="button"
                                         className="btn btn-danger btn-sm"
@@ -463,29 +600,45 @@ const Cart = () => {
                                             )
                                         }
                                     >
+
                                         {isRemoving ? (
                                             <>
-                                                <span className="spinner-border spinner-border-sm me-1"></span>
+                                                <span
+                                                    className="spinner-border spinner-border-sm me-1"
+                                                    role="status"
+                                                    aria-hidden="true"
+                                                />
+
                                                 Removing...
                                             </>
                                         ) : (
                                             "Remove"
                                         )}
+
                                     </button>
+
                                 </div>
+
                             </div>
                         );
                     })}
 
-                    {/* ============================================
+                    {/* =================================================
                         ORDER TOTAL
-                    ============================================ */}
+                    ================================================= */}
 
                     <div className="row justify-content-end mt-4">
+
                         <div className="col-md-5 col-lg-4">
+
                             <div className="card bg-light">
+
                                 <div className="card-body">
+
+                                    {/* ITEMS */}
+
                                     <div className="d-flex justify-content-between mb-2">
+
                                         <span>
                                             Items
                                         </span>
@@ -495,46 +648,55 @@ const Cart = () => {
                                                 cartItems.length
                                             }
                                         </strong>
+
                                     </div>
 
+                                    {/* SUBTOTAL */}
+
                                     <div className="d-flex justify-content-between">
+
                                         <span>
                                             Subtotal
                                         </span>
 
                                         <strong>
-                                            ৳
+                                            ৳{" "}
                                             {Number(
-                                                cart.total_amount ||
+                                                cart.total_amount ??
                                                     0
                                             ).toFixed(
                                                 2
                                             )}
                                         </strong>
+
                                     </div>
 
                                     <hr />
-                                                                        <div className="d-flex justify-content-between align-items-center">
+
+                                    {/* TOTAL */}
+
+                                    <div className="d-flex justify-content-between align-items-center">
+
                                         <h5 className="mb-0">
                                             Total
                                         </h5>
 
                                         <h4 className="mb-0 text-primary">
-                                            ৳
+                                            ৳{" "}
                                             {Number(
-                                                cart.total_amount ||
+                                                cart.total_amount ??
                                                     0
                                             ).toFixed(
                                                 2
                                             )}
                                         </h4>
+
                                     </div>
 
-                                    {/* =====================================
-                                        ACTION BUTTONS
-                                    ====================================== */}
+                                    {/* ACTION BUTTONS */}
 
                                     <div className="d-grid gap-2 mt-4">
+
                                         <Link
                                             to="/checkout"
                                             className="btn btn-success btn-lg"
@@ -548,20 +710,29 @@ const Cart = () => {
                                         >
                                             Continue Shopping
                                         </Link>
+
                                     </div>
+
                                 </div>
+
                             </div>
+
                         </div>
+
                     </div>
 
-                    {/* ============================================
+                    {/* =================================================
                         CART INFORMATION
-                    ============================================ */}
+                    ================================================= */}
 
                     <div className="alert alert-info mt-4 mb-0">
-                        <strong>Note:</strong>
+
+                        <strong>
+                            Note:
+                        </strong>
 
                         <ul className="mb-0 mt-2">
+
                             <li>
                                 Quantities cannot exceed
                                 available stock.
@@ -576,13 +747,15 @@ const Cart = () => {
                                 Stock availability is checked
                                 before your order is placed.
                             </li>
+
                         </ul>
+
                     </div>
 
                 </div>
             </div>
         </div>
-            );
+    );
 };
 
 export default Cart;

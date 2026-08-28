@@ -1,10 +1,33 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+    useEffect,
+    useState,
+} from "react";
+
+import {
+    Link,
+    useNavigate,
+} from "react-router-dom";
+
 import { toast } from "react-toastify";
 
-import { getCart } from "../../services/cartService";
-import { getAddresses } from "../../services/addressService";
-import { createOrder } from "../../services/orderService";
+import {
+    getCart,
+} from "../../services/cartService";
+
+import {
+    getAddresses,
+} from "../../services/addressService";
+
+import {
+    createOrder,
+} from "../../services/orderService";
+
+import {
+    createPayment,
+    getPaymentRedirectUrl,
+    getPaymentId,
+    getPaymentErrorMessage,
+} from "../../services/paymentService";
 
 
 const Checkout = () => {
@@ -16,12 +39,14 @@ const Checkout = () => {
     // STATE
     // ==========================================================
 
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] =
+        useState(true);
 
     const [placingOrder, setPlacingOrder] =
         useState(false);
 
-    const [cart, setCart] = useState(null);
+    const [cart, setCart] =
+        useState(null);
 
     const [addresses, setAddresses] =
         useState([]);
@@ -32,7 +57,8 @@ const Checkout = () => {
     const [paymentMethod, setPaymentMethod] =
         useState("Cash on Delivery");
 
-    const [error, setError] = useState("");
+    const [error, setError] =
+        useState("");
 
 
     // ==========================================================
@@ -79,50 +105,48 @@ const Checkout = () => {
                         : [];
 
 
-                if (mounted) {
+                if (!mounted) {
+                    return;
+                }
 
-                    setCart(cartData);
 
-                    setAddresses(
-                        addressList
+                setCart(cartData);
+
+                setAddresses(
+                    addressList
+                );
+
+
+                // ==================================================
+                // SELECT DEFAULT ADDRESS
+                // ==================================================
+
+                const defaultAddress =
+                    addressList.find(
+                        (address) =>
+                            address.is_default === true
                     );
 
 
-                    // ==================================================
-                    // SELECT DEFAULT ADDRESS
-                    // ==================================================
+                if (defaultAddress) {
 
-                    const defaultAddress =
-                        addressList.find(
-                            (address) =>
-                                address.is_default === true
-                        );
+                    setSelectedAddress(
+                        defaultAddress.id
+                    );
 
+                } else if (
+                    addressList.length > 0
+                ) {
 
-                    if (defaultAddress) {
+                    setSelectedAddress(
+                        addressList[0].id
+                    );
 
-                        setSelectedAddress(
-                            defaultAddress.id
-                        );
+                } else {
 
-                    } else if (
-                        addressList.length > 0
-                    ) {
-
-                        // If no default address exists,
-                        // select the first address.
-
-                        setSelectedAddress(
-                            addressList[0].id
-                        );
-
-                    } else {
-
-                        setSelectedAddress(
-                            null
-                        );
-
-                    }
+                    setSelectedAddress(
+                        null
+                    );
 
                 }
 
@@ -136,14 +160,14 @@ const Checkout = () => {
 
                 if (mounted) {
 
-                    setError(
-                        "Unable to load checkout information."
-                    );
+                    const message =
+                        err?.response?.data?.detail ||
+                        "Unable to load checkout information.";
 
+                    setError(message);
 
                     toast.error(
-                        err?.response?.data?.detail ||
-                        "Unable to load checkout information."
+                        message
                     );
 
                 }
@@ -185,11 +209,6 @@ const Checkout = () => {
 
     // ==========================================================
     // CALCULATE SUBTOTAL
-    //
-    // This is only for displaying the checkout summary.
-    //
-    // Django recalculates the real subtotal when the order
-    // is created.
     // ==========================================================
 
     const subtotal =
@@ -223,10 +242,6 @@ const Checkout = () => {
 
     // ==========================================================
     // DELIVERY CHARGE
-    //
-    // Current Django backend:
-    //
-    // DELIVERY_CHARGE = 60.00
     // ==========================================================
 
     const deliveryCharge =
@@ -237,9 +252,6 @@ const Checkout = () => {
 
     // ==========================================================
     // GRAND TOTAL
-    //
-    // Display only.
-    // Backend calculates the official total.
     // ==========================================================
 
     const grandTotal =
@@ -271,17 +283,26 @@ const Checkout = () => {
         }
 
 
-        const address = selectedAddressData;
+        const address =
+            selectedAddressData;
 
 
         return [
+
             address.full_name,
+
             address.phone,
+
             address.address_line,
+
             address.upazila,
+
             address.district,
+
             address.division,
+
             address.postal_code,
+
         ]
             .filter(
                 (value) =>
@@ -300,9 +321,20 @@ const Checkout = () => {
 
     const handlePlaceOrder = async () => {
 
-        // ==================================================
+        // ======================================================
+        // PREVENT DOUBLE CLICK
+        // ======================================================
+
+        if (placingOrder) {
+
+            return;
+
+        }
+
+
+        // ======================================================
         // CHECK ADDRESS
-        // ==================================================
+        // ======================================================
 
         if (!selectedAddressData) {
 
@@ -315,9 +347,9 @@ const Checkout = () => {
         }
 
 
-        // ==================================================
+        // ======================================================
         // CHECK CART
-        // ==================================================
+        // ======================================================
 
         if (cartItems.length === 0) {
 
@@ -330,9 +362,9 @@ const Checkout = () => {
         }
 
 
-        // ==================================================
+        // ======================================================
         // BUILD SHIPPING ADDRESS
-        // ==================================================
+        // ======================================================
 
         const shippingAddress =
             buildShippingAddress();
@@ -353,20 +385,12 @@ const Checkout = () => {
 
             setPlacingOrder(true);
 
+            setError("");
+
 
             // ==================================================
-            // ORDER DATA
-            //
-            // IMPORTANT:
-            //
-            // Do NOT send:
-            //
-            // subtotal
-            // delivery_charge
-            // total_amount
-            // address_id
-            //
-            // Django calculates totals itself.
+            // STEP 1
+            // CREATE ORDER
             // ==================================================
 
             const orderData = {
@@ -386,11 +410,7 @@ const Checkout = () => {
             );
 
 
-            // ==================================================
-            // CREATE ORDER
-            // ==================================================
-
-            const response =
+            const orderResponse =
                 await createOrder(
                     orderData
                 );
@@ -398,110 +418,239 @@ const Checkout = () => {
 
             console.log(
                 "Order response:",
-                response.data
+                orderResponse.data
             );
 
 
             // ==================================================
-            // SUCCESS MESSAGE
-            // ==================================================
-
-            toast.success(
-                "🎉 Order placed successfully!"
-            );
-
-
-            // ==================================================
-            // REDIRECT TO ORDER DETAILS
-            //
-            // Backend response:
-            //
-            // {
-            //     message: "...",
-            //     order: {
-            //         id: 1,
-            //         ...
-            //     }
-            // }
+            // GET ORDER ID
             // ==================================================
 
             const orderId =
-                response?.data?.order?.id;
+                orderResponse?.data?.order?.id ??
+                orderResponse?.data?.order_id ??
+                orderResponse?.data?.id;
 
 
-            if (orderId) {
+            if (!orderId) {
+
+                throw new Error(
+                    "Order was created but no order ID was returned by the server."
+                );
+
+            }
+
+
+            console.log(
+                "Created Order ID:",
+                orderId
+            );
+
+
+            // ==================================================
+            // CASH ON DELIVERY
+            // ==================================================
+
+            if (
+                paymentMethod ===
+                "Cash on Delivery"
+            ) {
+
+                toast.success(
+                    "🎉 Order placed successfully!"
+                );
+
 
                 navigate(
                     `/orders/${orderId}`
                 );
 
-            } else {
 
-                navigate(
-                    "/orders"
+                return;
+
+            }
+
+
+            // ==================================================
+            // ONLINE PAYMENT
+            // ==================================================
+            //
+            // Supported:
+            //
+            // bKash
+            // Nagad
+            // Rocket
+            // Credit Card
+            //
+            // ==================================================
+
+            toast.info(
+                "Creating secure payment session..."
+            );
+
+
+            // ==================================================
+            // STEP 2
+            // CREATE PAYMENT
+            // ==================================================
+
+            const paymentData = {
+
+                order_id:
+                    orderId,
+
+                payment_method:
+                    paymentMethod,
+
+            };
+
+
+            console.log(
+                "Creating payment:",
+                paymentData
+            );
+
+
+            const paymentResponse =
+                await createPayment(
+                    paymentData
+                );
+
+
+            console.log(
+                "Payment response:",
+                paymentResponse.data
+            );
+
+
+            // ==================================================
+            // STEP 3
+            // GET PAYMENT ID
+            // ==================================================
+
+            const paymentId =
+                getPaymentId(
+                    paymentResponse
+                );
+
+
+            console.log(
+                "Payment ID:",
+                paymentId
+            );
+
+
+            // ==================================================
+            // STEP 4
+            // GET PAYMENT URL
+            // ==================================================
+
+            const paymentUrl =
+                getPaymentRedirectUrl(
+                    paymentResponse
+                );
+
+
+            console.log(
+                "Payment URL:",
+                paymentUrl
+            );
+
+
+            // ==================================================
+            // PAYMENT URL REQUIRED
+            // ==================================================
+
+            if (!paymentUrl) {
+
+                throw new Error(
+                    "Payment gateway URL was not returned by the server."
                 );
 
             }
 
+
+            // ==================================================
+            // SAVE PENDING PAYMENT
+            // ==================================================
+
+            if (paymentId) {
+
+                sessionStorage.setItem(
+                    "pending_payment_id",
+                    String(paymentId)
+                );
+
+            }
+
+
+            // ==================================================
+            // SAVE ORDER ID
+            // ==================================================
+
+            sessionStorage.setItem(
+                "pending_order_id",
+                String(orderId)
+            );
+
+
+            // ==================================================
+            // SAVE PAYMENT METHOD
+            // ==================================================
+
+            sessionStorage.setItem(
+                "pending_payment_method",
+                paymentMethod
+            );
+
+
+            // ==================================================
+            // SAVE PAYMENT URL
+            // ==================================================
+
+            sessionStorage.setItem(
+                "pending_payment_url",
+                paymentUrl
+            );
+
+
+            // ==================================================
+            // STEP 5
+            // REDIRECT TO PAYMENT GATEWAY
+            // ==================================================
+
+            console.log(
+                "Redirecting to payment gateway..."
+            );
+
+
+            window.location.href =
+                paymentUrl;
+
         } catch (err) {
 
             console.error(
-                "Place order error:",
+                "Place order/payment error:",
                 err
             );
 
 
             // ==================================================
-            // BACKEND ERROR
+            // GET READABLE ERROR
             // ==================================================
 
-            const backendError =
-                err?.response?.data;
-
-
-            if (
-                backendError?.detail
-            ) {
-
-                toast.error(
-                    backendError.detail
+            const message =
+                getPaymentErrorMessage(
+                    err
                 );
 
-            } else if (
-                typeof backendError === "object"
-            ) {
 
-                // Handle Django validation errors
-
-                const messages =
-                    Object.values(
-                        backendError
-                    )
-                        .flat()
-                        .filter(Boolean);
+            setError(message);
 
 
-                if (messages.length > 0) {
-
-                    toast.error(
-                        messages.join(" ")
-                    );
-
-                } else {
-
-                    toast.error(
-                        "Unable to place order."
-                    );
-
-                }
-
-            } else {
-
-                toast.error(
-                    "Unable to place order."
-                );
-
-            }
+            toast.error(
+                message
+            );
 
         } finally {
 
@@ -633,6 +782,10 @@ const Checkout = () => {
 
                 <div className="alert alert-danger">
 
+                    <strong>
+                        Checkout Error:
+                    </strong>{" "}
+
                     {error}
 
                 </div>
@@ -656,7 +809,6 @@ const Checkout = () => {
 
                     <div className="card border-0 shadow-sm mb-4">
 
-
                         <div className="card-header bg-white">
 
                             <div className="d-flex justify-content-between align-items-center">
@@ -679,7 +831,6 @@ const Checkout = () => {
 
 
                         <div className="card-body">
-
 
                             {addresses.length === 0 ? (
 
@@ -741,7 +892,6 @@ const Checkout = () => {
 
                                                         <div className="form-check">
 
-
                                                             <input
                                                                 className="form-check-input"
                                                                 type="radio"
@@ -763,7 +913,6 @@ const Checkout = () => {
                                                                 className="form-check-label w-100"
                                                                 htmlFor={`address-${address.id}`}
                                                             >
-
 
                                                                 <div className="d-flex justify-content-between align-items-start">
 
@@ -789,7 +938,6 @@ const Checkout = () => {
 
                                                                 <div className="mt-2 small">
 
-
                                                                     <div>
                                                                         📞{" "}
                                                                         {
@@ -812,7 +960,10 @@ const Checkout = () => {
                                                                             address.upazila
                                                                         }
 
-                                                                        ,{" "}
+                                                                        {address.upazila &&
+                                                                            address.district
+                                                                            ? ", "
+                                                                            : ""}
 
                                                                         {
                                                                             address.district
@@ -827,7 +978,10 @@ const Checkout = () => {
                                                                             address.division
                                                                         }
 
-                                                                        {" - "}
+                                                                        {address.division &&
+                                                                            address.postal_code
+                                                                            ? " - "
+                                                                            : ""}
 
                                                                         {
                                                                             address.postal_code
@@ -865,7 +1019,6 @@ const Checkout = () => {
 
                     <div className="card border-0 shadow-sm mb-4">
 
-
                         <div className="card-header bg-white">
 
                             <h4 className="mb-0">
@@ -902,7 +1055,6 @@ const Checkout = () => {
                                 <div className="card-body">
 
                                     <div className="form-check">
-
 
                                         <input
                                             className="form-check-input"
@@ -973,7 +1125,6 @@ const Checkout = () => {
 
                                     <div className="form-check">
 
-
                                         <input
                                             className="form-check-input"
                                             type="radio"
@@ -1042,7 +1193,6 @@ const Checkout = () => {
                                 <div className="card-body">
 
                                     <div className="form-check">
-
 
                                         <input
                                             className="form-check-input"
@@ -1113,7 +1263,6 @@ const Checkout = () => {
 
                                     <div className="form-check">
 
-
                                         <input
                                             className="form-check-input"
                                             type="radio"
@@ -1183,7 +1332,6 @@ const Checkout = () => {
 
                                     <div className="form-check">
 
-
                                         <input
                                             className="form-check-input"
                                             type="radio"
@@ -1229,26 +1377,52 @@ const Checkout = () => {
 
 
                             {/* ==================================================
-                                PAYMENT NOTICE
+                                PAYMENT INFORMATION
                             ================================================== */}
 
-                            <div className="alert alert-info mt-3 mb-0">
+                            {paymentMethod ===
+                                "Cash on Delivery" ? (
 
-                                <strong>
-                                    Payment Notice
-                                </strong>
+                                <div className="alert alert-success mt-3 mb-0">
 
+                                    <strong>
+                                        💵 Cash on Delivery
+                                    </strong>
 
-                                <div className="small mt-1">
+                                    <div className="small mt-1">
 
-                                    Online payment gateways will
-                                    be available soon. You can
-                                    currently place orders using
-                                    Cash on Delivery.
+                                        Your order will be
+                                        placed immediately.
+                                        Pay when the order is
+                                        delivered.
+
+                                    </div>
 
                                 </div>
 
-                            </div>
+                            ) : (
+
+                                <div className="alert alert-info mt-3 mb-0">
+
+                                    <strong>
+                                        🔐 Secure Online Payment
+                                    </strong>
+
+                                    <div className="small mt-1">
+
+                                        After clicking
+                                        <strong>
+                                            {" "}Pay Now
+                                        </strong>,
+                                        you will be redirected
+                                        to the selected payment
+                                        gateway.
+
+                                    </div>
+
+                                </div>
+
+                            )}
 
                         </div>
 
@@ -1298,7 +1472,10 @@ const Checkout = () => {
                                     selectedAddressData.upazila
                                 }
 
-                                ,{" "}
+                                {selectedAddressData.upazila &&
+                                    selectedAddressData.district
+                                    ? ", "
+                                    : ""}
 
                                 {
                                     selectedAddressData.district
@@ -1313,7 +1490,10 @@ const Checkout = () => {
                                     selectedAddressData.division
                                 }
 
-                                {" - "}
+                                {selectedAddressData.division &&
+                                    selectedAddressData.postal_code
+                                    ? " - "
+                                    : ""}
 
                                 {
                                     selectedAddressData.postal_code
@@ -1334,7 +1514,6 @@ const Checkout = () => {
 
                 <div className="col-lg-4">
 
-
                     <div
                         className="card border-0 shadow-sm"
                         style={{
@@ -1342,7 +1521,6 @@ const Checkout = () => {
                             top: "20px",
                         }}
                     >
-
 
                         <div className="card-header bg-primary text-white">
 
@@ -1384,7 +1562,6 @@ const Checkout = () => {
                                             key={item.id}
                                             className="d-flex justify-content-between mb-3"
                                         >
-
 
                                             <div>
 
@@ -1432,7 +1609,7 @@ const Checkout = () => {
 
 
                             {/* ==================================================
-                                COUPON PLACEHOLDER
+                                COUPON
                             ================================================== */}
 
                             <div className="mt-3">
@@ -1556,8 +1733,8 @@ const Checkout = () => {
 
                                 <div className="small mt-1">
 
-                                    Your order is protected
-                                    and processed securely.
+                                    Your order information
+                                    is processed securely.
 
                                 </div>
 
@@ -1565,7 +1742,7 @@ const Checkout = () => {
 
 
                             {/* ==================================================
-                                PLACE ORDER
+                                PLACE ORDER / PAYMENT BUTTON
                             ================================================== */}
 
                             <button
@@ -1589,17 +1766,29 @@ const Checkout = () => {
                                             className="spinner-border spinner-border-sm me-2"
                                             role="status"
                                             aria-hidden="true"
-                                        ></span>
+                                        />
 
-                                        Processing...
+                                        {paymentMethod ===
+                                            "Cash on Delivery"
+                                            ? "Placing Order..."
+                                            : "Creating Payment..."}
 
                                     </>
 
                                 ) : (
 
-                                    <>
-                                        🛍 Place Order
-                                    </>
+                                    paymentMethod ===
+                                        "Cash on Delivery"
+                                        ? (
+                                            <>
+                                                🛍 Place Order
+                                            </>
+                                        )
+                                        : (
+                                            <>
+                                                💳 Pay Now
+                                            </>
+                                        )
 
                                 )}
 
