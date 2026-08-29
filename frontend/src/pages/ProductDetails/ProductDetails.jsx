@@ -75,9 +75,10 @@ const ProductDetails = () => {
     // AUTH
     // ========================================================
 
-    const isLoggedIn = Boolean(
-        localStorage.getItem("access")
-    );
+   const isLoggedIn = Boolean(
+    localStorage.getItem("access") ||
+    sessionStorage.getItem("access")
+   );
 
     // ========================================================
     // LOAD PRODUCT

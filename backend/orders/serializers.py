@@ -22,6 +22,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
+
         model = OrderItem
 
         fields = [
@@ -37,6 +38,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_subtotal(self, obj):
+
         return obj.subtotal
 
 
@@ -72,6 +74,7 @@ class OrderSerializer(serializers.ModelSerializer):
     can_cancel = serializers.ReadOnlyField()
 
     class Meta:
+
         model = Order
 
         fields = [
@@ -97,14 +100,17 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_item_count(self, obj):
+
         return obj.items.count()
 
     def get_payment_status(self, obj):
 
         if hasattr(obj, "payment"):
+
             return obj.payment.status
 
         if obj.payment_method == Order.PAYMENT_COD:
+
             return "Cash on Delivery"
 
         return None
@@ -112,6 +118,7 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_transaction_id(self, obj):
 
         if hasattr(obj, "payment"):
+
             return obj.payment.transaction_id
 
         return None
@@ -122,16 +129,9 @@ class OrderSerializer(serializers.ModelSerializer):
 # ==========================================================
 
 class OrderCreateSerializer(serializers.ModelSerializer):
-    """
-    Used when customers create a new order.
-
-    Customer is automatically taken from the authenticated user.
-
-    Prices, subtotal, delivery charge and total are
-    calculated by the backend.
-    """
 
     class Meta:
+
         model = Order
 
         fields = [
@@ -139,16 +139,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "payment_method",
         ]
 
+    # ======================================================
+    # SHIPPING ADDRESS
+    # ======================================================
+
     def validate_shipping_address(self, value):
 
         value = value.strip()
 
         if not value:
+
             raise serializers.ValidationError(
                 "Shipping address is required."
             )
 
         return value
+
+    # ======================================================
+    # PAYMENT METHOD
+    # ======================================================
 
     def validate_payment_method(self, value):
 
@@ -159,6 +168,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         ]
 
         if value not in allowed:
+
             raise serializers.ValidationError(
                 "Invalid payment method."
             )

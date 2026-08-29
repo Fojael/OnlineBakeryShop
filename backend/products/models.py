@@ -1,8 +1,13 @@
 from django.db import models
+
 from suppliers.models import Supplier
 
 
 class Product(models.Model):
+
+    # ==========================================================
+    # CATEGORY
+    # ==========================================================
 
     CATEGORY_CHOICES = [
         ("Cake", "Cake"),
@@ -15,6 +20,10 @@ class Product(models.Model):
         ("Brownie", "Brownie"),
     ]
 
+    # ==========================================================
+    # SUPPLIER
+    # ==========================================================
+
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.SET_NULL,
@@ -23,8 +32,12 @@ class Product(models.Model):
         related_name="products",
     )
 
+    # ==========================================================
+    # PRODUCT INFORMATION
+    # ==========================================================
+
     name = models.CharField(
-        max_length=150
+        max_length=150,
     )
 
     category = models.CharField(
@@ -34,8 +47,12 @@ class Product(models.Model):
     )
 
     description = models.TextField(
-        default=""
+        default="",
     )
+
+    # ==========================================================
+    # PRICE
+    # ==========================================================
 
     price = models.DecimalField(
         max_digits=10,
@@ -43,31 +60,51 @@ class Product(models.Model):
         default=0,
     )
 
+    # ==========================================================
+    # IMAGE
+    # ==========================================================
+
     image = models.ImageField(
         upload_to="products/",
         blank=True,
         null=True,
     )
 
+    # ==========================================================
+    # INVENTORY
+    # ==========================================================
+
     stock_quantity = models.PositiveIntegerField(
-        default=0
+        default=0,
     )
 
     is_available = models.BooleanField(
-        default=True
+        default=True,
     )
+
+    # ==========================================================
+    # FEATURED
+    # ==========================================================
 
     featured = models.BooleanField(
-        default=False
+        default=False,
     )
 
+    # ==========================================================
+    # TIMESTAMPS
+    # ==========================================================
+
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     updated_at = models.DateTimeField(
-        auto_now=True
+        auto_now=True,
     )
+
+    # ==========================================================
+    # STRING REPRESENTATION
+    # ==========================================================
 
     def __str__(self):
         return self.name

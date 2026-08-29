@@ -26,18 +26,10 @@ DELIVERY_CHARGE = Decimal("60.00")
 
 
 # ==========================================================
-# CUSTOMER - LIST ORDERS
+# CUSTOMER - LIST / CREATE ORDERS
 # ==========================================================
 
 class OrderListCreateView(APIView):
-    """
-    GET  /api/orders/
-    POST /api/orders/
-
-    Customer can:
-        - View their own orders
-        - Create a new order from their cart
-    """
 
     permission_classes = [
         IsAuthenticated,
@@ -48,10 +40,6 @@ class OrderListCreateView(APIView):
     # ======================================================
 
     def get(self, request):
-        """
-        Return all orders belonging to the
-        authenticated customer.
-        """
 
         orders = (
             Order.objects
@@ -89,21 +77,6 @@ class OrderListCreateView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        """
-        Create a new order from the authenticated
-        customer's cart.
-
-        COD:
-            - Stock deducted immediately
-            - Cart cleared immediately
-            - Order becomes Processing
-
-        SSLCommerz:
-            - Stock is NOT deducted here
-            - Cart is NOT cleared here
-            - Payment app handles stock deduction
-            - Cart is cleared after successful payment
-        """
 
         # --------------------------------------------------
         # Validate request
@@ -133,7 +106,7 @@ class OrderListCreateView(APIView):
         )
 
         # --------------------------------------------------
-        # Lock customer's cart
+        # Get customer cart
         # --------------------------------------------------
 
         cart = get_object_or_404(
@@ -142,7 +115,7 @@ class OrderListCreateView(APIView):
         )
 
         # --------------------------------------------------
-        # Lock cart items
+        # Get cart items
         # --------------------------------------------------
 
         cart_items = list(
@@ -166,7 +139,7 @@ class OrderListCreateView(APIView):
             )
 
         # --------------------------------------------------
-        # Validate products and calculate subtotal
+        # Calculate subtotal
         # --------------------------------------------------
 
         subtotal = Decimal("0.00")
@@ -175,8 +148,11 @@ class OrderListCreateView(APIView):
 
             product = item.product
 
+            # --------------------------------------------------
             # Product availability
-            if not product.is_active:
+            # --------------------------------------------------
+
+            if not product.is_available:
 
                 return Response(
                     {
@@ -188,7 +164,10 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # --------------------------------------------------
             # Quantity validation
+            # --------------------------------------------------
+
             if item.quantity <= 0:
 
                 return Response(
@@ -201,7 +180,10 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # --------------------------------------------------
             # Stock validation
+            # --------------------------------------------------
+
             if product.stock_quantity < item.quantity:
 
                 return Response(
@@ -217,9 +199,13 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # --------------------------------------------------
+            # Subtotal
+            # --------------------------------------------------
+
             subtotal += (
-                product.price *
-                item.quantity
+                product.price
+                * item.quantity
             )
 
         # --------------------------------------------------
@@ -229,8 +215,8 @@ class OrderListCreateView(APIView):
         delivery_charge = DELIVERY_CHARGE
 
         total_amount = (
-            subtotal +
-            delivery_charge
+            subtotal
+            + delivery_charge
         )
 
         # --------------------------------------------------
@@ -274,9 +260,9 @@ class OrderListCreateView(APIView):
 
         if payment_method == Order.PAYMENT_COD:
 
-            # ----------------------------------------------
-            # Deduct stock immediately
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Deduct stock
+            # ------------------------------------------------
 
             for item in cart_items:
 
@@ -292,17 +278,17 @@ class OrderListCreateView(APIView):
                     ],
                 )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # Clear cart
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             CartItem.objects.filter(
                 cart=cart,
             ).delete()
 
-            # ----------------------------------------------
-            # COD order goes to Processing
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Set processing
+            # ------------------------------------------------
 
             order.status = (
                 Order.STATUS_PROCESSING
@@ -316,30 +302,33 @@ class OrderListCreateView(APIView):
             )
 
         # ==================================================
-        # SSLCommerz
+        # SSLCOMMERZ
         # ==================================================
 
-        elif (
-            payment_method
-            == Order.PAYMENT_SSLCOMMERZ
-        ):
+        elif payment_method == Order.PAYMENT_SSLCOMMERZ:
 
             # ------------------------------------------------
-            # IMPORTANT
+            # DO NOT deduct stock here.
             #
-            # Do NOT deduct stock here.
+            # DO NOT clear cart here.
             #
-            # Do NOT clear cart here.
+            # Payment processing will handle this after
+            # successful payment.
+            # ------------------------------------------------
+
+            pass
+
+        # ==================================================
+        # STRIPE
+        # ==================================================
+
+        elif payment_method == Order.PAYMENT_STRIPE:
+
+            # ------------------------------------------------
+            # Stripe payment processing can be implemented
+            # here later.
             #
-            # payments/views.py will:
-            #
-            # 1. Validate SSLCommerz payment
-            # 2. Lock order
-            # 3. Check stock again
-            # 4. Deduct stock
-            # 5. Mark payment successful
-            # 6. Set order Processing
-            # 7. Clear cart
+            # Do not deduct stock until payment succeeds.
             # ------------------------------------------------
 
             pass
@@ -357,13 +346,11 @@ class OrderListCreateView(APIView):
 
         return Response(
             {
-                "message": (
-                    "Order created successfully."
-                ),
+                "message": "Order created successfully.",
                 "order": response_serializer.data,
                 "payment_required": (
                     payment_method
-                    == Order.PAYMENT_SSLCOMMERZ
+                    != Order.PAYMENT_COD
                 ),
             },
             status=status.HTTP_201_CREATED,
@@ -375,11 +362,6 @@ class OrderListCreateView(APIView):
 # ==========================================================
 
 class OrderDetailView(APIView):
-    """
-    GET /api/orders/<order_id>/
-
-    Customer can view only their own order.
-    """
 
     permission_classes = [
         IsAuthenticated,
@@ -418,17 +400,6 @@ class OrderDetailView(APIView):
 # ==========================================================
 
 class CancelOrderView(APIView):
-    """
-    POST /api/orders/<order_id>/cancel/
-
-    Customer can cancel:
-        Pending
-        Processing
-
-    Customer cannot cancel:
-        Delivered
-        Already Cancelled
-    """
 
     permission_classes = [
         IsAuthenticated,
@@ -437,13 +408,8 @@ class CancelOrderView(APIView):
     @transaction.atomic
     def post(self, request, order_id):
 
-        # --------------------------------------------------
-        # Lock order
-        # --------------------------------------------------
-
         order = get_object_or_404(
-            Order.objects
-            .select_for_update(),
+            Order.objects.select_for_update(),
             id=order_id,
             customer=request.user,
         )
@@ -452,10 +418,7 @@ class CancelOrderView(APIView):
         # Already cancelled
         # --------------------------------------------------
 
-        if (
-            order.status
-            == Order.STATUS_CANCELLED
-        ):
+        if order.status == Order.STATUS_CANCELLED:
 
             return Response(
                 {
@@ -467,13 +430,10 @@ class CancelOrderView(APIView):
             )
 
         # --------------------------------------------------
-        # Delivered orders cannot be cancelled
+        # Delivered cannot be cancelled
         # --------------------------------------------------
 
-        if (
-            order.status
-            == Order.STATUS_DELIVERED
-        ):
+        if order.status == Order.STATUS_DELIVERED:
 
             return Response(
                 {
@@ -486,10 +446,11 @@ class CancelOrderView(APIView):
             )
 
         # --------------------------------------------------
-        # Check payment status
+        # Get payment
         # --------------------------------------------------
 
         payment_success = False
+        payment = None
 
         try:
 
@@ -505,6 +466,7 @@ class CancelOrderView(APIView):
                 payment.status
                 == Payment.STATUS_SUCCESS
             ):
+
                 payment_success = True
 
         except Payment.DoesNotExist:
@@ -512,19 +474,18 @@ class CancelOrderView(APIView):
             payment = None
 
         # --------------------------------------------------
-        # Determine whether stock was deducted
+        # Determine stock status
         # --------------------------------------------------
 
         stock_was_deducted = False
 
-        # COD stock is deducted when order is created
         if (
             order.payment_method
             == Order.PAYMENT_COD
         ):
+
             stock_was_deducted = True
 
-        # SSLCommerz stock is deducted after payment
         elif payment_success:
 
             stock_was_deducted = True
@@ -615,11 +576,6 @@ class CancelOrderView(APIView):
 # ==========================================================
 
 class AdminOrderListView(APIView):
-    """
-    GET /api/orders/admin/
-
-    Admin can view all orders.
-    """
 
     permission_classes = [
         IsAuthenticated,
@@ -643,7 +599,7 @@ class AdminOrderListView(APIView):
             )
 
         # --------------------------------------------------
-        # Get all orders
+        # Get orders
         # --------------------------------------------------
 
         orders = (
@@ -675,9 +631,6 @@ class AdminOrderListView(APIView):
 
 
 # ==========================================================
-# ADMIN - UPDATE ORDER STATUS
-# ==========================================================
-# ==========================================================
 # ADMIN - ORDER DETAIL
 # ==========================================================
 
@@ -689,14 +642,24 @@ class AdminOrderDetailView(APIView):
 
     def get(self, request, order_id):
 
+        # --------------------------------------------------
+        # Admin permission
+        # --------------------------------------------------
+
         if not request.user.is_staff:
 
             return Response(
                 {
-                    "detail": "Admin permission required."
+                    "detail": (
+                        "Admin permission required."
+                    ),
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # --------------------------------------------------
+        # Get order
+        # --------------------------------------------------
 
         order = get_object_or_404(
             Order.objects
@@ -721,18 +684,13 @@ class AdminOrderDetailView(APIView):
             serializer.data,
             status=status.HTTP_200_OK,
         )
+
+
+# ==========================================================
+# ADMIN - UPDATE ORDER STATUS
+# ==========================================================
+
 class AdminOrderUpdateView(APIView):
-    """
-    PATCH /api/orders/admin/<order_id>/
-
-    Admin can update order status.
-
-    Allowed statuses:
-        Pending
-        Processing
-        Delivered
-        Cancelled
-    """
 
     permission_classes = [
         IsAuthenticated,
@@ -761,13 +719,12 @@ class AdminOrderUpdateView(APIView):
         # --------------------------------------------------
 
         order = get_object_or_404(
-            Order.objects
-            .select_for_update(),
+            Order.objects.select_for_update(),
             id=order_id,
         )
 
         # --------------------------------------------------
-        # Get new status
+        # New status
         # --------------------------------------------------
 
         new_status = str(
@@ -826,10 +783,7 @@ class AdminOrderUpdateView(APIView):
             )
 
         # --------------------------------------------------
-        # Prevent reopening cancelled orders
-        #
-        # This is important because stock may already
-        # have been restored when the order was cancelled.
+        # Cannot reopen cancelled order
         # --------------------------------------------------
 
         if (
@@ -874,16 +828,10 @@ class AdminOrderUpdateView(APIView):
         # CANCEL ORDER
         # ==================================================
 
-        if (
-            new_status
-            == Order.STATUS_CANCELLED
-        ):
-
-            # ----------------------------------------------
-            # Check payment
-            # ----------------------------------------------
+        if new_status == Order.STATUS_CANCELLED:
 
             payment_success = False
+            payment = None
 
             try:
 
@@ -899,19 +847,19 @@ class AdminOrderUpdateView(APIView):
                     payment.status
                     == Payment.STATUS_SUCCESS
                 ):
+
                     payment_success = True
 
             except Payment.DoesNotExist:
 
                 payment = None
 
-            # ----------------------------------------------
-            # Determine whether stock was deducted
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Determine stock deduction
+            # ------------------------------------------------
 
             stock_was_deducted = False
 
-            # COD
             if (
                 order.payment_method
                 == Order.PAYMENT_COD
@@ -919,14 +867,13 @@ class AdminOrderUpdateView(APIView):
 
                 stock_was_deducted = True
 
-            # SSLCommerz successful payment
             elif payment_success:
 
                 stock_was_deducted = True
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # Restore stock
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             if stock_was_deducted:
 
@@ -955,9 +902,9 @@ class AdminOrderUpdateView(APIView):
                         ],
                     )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # Cancel pending payment
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             if payment:
 
@@ -967,8 +914,9 @@ class AdminOrderUpdateView(APIView):
                 ):
 
                     payment.mark_cancelled()
+
         # ==================================================
-        # UPDATE ORDER STATUS
+        # SAVE STATUS
         # ==================================================
 
         order.status = new_status

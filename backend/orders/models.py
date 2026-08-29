@@ -100,48 +100,67 @@ class Order(models.Model):
         auto_now=True,
     )
 
+    # ==========================================================
+    # META
+    # ==========================================================
+
     class Meta:
         ordering = ["-created_at"]
 
     # ==========================================================
-    # AUTO CALCULATE TOTAL
+    # SAVE
     # ==========================================================
 
     def save(self, *args, **kwargs):
+
         self.total_amount = (
-            self.subtotal +
-            self.delivery_charge
+            self.subtotal
+            + self.delivery_charge
         )
+
         super().save(*args, **kwargs)
 
     # ==========================================================
-    # HELPERS
+    # PROPERTIES
     # ==========================================================
 
     @property
     def is_paid(self):
+
         if hasattr(self, "payment"):
+
             return (
-                self.payment.status ==
-                self.payment.STATUS_SUCCESS
+                self.payment.status
+                == self.payment.STATUS_SUCCESS
             )
+
         return False
 
     @property
     def can_cancel(self):
+
         return self.status in [
             self.STATUS_PENDING,
             self.STATUS_PROCESSING,
         ]
 
+    # ==========================================================
+    # STRING
+    # ==========================================================
+
     def __str__(self):
+
         return (
-            f"Order #{self.id} "
-            f"- {self.customer.email}"
+            f"Order #{self.id} - "
+            f"{self.customer.email}"
         )
 
 
 class OrderItem(models.Model):
+
+    # ==========================================================
+    # ORDER
+    # ==========================================================
 
     order = models.ForeignKey(
         Order,
@@ -149,30 +168,56 @@ class OrderItem(models.Model):
         related_name="items",
     )
 
+    # ==========================================================
+    # PRODUCT
+    # ==========================================================
+
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
         related_name="order_items",
     )
 
+    # ==========================================================
+    # QUANTITY
+    # ==========================================================
+
     quantity = models.PositiveIntegerField(
         default=1,
     )
+
+    # ==========================================================
+    # PRICE
+    # ==========================================================
 
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
     )
 
+    # ==========================================================
+    # TIMESTAMP
+    # ==========================================================
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
 
+    # ==========================================================
+    # SUBTOTAL
+    # ==========================================================
+
     @property
     def subtotal(self):
+
         return self.price * self.quantity
 
+    # ==========================================================
+    # STRING
+    # ==========================================================
+
     def __str__(self):
+
         return (
             f"{self.product.name} × "
             f"{self.quantity}"

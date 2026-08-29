@@ -5,12 +5,22 @@ from .views import (
     ProductRetrieveUpdateDeleteView,
 )
 
+
 urlpatterns = [
+
+    # ========================================================
+    # PRODUCT LIST + CREATE
+    # ========================================================
+
     path(
         "",
         ProductListCreateView.as_view(),
         name="product-list",
     ),
+
+    # ========================================================
+    # PRODUCT DETAIL / UPDATE / DELETE
+    # ========================================================
 
     path(
         "<int:pk>/",
