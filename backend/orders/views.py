@@ -677,7 +677,50 @@ class AdminOrderListView(APIView):
 # ==========================================================
 # ADMIN - UPDATE ORDER STATUS
 # ==========================================================
+# ==========================================================
+# ADMIN - ORDER DETAIL
+# ==========================================================
 
+class AdminOrderDetailView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request, order_id):
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail": "Admin permission required."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        order = get_object_or_404(
+            Order.objects
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            ),
+            id=order_id,
+        )
+
+        serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
 class AdminOrderUpdateView(APIView):
     """
     PATCH /api/orders/admin/<order_id>/
@@ -924,7 +967,6 @@ class AdminOrderUpdateView(APIView):
                 ):
 
                     payment.mark_cancelled()
-
         # ==================================================
         # UPDATE ORDER STATUS
         # ==================================================

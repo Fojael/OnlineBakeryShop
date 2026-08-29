@@ -1,3 +1,7 @@
+# ==========================================================
+# payments/admin.py
+# ==========================================================
+
 from django.contrib import admin
 
 from .models import Payment
@@ -6,43 +10,77 @@ from .models import Payment
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
 
-    list_display = [
+    # ======================================================
+    # LIST DISPLAY
+    # ======================================================
+
+    list_display = (
         "id",
         "order",
         "transaction_id",
-        "gateway",
         "amount",
         "currency",
         "status",
+        "attempt_count",
         "paid_at",
         "created_at",
-    ]
+    )
 
-    list_filter = [
+    # ======================================================
+    # FILTERS
+    # ======================================================
+
+    list_filter = (
         "status",
-        "gateway",
         "currency",
         "created_at",
-    ]
-
-    search_fields = [
-        "transaction_id",
-        "gateway_transaction_id",
-        "bank_transaction_id",
-        "validation_id",
-        "order__id",
-    ]
-
-    readonly_fields = [
-        "transaction_id",
-        "gateway_transaction_id",
-        "bank_transaction_id",
-        "validation_id",
         "paid_at",
+    )
+
+    # ======================================================
+    # SEARCH
+    # ======================================================
+
+    search_fields = (
+        "transaction_id",
+        "validation_id",
+        "bank_transaction_id",
+        "order__id",
+        "order__customer__username",
+        "order__customer__email",
+    )
+
+    # ======================================================
+    # READ ONLY FIELDS
+    # ======================================================
+
+    readonly_fields = (
+        "transaction_id",
+        "validation_id",
+        "bank_transaction_id",
+        "session_key",
+        "gateway_response",
         "created_at",
         "updated_at",
-    ]
+        "paid_at",
+    )
 
-    ordering = [
+    # ======================================================
+    # DEFAULT ORDERING
+    # ======================================================
+
+    ordering = (
         "-created_at",
-    ]
+    )
+
+    # ======================================================
+    # DATE HIERARCHY
+    # ======================================================
+
+    date_hierarchy = "created_at"
+
+    # ======================================================
+    # ITEMS PER PAGE
+    # ======================================================
+
+    list_per_page = 25

@@ -1,318 +1,227 @@
-import requests
+from decimal import Decimal
 
+import requests
 from django.conf import settings
 
-from .utils import (
-    generate_transaction_id,
-    get_customer_name,
-    get_customer_email,
-    get_customer_phone,
-    get_shipping_address,
-    clean_sslcommerz_text,
-)
+
+class SSLCommerzError(Exception):
+    pass
 
 
-class SSLCommerzGateway:
+def _base_url():
+    if settings.SSLCOMMERZ_IS_SANDBOX:
+        return "https://sandbox.sslcommerz.com"
 
-    """
-    SSLCommerz payment gateway service.
+    return "https://securepay.sslcommerz.com"
 
-    Handles:
 
-    1. Payment session creation
-    2. Payment validation
-    """
+def initiate_payment(payment):
+    order = payment.order
+    customer = order.customer
 
-    # ==========================================================
-    # INITIALIZATION
-    # ==========================================================
+    amount = Decimal(payment.amount)
 
-    def __init__(self):
+    if amount < Decimal("10.00"):
+        raise SSLCommerzError(
+            "SSLCommerz requires a transaction amount of at least 10.00 BDT."
+        )
 
-        self.store_id = getattr(
-            settings,
-            "SSLCOMMERZ_STORE_ID",
+    if amount > Decimal("500000.00"):
+        raise SSLCommerzError(
+            "SSLCommerz transaction amount cannot exceed 500000.00 BDT."
+        )
+
+    if not settings.SSLCOMMERZ_STORE_ID:
+        raise SSLCommerzError(
+            "SSLCommerz store ID is not configured."
+        )
+
+    if not settings.SSLCOMMERZ_STORE_PASSWORD:
+        raise SSLCommerzError(
+            "SSLCommerz store password is not configured."
+        )
+
+    product_names = []
+    cart = []
+
+    for item in order.items.select_related("product").all():
+        product_names.append(item.product.name)
+
+        cart.append(
+            {
+                "sku": str(item.product_id),
+                "product": item.product.name[:255],
+                "quantity": str(item.quantity),
+                "amount": str(item.subtotal),
+                "unit_price": str(item.price),
+            }
+        )
+
+    data = {
+        "store_id": settings.SSLCOMMERZ_STORE_ID,
+        "store_passwd": settings.SSLCOMMERZ_STORE_PASSWORD,
+
+        "total_amount": f"{amount:.2f}",
+        "currency": payment.currency,
+
+        "tran_id": payment.transaction_id,
+
+        "success_url": settings.SSLCOMMERZ_SUCCESS_URL,
+        "fail_url": settings.SSLCOMMERZ_FAIL_URL,
+        "cancel_url": settings.SSLCOMMERZ_CANCEL_URL,
+        "ipn_url": settings.SSLCOMMERZ_IPN_URL,
+
+        "cus_name": (
+            getattr(
+                customer,
+                "get_full_name",
+                lambda: "",
+            )()
+            or getattr(
+                customer,
+                "username",
+                "",
+            )
+            or "Customer"
+        )[:50],
+
+        "cus_email": customer.email[:50],
+
+        "cus_add1": order.shipping_address[:50],
+        "cus_city": "Dhaka",
+        "cus_state": "Dhaka",
+        "cus_postcode": "1000",
+        "cus_country": "Bangladesh",
+
+        "cus_phone": getattr(
+            customer,
+            "phone",
             "",
-        )
+        )[:20],
 
-        self.store_password = getattr(
-            settings,
-            "SSLCOMMERZ_STORE_PASSWORD",
-            "",
-        )
-
-        self.base_url = getattr(
-            settings,
-            "SSLCOMMERZ_API_URL",
-            "",
-        )
-
-        self.validation_url = getattr(
-            settings,
-            "SSLCOMMERZ_VALIDATION_URL",
-            "",
-        )
-
-        self.timeout = getattr(
-            settings,
-            "SSLCOMMERZ_TIMEOUT",
-            30,
-        )
-
-        if not self.store_id:
-            raise ValueError(
-                "SSLCOMMERZ_STORE_ID is not configured."
+        "ship_name": (
+            getattr(
+                customer,
+                "get_full_name",
+                lambda: "",
+            )()
+            or getattr(
+                customer,
+                "username",
+                "",
             )
+            or "Customer"
+        )[:50],
 
-        if not self.store_password:
-            raise ValueError(
-                "SSLCOMMERZ_STORE_PASSWORD is not configured."
-            )
+        "ship_add1": order.shipping_address[:50],
+        "ship_city": "Dhaka",
+        "ship_state": "Dhaka",
+        "ship_postcode": "1000",
+        "ship_country": "Bangladesh",
 
-        if not self.base_url:
-            raise ValueError(
-                "SSLCOMMERZ_API_URL is not configured."
-            )
+        "shipping_method": "YES",
+        "num_of_item": str(
+            order.items.count()
+        ),
 
-        if not self.validation_url:
+        "product_name": ", ".join(
+            product_names
+        )[:255],
 
-            if (
-                "securepay.sslcommerz.com"
-                in self.base_url
-            ):
+        "product_category": "Bakery",
+        "product_profile": "physical-goods",
 
-                self.validation_url = (
-                    "https://securepay.sslcommerz.com"
-                    "/validator/api/validationserverAPI.php"
-                )
+        "product_amount": f"{order.subtotal:.2f}",
+        "vat": "0.00",
+        "discount_amount": "0.00",
+        "convenience_fee": f"{order.delivery_charge:.2f}",
 
-            else:
+        "cart": __import__("json").dumps(cart),
 
-                self.validation_url = (
-                    "https://sandbox.sslcommerz.com"
-                    "/validator/api/validationserverAPI.php"
-                )
+        "value_a": str(order.id),
+    }
 
-    # ==========================================================
-    # TRANSACTION ID
-    # ==========================================================
+    url = f"{_base_url()}/gwprocess/v4/api.php"
 
-    def generate_transaction_id(self):
-
-        return generate_transaction_id()
-
-    # ==========================================================
-    # CREATE SESSION
-    # ==========================================================
-
-    def create_session(
-        self,
-        order,
-        customer,
-    ):
-
-        transaction_id = (
-            self.generate_transaction_id()
+    try:
+        response = requests.post(
+            url,
+            data=data,
+            timeout=30,
         )
 
-        customer_name = clean_sslcommerz_text(
-            get_customer_name(customer),
-            100,
+        response.raise_for_status()
+
+        payload = response.json()
+
+    except (
+        requests.RequestException,
+        ValueError,
+    ) as exc:
+
+        raise SSLCommerzError(
+            f"Could not connect to SSLCommerz: {exc}"
+        ) from exc
+
+    if payload.get("status") != "SUCCESS":
+
+        raise SSLCommerzError(
+            payload.get("failedreason")
+            or "SSLCommerz could not create the payment session."
         )
 
-        customer_email = clean_sslcommerz_text(
-            get_customer_email(customer),
-            100,
+    gateway_url = (
+        payload.get("GatewayPageURL")
+        or payload.get("redirectGatewayURL")
+    )
+
+    if not gateway_url:
+
+        raise SSLCommerzError(
+            "SSLCommerz did not return a gateway URL."
         )
 
-        customer_phone = clean_sslcommerz_text(
-            get_customer_phone(customer),
-            20,
+    return payload, gateway_url
+
+
+def validate_transaction(val_id):
+
+    if not val_id:
+        raise SSLCommerzError(
+            "Validation ID is required."
         )
 
-        shipping_address = clean_sslcommerz_text(
-            get_shipping_address(order),
-            200,
+    params = {
+        "val_id": val_id,
+        "store_id": settings.SSLCOMMERZ_STORE_ID,
+        "store_passwd": settings.SSLCOMMERZ_STORE_PASSWORD,
+        "format": "json",
+    }
+
+    url = (
+        f"{_base_url()}/validator/api/"
+        "validationserverAPI.php"
+    )
+
+    try:
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=30,
         )
 
-        if not shipping_address:
-            shipping_address = (
-                "Dhaka, Bangladesh"
-            )
+        response.raise_for_status()
 
-        total_amount = str(
-            order.total_amount
-        )
+        payload = response.json()
 
-        payload = {
+    except (
+        requests.RequestException,
+        ValueError,
+    ) as exc:
 
-            # --------------------------------------------------
-            # Credentials
-            # --------------------------------------------------
+        raise SSLCommerzError(
+            f"Could not validate SSLCommerz payment: {exc}"
+        ) from exc
 
-            "store_id": self.store_id,
-            "store_passwd": self.store_password,
-
-            # --------------------------------------------------
-            # Payment
-            # --------------------------------------------------
-
-            "total_amount": total_amount,
-            "currency": "BDT",
-            "tran_id": transaction_id,
-
-            # --------------------------------------------------
-            # Callbacks
-            # --------------------------------------------------
-
-            "success_url": (
-                settings.SSLCOMMERZ_SUCCESS_URL
-            ),
-
-            "fail_url": (
-                settings.SSLCOMMERZ_FAIL_URL
-            ),
-
-            "cancel_url": (
-                settings.SSLCOMMERZ_CANCEL_URL
-            ),
-
-            "ipn_url": (
-                settings.SSLCOMMERZ_IPN_URL
-            ),
-
-            # --------------------------------------------------
-            # Product
-            # --------------------------------------------------
-
-            "shipping_method": "Courier",
-
-            "product_name": (
-                f"Bakery Order #{order.id}"
-            ),
-
-            "product_category": "Bakery",
-
-            "product_profile": "general",
-
-            # --------------------------------------------------
-            # Customer
-            # --------------------------------------------------
-
-            "cus_name": customer_name,
-            "cus_email": customer_email,
-
-            "cus_add1": shipping_address,
-            "cus_add2": "",
-
-            "cus_city": "Dhaka",
-            "cus_state": "Dhaka",
-            "cus_postcode": "1200",
-
-            "cus_country": "Bangladesh",
-            "cus_phone": customer_phone,
-            "cus_fax": "",
-
-            # --------------------------------------------------
-            # Shipping
-            # --------------------------------------------------
-
-            "ship_name": customer_name,
-
-            "ship_add1": shipping_address,
-            "ship_add2": "",
-
-            "ship_city": "Dhaka",
-            "ship_state": "Dhaka",
-            "ship_postcode": "1200",
-
-            "ship_country": "Bangladesh",
-        }
-
-        try:
-
-            response = requests.post(
-                self.base_url,
-                data=payload,
-                timeout=self.timeout,
-            )
-
-            response.raise_for_status()
-
-        except requests.RequestException as exc:
-
-            raise requests.RequestException(
-                "SSLCommerz payment session "
-                "request failed."
-            ) from exc
-
-        try:
-
-            response_data = response.json()
-
-        except ValueError as exc:
-
-            raise requests.RequestException(
-                "SSLCommerz returned invalid JSON."
-            ) from exc
-
-        return (
-            transaction_id,
-            response_data,
-        )
-
-    # ==========================================================
-    # VALIDATE PAYMENT
-    # ==========================================================
-
-    def validate_payment(
-        self,
-        validation_id,
-    ):
-
-        if not validation_id:
-
-            raise ValueError(
-                "SSLCommerz validation ID "
-                "is required."
-            )
-
-        params = {
-
-            "val_id": validation_id,
-
-            "store_id": self.store_id,
-
-            "store_passwd": self.store_password,
-
-            "format": "json",
-        }
-
-        try:
-
-            response = requests.get(
-                self.validation_url,
-                params=params,
-                timeout=self.timeout,
-            )
-
-            response.raise_for_status()
-
-        except requests.RequestException as exc:
-
-            raise requests.RequestException(
-                "SSLCommerz validation request failed."
-            ) from exc
-
-        try:
-
-            response_data = response.json()
-
-        except ValueError as exc:
-
-            raise requests.RequestException(
-                "SSLCommerz validation returned "
-                "invalid JSON."
-            ) from exc
-
-        return response_data
+    return payload

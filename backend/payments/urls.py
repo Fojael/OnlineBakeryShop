@@ -2,54 +2,56 @@ from django.urls import path
 
 from .views import (
     CreatePaymentView,
-    payment_success,
-    payment_fail,
-    payment_cancel,
-    payment_ipn,
+    PaymentStatusView,
+    RetryPaymentView,
+    SSLCommerzCancelView,
+    SSLCommerzFailView,
+    SSLCommerzIPNView,
+    SSLCommerzSuccessView,
 )
 
+app_name = "payments"
 
 urlpatterns = [
-
-    # ======================================================
-    # CREATE PAYMENT
-    # ======================================================
-
     path(
-        "payments/create/<int:order_id>/",
+        "create/<int:order_id>/",
         CreatePaymentView.as_view(),
         name="create-payment",
     ),
 
-    # ======================================================
-    # SSLCommerz CALLBACKS
-    # ======================================================
-
     path(
-        "payments/success/",
-        payment_success,
-        name="payment-success",
+        "status/<int:order_id>/",
+        PaymentStatusView.as_view(),
+        name="payment-status",
     ),
 
     path(
-        "payments/fail/",
-        payment_fail,
-        name="payment-fail",
+        "retry/<int:order_id>/",
+        RetryPaymentView.as_view(),
+        name="retry-payment",
     ),
 
     path(
-        "payments/cancel/",
-        payment_cancel,
-        name="payment-cancel",
+        "sslcommerz/success/",
+        SSLCommerzSuccessView.as_view(),
+        name="sslcommerz-success",
     ),
 
-    # ======================================================
-    # IPN
-    # ======================================================
+    path(
+        "sslcommerz/fail/",
+        SSLCommerzFailView.as_view(),
+        name="sslcommerz-fail",
+    ),
 
     path(
-        "payments/ipn/",
-        payment_ipn,
-        name="payment-ipn",
+        "sslcommerz/cancel/",
+        SSLCommerzCancelView.as_view(),
+        name="sslcommerz-cancel",
+    ),
+
+    path(
+        "sslcommerz/ipn/",
+        SSLCommerzIPNView.as_view(),
+        name="sslcommerz-ipn",
     ),
 ]

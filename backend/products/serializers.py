@@ -5,6 +5,11 @@ from .models import Product
 
 class ProductSerializer(serializers.ModelSerializer):
 
+    supplier_name = serializers.CharField(
+        source="supplier.name",
+        read_only=True,
+    )
+
     def validate_price(self, value):
 
         if value <= 0:
@@ -14,7 +19,6 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
-
     def validate_stock_quantity(self, value):
 
         if value < 0:
@@ -23,7 +27,6 @@ class ProductSerializer(serializers.ModelSerializer):
             )
 
         return value
-
 
     def validate_name(self, value):
 
@@ -36,11 +39,9 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
-
     def validate_description(self, value):
 
         return value.strip()
-
 
     def create(self, validated_data):
 
@@ -50,13 +51,11 @@ class ProductSerializer(serializers.ModelSerializer):
         )
 
         if stock_quantity == 0:
-
             validated_data["is_available"] = False
 
         return super().create(
             validated_data
         )
-
 
     def update(
         self,
@@ -86,13 +85,14 @@ class ProductSerializer(serializers.ModelSerializer):
             validated_data
         )
 
-
     class Meta:
 
         model = Product
 
         fields = [
             "id",
+            "supplier",
+            "supplier_name",
             "name",
             "category",
             "description",
@@ -107,6 +107,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "supplier_name",
             "created_at",
             "updated_at",
         ]

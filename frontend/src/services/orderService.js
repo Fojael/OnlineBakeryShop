@@ -1,122 +1,110 @@
 import api from "./api";
 
-
-// =========================================================
+// ==========================================================
 // CUSTOMER ORDERS
-// =========================================================
+// ==========================================================
 
-// Get logged-in customer's orders
 // GET /api/orders/
-export const getOrders = () => {
-    return api.get("/orders/");
+export const getMyOrders = async () => {
+    const response = await api.get("/orders/");
+    return response.data;
 };
 
 
-// =========================================================
-// GET SINGLE CUSTOMER ORDER
-// GET /api/orders/:id/
-// =========================================================
-
-export const getOrder = (orderId) => {
-    return api.get(
-        `/orders/${orderId}/`
-    );
+// GET /api/orders/<orderId>/
+export const getOrder = async (orderId) => {
+    const response = await api.get(`/orders/${orderId}/`);
+    return response.data;
 };
 
 
-// =========================================================
-// CREATE CUSTOMER ORDER
 // POST /api/orders/
-//
-// Backend expects:
-//
-// {
-//     shipping_address,
-//     payment_method
-// }
-//
-// Totals, stock and cart are calculated by Django.
-// =========================================================
-
-export const createOrder = (orderData) => {
-
-    return api.post(
-        "/orders/",
-        {
-            shipping_address:
-                orderData.shipping_address,
-
-            payment_method:
-                orderData.payment_method,
-        }
-    );
+export const createOrder = async (data) => {
+    const response = await api.post("/orders/", data);
+    return response.data;
 };
 
 
-// =========================================================
-// CANCEL CUSTOMER ORDER
-// PATCH /api/orders/:id/cancel/
-// =========================================================
-
-export const cancelOrder = (orderId) => {
-
-    return api.patch(
+// POST /api/orders/<orderId>/cancel/
+export const cancelOrder = async (orderId) => {
+    const response = await api.post(
         `/orders/${orderId}/cancel/`
     );
+    return response.data;
 };
 
 
-
-// =========================================================
+// ==========================================================
 // ADMIN ORDERS
-// =========================================================
+// ==========================================================
 
-
-// =========================================================
-// GET ALL CUSTOMER ORDERS
 // GET /api/orders/admin/
-// =========================================================
-
-export const getAdminOrders = () => {
-
-    return api.get(
-        "/orders/admin/"
-    );
+export const getAdminOrders = async () => {
+    const response = await api.get("/orders/admin/");
+    return response.data;
 };
 
 
-// =========================================================
 // GET SINGLE ADMIN ORDER
-// GET /api/orders/admin/:id/
-// =========================================================
-
-export const getAdminOrder = (orderId) => {
-
-    return api.get(
-        `/orders/admin/${orderId}/`
+// Uses existing backend endpoint:
+// GET /api/orders/<orderId>/
+export const getAdminOrder = async (orderId) => {
+    const response = await api.get(
+        `/orders/${orderId}/`
     );
+    return response.data;
 };
 
 
-// =========================================================
-// UPDATE ORDER STATUS
-// PATCH /api/orders/admin/:id/
-//
-// Example:
-//
-// updateOrder(orderId, {
-//     status: "Processing"
-// });
-//
-// =========================================================
-
-export const updateOrder = (
+// PATCH /api/orders/admin/<orderId>/
+export const updateAdminOrderStatus = async (
     orderId,
-    orderData
+    status
 ) => {
-
-    return api.patch(
+    const response = await api.patch(
         `/orders/admin/${orderId}/`,
-        orderData
+        {
+            status: status,
+        }
     );
+
+    return response.data;
 };
+
+
+// ==========================================================
+// ALIASES
+// ==========================================================
+
+export const getOrders = getMyOrders;
+
+export const getCustomerOrders = getMyOrders;
+
+export const getOrderDetails = getOrder;
+
+export const updateOrderStatus =
+    updateAdminOrderStatus;
+
+
+// ==========================================================
+// DEFAULT EXPORT
+// ==========================================================
+
+const orderService = {
+
+    getMyOrders,
+    getOrder,
+    createOrder,
+    cancelOrder,
+
+    getAdminOrders,
+    getAdminOrder,
+    updateAdminOrderStatus,
+
+    getOrders,
+    getCustomerOrders,
+    getOrderDetails,
+    updateOrderStatus,
+};
+
+export default orderService;

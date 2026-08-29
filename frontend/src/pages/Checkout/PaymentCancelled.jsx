@@ -1,214 +1,137 @@
-import {
-    useEffect,
-    useRef,
-} from "react";
+import { useState } from "react";
 
 import {
-    Link,
-    useSearchParams,
+  Link,
+  useSearchParams,
 } from "react-router-dom";
 
 import {
-    cancelPayment,
+  retryPayment,
+  redirectToGateway,
 } from "../../services/paymentService";
 
 
 const PaymentCancelled = () => {
 
-    const [
-        searchParams,
-    ] = useSearchParams();
+  const [
+    searchParams
+  ] = useSearchParams();
 
 
-    const cancellationSent =
-        useRef(false);
-
-
-    useEffect(() => {
-
-        if (cancellationSent.current) {
-            return;
-        }
-
-        cancellationSent.current = true;
-
-
-        const paymentId =
-            searchParams.get("payment_id") ||
-            searchParams.get("paymentId") ||
-            searchParams.get("id") ||
-            sessionStorage.getItem(
-                "pending_payment_id"
-            );
-
-
-        // ======================================================
-        // CANCEL PAYMENT ON BACKEND
-        // ======================================================
-
-        const cancelPendingPayment =
-            async () => {
-
-                if (!paymentId) {
-
-                    console.log(
-                        "No payment ID found for cancellation."
-                    );
-
-                } else {
-
-                    try {
-
-                        const response =
-                            await cancelPayment(
-                                paymentId
-                            );
-
-
-                        console.log(
-                            "Payment cancelled:",
-                            response?.data
-                        );
-
-                    } catch (error) {
-
-                        console.error(
-                            "Payment cancellation error:",
-                            error
-                        );
-
-                    }
-
-                }
-
-
-                // ==================================================
-                // CLEAN PAYMENT SESSION DATA
-                // ==================================================
-
-                sessionStorage.removeItem(
-                    "pending_payment_id"
-                );
-
-                sessionStorage.removeItem(
-                    "pending_order_id"
-                );
-
-                sessionStorage.removeItem(
-                    "pending_payment_method"
-                );
-
-                sessionStorage.removeItem(
-                    "pending_payment_url"
-                );
-
-            };
-
-
-        void cancelPendingPayment();
-
-
-    }, [searchParams]);
-
-
-    return (
-
-        <div className="container py-5">
-
-            <div className="row justify-content-center">
-
-                <div className="col-lg-7">
-
-                    <div className="card shadow-sm border-0">
-
-                        <div className="card-body text-center py-5">
-
-                            <div className="display-1">
-                                ⚠️
-                            </div>
-
-
-                            <h1 className="text-warning mt-3">
-                                Payment Cancelled
-                            </h1>
-
-
-                            <p className="text-muted">
-                                You cancelled the payment
-                                process. Your order has not
-                                been paid online.
-                            </p>
-
-
-                            <div className="alert alert-info text-start">
-
-                                <strong>
-                                    What can you do?
-                                </strong>
-
-                                <ul className="mb-0 mt-2">
-
-                                    <li>
-                                        Return to your orders
-                                        and check the payment
-                                        status.
-                                    </li>
-
-                                    <li>
-                                        You can try making
-                                        the payment again
-                                        if supported.
-                                    </li>
-
-                                    <li>
-                                        You can continue
-                                        shopping.
-                                    </li>
-
-                                </ul>
-
-                            </div>
-
-
-                            <div className="d-grid gap-2 mt-4">
-
-                                <Link
-                                    to="/orders"
-                                    className="btn btn-primary btn-lg"
-                                >
-                                    View My Orders
-                                </Link>
-
-
-                                <Link
-                                    to="/products"
-                                    className="btn btn-outline-secondary"
-                                >
-                                    Continue Shopping
-                                </Link>
-
-
-                                <Link
-                                    to="/cart"
-                                    className="btn btn-outline-primary"
-                                >
-                                    Back to Cart
-                                </Link>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
+  const orderId =
+    searchParams.get(
+      "order_id"
     );
 
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  const handleRetry =
+    async () => {
+
+      if (!orderId) {
+
+        setError(
+          "Order ID is missing."
+        );
+
+        return;
+      }
+
+
+      try {
+
+        setLoading(true);
+        setError("");
+
+
+        const data =
+          await retryPayment(
+            orderId
+          );
+
+
+        localStorage.setItem(
+          "pending_payment_order_id",
+          String(orderId)
+        );
+
+
+        redirectToGateway(
+          data.gateway_url
+        );
+
+      } catch (err) {
+
+        setError(
+          err?.response?.data?.detail ||
+          "Could not start a new payment attempt."
+        );
+
+      } finally {
+
+        setLoading(false);
+      }
+    };
+
+
+  return (
+    <div className="container py-5">
+
+      <h2>
+        Payment Cancelled
+      </h2>
+
+
+      <p>
+        The payment was cancelled.
+        Your order remains pending
+        and can be paid again.
+      </p>
+
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
+
+
+      {orderId && (
+
+        <button
+          type="button"
+          className="btn btn-primary me-2"
+          onClick={handleRetry}
+          disabled={loading}
+        >
+          {loading
+            ? "Starting..."
+            : "Retry Payment"}
+        </button>
+
+      )}
+
+
+      <Link
+        to="/orders"
+        className="btn btn-secondary"
+      >
+        View Orders
+      </Link>
+
+    </div>
+  );
 };
 
 

@@ -6,7 +6,7 @@ import DashboardLayout from "../../../layouts/DashboardLayout";
 
 import {
     getAdminOrder,
-    updateOrder,
+    updateAdminOrderStatus,
 } from "../../../services/orderService";
 
 const UpdateOrder = () => {
@@ -150,7 +150,7 @@ const UpdateOrder = () => {
         try {
             setSaving(true);
 
-            await updateOrder(id, {
+            await updateAdminOrderStatus(id, {
                 status,
             });
 

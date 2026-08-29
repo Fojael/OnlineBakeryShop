@@ -1,11 +1,14 @@
-from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
+# ==========================================================
+# payments/views.py
+# ==========================================================
 
-import requests
+from decimal import Decimal
+from uuid import uuid4
 
-from django.conf import settings
 from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status
@@ -17,152 +20,174 @@ from cart.models import Cart, CartItem
 from orders.models import Order, OrderItem
 
 from .models import Payment
-from .services import SSLCommerzGateway
+from .serializers import PaymentSerializer
+from .services import (
+    SSLCommerzError,
+    initiate_payment,
+    validate_transaction,
+)
+from .utils import frontend_redirect
 
 
 # ==========================================================
-# FRONTEND URL
+# TRANSACTION ID
 # ==========================================================
 
-def get_react_url(path):
+def new_transaction_id(order_id):
+    """
+    Generate a unique SSLCommerz transaction ID.
 
-    base_url = getattr(
-        settings,
-        "FRONTEND_URL",
-        "http://localhost:5173",
-    )
+    Maximum length:
+        30 characters
+    """
 
-    return (
-        f"{base_url.rstrip('/')}/"
-        f"{path.lstrip('/')}"
-    )
+    value = f"BAKE{order_id}{uuid4().hex.upper()}"
 
-
-# ==========================================================
-# REQUEST VALUE
-# ==========================================================
-
-def get_request_value(
-    request,
-    key,
-    default="",
-):
-
-    value = request.POST.get(key)
-
-    if value is None:
-
-        value = request.GET.get(
-            key,
-            default,
-        )
-
-    return value
+    return value[:30]
 
 
 # ==========================================================
-# REDIRECT REACT
+# CALLBACK TRANSACTION ID
 # ==========================================================
 
-def redirect_to_react(
-    path,
-    params=None,
-):
+def _callback_transaction_id(request):
+    """
+    Read transaction ID from SSLCommerz callback.
 
-    if params:
+    SSLCommerz can send the data through:
+        POST body
+        GET query parameters
+    """
 
-        clean_params = {
-            key: value
-            for key, value in params.items()
-            if value is not None
-            and value != ""
-        }
+    return str(
+        request.data.get("tran_id")
+        or request.query_params.get("tran_id")
+        or ""
+    ).strip()
 
-        if clean_params:
 
-            query_string = urlencode(
-                clean_params
-            )
+# ==========================================================
+# GET PAYMENT BY TRANSACTION ID
+# ==========================================================
 
-            path = (
-                f"{path.rstrip('/')}/"
-                f"?{query_string}"
-            )
+def _get_payment_by_transaction(transaction_id):
+    """
+    Find payment using SSLCommerz transaction ID.
+    """
 
-    return redirect(
-        get_react_url(path)
+    return get_object_or_404(
+        Payment.objects.select_related(
+            "order",
+            "order__customer",
+        ),
+        transaction_id=transaction_id,
     )
 
 
 # ==========================================================
-# VALIDATE PAYMENT
+# FINALIZE SUCCESSFUL PAYMENT
 # ==========================================================
 
-def validate_sslcommerz_payment(
-    payment,
-    validation,
-):
+@transaction.atomic
+def finalize_success(payment, validation):
+    """
+    Finalize a successfully validated SSLCommerz payment.
 
-    if not validation:
+    This function performs the important server-side operations:
 
-        return (
-            False,
-            "Empty validation response.",
+        1. Lock payment
+        2. Lock order
+        3. Validate transaction ID
+        4. Validate currency
+        5. Validate amount
+        6. Validate SSLCommerz status
+        7. Check risk level
+        8. Lock order items
+        9. Check stock
+        10. Deduct stock
+        11. Remove purchased products from cart
+        12. Mark payment successful
+        13. Store gateway information
+        14. Set order to Processing
+
+    It is protected by database transaction.atomic().
+    """
+
+    # ------------------------------------------------------
+    # Lock payment
+    # ------------------------------------------------------
+
+    payment = (
+        Payment.objects
+        .select_for_update()
+        .select_related(
+            "order",
+            "order__customer",
         )
-
-    # ------------------------------------------------------
-    # Status
-    # ------------------------------------------------------
-
-    validation_status = str(
-        validation.get(
-            "status",
-            "",
+        .get(
+            pk=payment.pk,
         )
-    ).upper().strip()
+    )
 
-    if validation_status not in {
-        "VALID",
-        "VALIDATED",
-    }:
+    # ------------------------------------------------------
+    # Lock order
+    # ------------------------------------------------------
 
-        return (
-            False,
-            (
-                "SSLCommerz transaction "
-                f"status is "
-                f"{validation_status or 'unknown'}."
-            ),
+    order = (
+        Order.objects
+        .select_for_update()
+        .get(
+            pk=payment.order_id,
         )
+    )
 
     # ------------------------------------------------------
-    # Transaction ID
+    # Already successful
+    #
+    # Important for IPN + success callback.
+    #
+    # SSLCommerz may notify our backend more than once.
+    # We must not deduct stock twice.
     # ------------------------------------------------------
 
-    returned_transaction_id = str(
+    if payment.status == Payment.STATUS_SUCCESS:
+        return payment, False
+
+    # ------------------------------------------------------
+    # Validate transaction ID
+    # ------------------------------------------------------
+
+    returned_tran_id = str(
         validation.get(
             "tran_id",
             "",
         )
     ).strip()
 
-    expected_transaction_id = str(
-        payment.transaction_id
-    ).strip()
+    if returned_tran_id != payment.transaction_id:
 
-    if (
-        not returned_transaction_id
-        or returned_transaction_id
-        != expected_transaction_id
-    ):
-
-        return (
-            False,
-            "Transaction ID does not match.",
+        raise SSLCommerzError(
+            "Transaction ID validation failed."
         )
 
     # ------------------------------------------------------
-    # Amount
+    # Validate currency
+    # ------------------------------------------------------
+
+    returned_currency = str(
+        validation.get("currency")
+        or validation.get("currency_type")
+        or ""
+    ).upper()
+
+    if returned_currency != payment.currency:
+
+        raise SSLCommerzError(
+            "Payment currency validation failed."
+        )
+
+    # ------------------------------------------------------
+    # Validate amount
     # ------------------------------------------------------
 
     try:
@@ -171,280 +196,925 @@ def validate_sslcommerz_payment(
             str(
                 validation.get(
                     "amount",
-                    "0",
                 )
             )
         )
 
-        expected_amount = Decimal(
-            str(payment.amount)
+    except (TypeError, ValueError):
+
+        raise SSLCommerzError(
+            "Payment amount validation failed."
         )
 
-    except (
-        ValueError,
-        TypeError,
-        InvalidOperation,
+    if returned_amount != Decimal(
+        payment.amount
     ):
 
-        return (
-            False,
-            "Invalid payment amount.",
-        )
-
-    if returned_amount != expected_amount:
-
-        return (
-            False,
-            "Payment amount does not match.",
+        raise SSLCommerzError(
+            "Payment amount does not match the order."
         )
 
     # ------------------------------------------------------
-    # Currency
+    # Validate SSLCommerz status
     # ------------------------------------------------------
 
-    returned_currency = str(
+    gateway_status = str(
         validation.get(
-            "currency",
-            validation.get(
-                "currency_type",
-                "",
-            ),
+            "status",
+            "",
         )
-    ).upper().strip()
+    ).upper()
 
-    expected_currency = str(
-        payment.currency
-    ).upper().strip()
+    if gateway_status not in {
+        "VALID",
+        "VALIDATED",
+    }:
 
-    if (
-        not returned_currency
-        or returned_currency
-        != expected_currency
-    ):
-
-        return (
-            False,
-            "Payment currency does not match.",
+        raise SSLCommerzError(
+            "SSLCommerz did not validate the transaction."
         )
 
-    return True, ""
+    # ------------------------------------------------------
+    # Risk validation
+    #
+    # SSLCommerz risk_level:
+    #     0 = normal
+    #     1 = risky
+    # ------------------------------------------------------
+
+    if str(
+        validation.get(
+            "risk_level",
+            "",
+        )
+    ) == "1":
+
+        raise SSLCommerzError(
+            "SSLCommerz marked this transaction as risky."
+        )
+
+    # ======================================================
+    # GET AND LOCK ORDER ITEMS
+    # ======================================================
+
+    order_items = list(
+        OrderItem.objects
+        .select_related(
+            "product",
+        )
+        .select_for_update()
+        .filter(
+            order=order,
+        )
+    )
+
+    if not order_items:
+
+        raise SSLCommerzError(
+            "This order contains no items."
+        )
+
+    # ======================================================
+    # CHECK PRODUCT STOCK
+    # ======================================================
+
+    for item in order_items:
+
+        product = item.product
+
+        # --------------------------------------------------
+        # Product must still be active
+        # --------------------------------------------------
+
+        if not product.is_active:
+
+            raise SSLCommerzError(
+                f"{product.name} is no longer available."
+            )
+
+        # --------------------------------------------------
+        # Quantity must be valid
+        # --------------------------------------------------
+
+        if item.quantity <= 0:
+
+            raise SSLCommerzError(
+                f"Invalid quantity for {product.name}."
+            )
+
+        # --------------------------------------------------
+        # Check stock
+        # --------------------------------------------------
+
+        if (
+            product.stock_quantity
+            < item.quantity
+        ):
+
+            raise SSLCommerzError(
+                f"Insufficient stock for "
+                f"{product.name}."
+            )
+
+    # ======================================================
+    # DEDUCT STOCK
+    # ======================================================
+
+    for item in order_items:
+
+        product = item.product
+
+        product.stock_quantity -= (
+            item.quantity
+        )
+
+        product.save(
+            update_fields=[
+                "stock_quantity",
+            ]
+        )
+
+    # ======================================================
+    # REMOVE PURCHASED ITEMS FROM CART
+    # ======================================================
+
+    try:
+
+        cart = (
+            Cart.objects
+            .select_for_update()
+            .get(
+                customer=order.customer,
+            )
+        )
+
+    except Cart.DoesNotExist:
+
+        cart = None
+
+    if cart:
+
+        for item in order_items:
+
+            try:
+
+                cart_item = (
+                    CartItem.objects
+                    .select_for_update()
+                    .get(
+                        cart=cart,
+                        product=item.product,
+                    )
+                )
+
+            except CartItem.DoesNotExist:
+
+                continue
+
+            # ------------------------------------------------
+            # Remove item if cart quantity is fully purchased
+            # ------------------------------------------------
+
+            if (
+                cart_item.quantity
+                <= item.quantity
+            ):
+
+                cart_item.delete()
+
+            # ------------------------------------------------
+            # Otherwise reduce quantity
+            # ------------------------------------------------
+
+            else:
+
+                cart_item.quantity -= (
+                    item.quantity
+                )
+
+                cart_item.save(
+                    update_fields=[
+                        "quantity",
+                    ]
+                )
+
+    # ======================================================
+    # UPDATE PAYMENT
+    # ======================================================
+
+    payment.status = Payment.STATUS_SUCCESS
+
+    payment.validation_id = str(
+        validation.get(
+            "val_id",
+            "",
+        )
+    )[:100]
+
+    payment.bank_transaction_id = str(
+        validation.get(
+            "bank_tran_id",
+            "",
+        )
+    )[:100]
+
+    payment.card_type = str(
+        validation.get(
+            "card_type",
+            "",
+        )
+    )[:100]
+
+    payment.card_brand = str(
+        validation.get(
+            "card_brand",
+            "",
+        )
+    )[:50]
+
+    payment.failure_reason = ""
+
+    payment.gateway_response = validation
+
+    payment.paid_at = timezone.now()
+
+    payment.save(
+        update_fields=[
+            "status",
+            "validation_id",
+            "bank_transaction_id",
+            "card_type",
+            "card_brand",
+            "failure_reason",
+            "gateway_response",
+            "paid_at",
+            "updated_at",
+        ]
+    )
+
+    # ======================================================
+    # UPDATE ORDER
+    # ======================================================
+
+    order.status = Order.STATUS_PROCESSING
+
+    order.save(
+        update_fields=[
+            "status",
+            "updated_at",
+        ]
+    )
+
+    return payment, True
 
 
 # ==========================================================
-# PROCESS SUCCESSFUL PAYMENT
+# SSLCommerz SUCCESS
 # ==========================================================
 
-def process_successful_payment(
-    payment,
-    validation,
-):
+@method_decorator(
+    csrf_exempt,
+    name="dispatch",
+)
+class SSLCommerzSuccessView(APIView):
 
-    with transaction.atomic():
+    """
+    SSLCommerz success callback.
+
+    Endpoint:
+
+        POST /api/payments/sslcommerz/success/
+
+    or:
+
+        GET /api/payments/sslcommerz/success/
+
+    SSLCommerz sends the customer here after successful payment.
+
+    IMPORTANT:
+        We DO NOT trust the callback alone.
+
+        We call SSLCommerz validation API and validate:
+            transaction ID
+            amount
+            currency
+            status
+            risk level
+    """
+
+    authentication_classes = []
+
+    permission_classes = []
+
+    def post(self, request):
+
+        transaction_id = (
+            _callback_transaction_id(
+                request
+            )
+        )
+
+        # --------------------------------------------------
+        # Transaction ID required
+        # --------------------------------------------------
+
+        if not transaction_id:
+
+            return Response(
+                {
+                    "detail":
+                        "Transaction ID is missing."
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        payment = None
+
+        try:
+
+            # ----------------------------------------------
+            # Find payment
+            # ----------------------------------------------
+
+            payment = (
+                _get_payment_by_transaction(
+                    transaction_id
+                )
+            )
+
+            # ----------------------------------------------
+            # Server-side validation with SSLCommerz
+            # ----------------------------------------------
+
+            validation = (
+                validate_transaction(
+                    request.data.get(
+                        "val_id"
+                    )
+                )
+            )
+
+            # ----------------------------------------------
+            # Finalize payment
+            # ----------------------------------------------
+
+            finalize_success(
+                payment,
+                validation,
+            )
+
+            # ----------------------------------------------
+            # Redirect frontend
+            # ----------------------------------------------
+
+            return Response(
+                status=status.HTTP_302_FOUND,
+                headers={
+                    "Location":
+                        frontend_redirect(
+                            "/payment/success",
+                            order_id=payment.order_id,
+                            payment_id=payment.id,
+                            tran_id=(
+                                payment.transaction_id
+                            ),
+                        )
+                },
+            )
+
+        except SSLCommerzError as exc:
+
+            return Response(
+                status=status.HTTP_302_FOUND,
+                headers={
+                    "Location":
+                        frontend_redirect(
+                            "/payment/failed",
+                            order_id=(
+                                payment.order_id
+                                if payment
+                                else None
+                            ),
+                            tran_id=(
+                                transaction_id
+                            ),
+                            reason=str(exc),
+                        )
+                },
+            )
+
+    def get(self, request):
+
+        return self.post(request)
+
+
+# ==========================================================
+# SSLCommerz FAILURE
+# ==========================================================
+
+@method_decorator(
+    csrf_exempt,
+    name="dispatch",
+)
+class SSLCommerzFailView(APIView):
+
+    """
+    SSLCommerz failure callback.
+    """
+
+    authentication_classes = []
+
+    permission_classes = []
+
+    def post(self, request):
+
+        return self._handle(request)
+
+    def get(self, request):
+
+        return self._handle(request)
+
+    def _handle(self, request):
+
+        transaction_id = (
+            _callback_transaction_id(
+                request
+            )
+        )
+
+        # --------------------------------------------------
+        # Missing transaction
+        # --------------------------------------------------
+
+        if not transaction_id:
+
+            return Response(
+                status=status.HTTP_302_FOUND,
+                headers={
+                    "Location":
+                        frontend_redirect(
+                            "/payment/failed",
+                            reason=(
+                                "Payment transaction "
+                                "was not identified."
+                            ),
+                        )
+                },
+            )
+
+        # --------------------------------------------------
+        # Find payment
+        # --------------------------------------------------
+
+        payment = (
+            _get_payment_by_transaction(
+                transaction_id
+            )
+        )
 
         # --------------------------------------------------
         # Lock payment
         # --------------------------------------------------
 
-        payment = (
-            Payment.objects
-            .select_for_update()
-            .select_related(
-                "order",
-                "order__customer",
-            )
-            .get(
-                pk=payment.pk,
-            )
-        )
+        with transaction.atomic():
 
-        # --------------------------------------------------
-        # Idempotency
-        # --------------------------------------------------
-
-        if payment.status == Payment.STATUS_SUCCESS:
-
-            return payment
-
-        # --------------------------------------------------
-        # Lock order
-        # --------------------------------------------------
-
-        order = (
-            Order.objects
-            .select_for_update()
-            .get(
-                pk=payment.order_id,
-            )
-        )
-
-        # --------------------------------------------------
-        # Cancelled order
-        # --------------------------------------------------
-
-        if (
-            order.status
-            == Order.STATUS_CANCELLED
-        ):
-
-            raise ValueError(
-                "This order has been cancelled."
-            )
-
-        # --------------------------------------------------
-        # Get order items
-        # --------------------------------------------------
-
-        order_items = list(
-            OrderItem.objects
-            .select_related(
-                "product",
-            )
-            .select_for_update()
-            .filter(
-                order=order,
-            )
-        )
-
-        if not order_items:
-
-            raise ValueError(
-                "Order does not contain any items."
-            )
-
-        # --------------------------------------------------
-        # Validate stock
-        # --------------------------------------------------
-
-        for item in order_items:
-
-            product = item.product
-
-            if not product.is_active:
-
-                raise ValueError(
-                    f"{product.name} "
-                    "is no longer available."
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .get(
+                    pk=payment.pk,
                 )
+            )
+
+            # ----------------------------------------------
+            # Never overwrite successful payment
+            # ----------------------------------------------
 
             if (
-                product.stock_quantity
-                < item.quantity
+                payment.status
+                != Payment.STATUS_SUCCESS
             ):
 
-                raise ValueError(
-                    f"Insufficient stock for "
-                    f"{product.name}. "
-                    f"Available: "
-                    f"{product.stock_quantity}, "
-                    f"Required: "
-                    f"{item.quantity}."
+                reason = (
+                    request.data.get(
+                        "error"
+                    )
+                    or
+                    request.data.get(
+                        "failedreason"
+                    )
+                    or
+                    "SSLCommerz reported payment failure."
+                )
+
+                payment.mark_failed(
+                    str(reason)
+                )
+
+                payment.gateway_response = (
+                    dict(request.data)
+                )
+
+                payment.save(
+                    update_fields=[
+                        "status",
+                        "failure_reason",
+                        "gateway_response",
+                        "updated_at",
+                    ]
                 )
 
         # --------------------------------------------------
-        # Deduct stock
+        # Redirect frontend
         # --------------------------------------------------
 
-        for item in order_items:
+        return Response(
+            status=status.HTTP_302_FOUND,
+            headers={
+                "Location":
+                    frontend_redirect(
+                        "/payment/failed",
+                        order_id=payment.order_id,
+                        tran_id=(
+                            payment.transaction_id
+                        ),
+                        reason=(
+                            payment.failure_reason
+                        ),
+                    )
+            },
+        )
 
-            product = item.product
 
-            product.stock_quantity -= (
-                item.quantity
+# ==========================================================
+# SSLCommerz CANCEL
+# ==========================================================
+
+@method_decorator(
+    csrf_exempt,
+    name="dispatch",
+)
+class SSLCommerzCancelView(APIView):
+
+    """
+    SSLCommerz cancellation callback.
+    """
+
+    authentication_classes = []
+
+    permission_classes = []
+
+    def post(self, request):
+
+        return self._handle(request)
+
+    def get(self, request):
+
+        return self._handle(request)
+
+    def _handle(self, request):
+
+        transaction_id = (
+            _callback_transaction_id(
+                request
+            )
+        )
+
+        # --------------------------------------------------
+        # Missing transaction
+        # --------------------------------------------------
+
+        if not transaction_id:
+
+            return Response(
+                status=status.HTTP_302_FOUND,
+                headers={
+                    "Location":
+                        frontend_redirect(
+                            "/payment/cancelled",
+                            reason=(
+                                "Payment transaction "
+                                "was not identified."
+                            ),
+                        )
+                },
             )
 
-            product.save(
-                update_fields=[
-                    "stock_quantity",
-                ]
+        # --------------------------------------------------
+        # Find payment
+        # --------------------------------------------------
+
+        payment = (
+            _get_payment_by_transaction(
+                transaction_id
+            )
+        )
+
+        # --------------------------------------------------
+        # Lock payment
+        # --------------------------------------------------
+
+        with transaction.atomic():
+
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .get(
+                    pk=payment.pk,
+                )
+            )
+
+            # ----------------------------------------------
+            # Never change successful payment
+            # ----------------------------------------------
+
+            if (
+                payment.status
+                != Payment.STATUS_SUCCESS
+            ):
+
+                payment.mark_cancelled(
+                    "Customer cancelled the payment."
+                )
+
+                payment.gateway_response = (
+                    dict(request.data)
+                )
+
+                payment.save(
+                    update_fields=[
+                        "status",
+                        "failure_reason",
+                        "gateway_response",
+                        "updated_at",
+                    ]
+                )
+
+        # --------------------------------------------------
+        # Redirect frontend
+        # --------------------------------------------------
+
+        return Response(
+            status=status.HTTP_302_FOUND,
+            headers={
+                "Location":
+                    frontend_redirect(
+                        "/payment/cancelled",
+                        order_id=payment.order_id,
+                        tran_id=(
+                            payment.transaction_id
+                        ),
+                    )
+            },
+        )
+
+
+# ==========================================================
+# SSLCommerz IPN
+# ==========================================================
+
+@method_decorator(
+    csrf_exempt,
+    name="dispatch",
+)
+class SSLCommerzIPNView(APIView):
+
+    """
+    SSLCommerz Instant Payment Notification.
+
+    This endpoint is server-to-server.
+
+    It is extremely important because the browser callback
+    should NOT be treated as the final source of truth.
+
+    IPN flow:
+
+        SSLCommerz
+             |
+             v
+        Django IPN
+             |
+             v
+        Validate transaction
+             |
+             v
+        Update Payment
+             |
+             v
+        Update Order
+    """
+
+    authentication_classes = []
+
+    permission_classes = []
+
+    def post(self, request):
+
+        transaction_id = (
+            _callback_transaction_id(
+                request
+            )
+        )
+
+        # --------------------------------------------------
+        # Transaction ID required
+        # --------------------------------------------------
+
+        if not transaction_id:
+
+            return Response(
+                {
+                    "detail":
+                        "Transaction ID is missing."
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         # --------------------------------------------------
-        # Mark payment success
-        # --------------------------------------------------
-
-        payment.mark_success(
-
-            gateway_transaction_id=(
-                validation.get(
-                    "tran_id",
-                    "",
-                )
-            ),
-
-            bank_transaction_id=(
-                validation.get(
-                    "bank_tran_id",
-                    "",
-                )
-            ),
-
-            validation_id=(
-                validation.get(
-                    "val_id",
-                    "",
-                )
-            ),
-
-            card_type=(
-                validation.get(
-                    "card_type",
-                    "",
-                )
-            ),
-
-            card_brand=(
-                validation.get(
-                    "card_brand",
-                    "",
-                )
-            ),
-
-            card_issuer=(
-                validation.get(
-                    "card_issuer",
-                    "",
-                )
-            ),
-        )
-
-        # --------------------------------------------------
-        # Update order
-        # --------------------------------------------------
-
-        order.status = (
-            Order.STATUS_PROCESSING
-        )
-
-        order.save(
-            update_fields=[
-                "status",
-                "updated_at",
-            ]
-        )
-
-        # --------------------------------------------------
-        # Clear cart
+        # Find payment
         # --------------------------------------------------
 
         try:
 
-            cart = (
-                Cart.objects
-                .select_for_update()
-                .get(
-                    customer=order.customer,
+            payment = (
+                _get_payment_by_transaction(
+                    transaction_id
                 )
             )
 
-            CartItem.objects.filter(
-                cart=cart,
-            ).delete()
+        except Exception:
 
-        except Cart.DoesNotExist:
+            return Response(
+                {
+                    "detail":
+                        "Unknown transaction."
+                },
+                status=(
+                    status.HTTP_404_NOT_FOUND
+                ),
+            )
 
-            pass
+        # --------------------------------------------------
+        # Gateway status
+        # --------------------------------------------------
 
-        return payment
+        gateway_status = str(
+            request.data.get(
+                "status",
+                "",
+            )
+        ).upper()
+
+        # ==================================================
+        # SUCCESSFUL IPN
+        # ==================================================
+
+        if gateway_status in {
+            "VALID",
+            "VALIDATED",
+        }:
+
+            try:
+
+                # ------------------------------------------
+                # Validate directly with SSLCommerz
+                # ------------------------------------------
+
+                validation = (
+                    validate_transaction(
+                        request.data.get(
+                            "val_id"
+                        )
+                    )
+                )
+
+                # ------------------------------------------
+                # Finalize payment
+                # ------------------------------------------
+
+                finalize_success(
+                    payment,
+                    validation,
+                )
+
+            except SSLCommerzError as exc:
+
+                return Response(
+                    {
+                        "detail":
+                            str(exc)
+                    },
+                    status=(
+                        status.HTTP_400_BAD_REQUEST
+                    ),
+                )
+
+        # ==================================================
+        # FAILED / CANCELLED IPN
+        # ==================================================
+
+        elif gateway_status in {
+            "FAILED",
+            "CANCELLED",
+            "EXPIRED",
+            "UNATTEMPTED",
+        }:
+
+            with transaction.atomic():
+
+                payment = (
+                    Payment.objects
+                    .select_for_update()
+                    .get(
+                        pk=payment.pk,
+                    )
+                )
+
+                # ------------------------------------------
+                # Never overwrite successful payment
+                # ------------------------------------------
+
+                if (
+                    payment.status
+                    != Payment.STATUS_SUCCESS
+                ):
+
+                    if gateway_status == "CANCELLED":
+
+                        payment.mark_cancelled(
+                            "SSLCommerz cancelled the payment."
+                        )
+
+                    elif gateway_status == "EXPIRED":
+
+                        payment.mark_failed(
+                            "SSLCommerz payment expired."
+                        )
+
+                    elif gateway_status == "UNATTEMPTED":
+
+                        payment.mark_failed(
+                            "No payment channel was completed."
+                        )
+
+                    else:
+
+                        payment.mark_failed(
+                            "SSLCommerz reported payment failure."
+                        )
+
+                    payment.gateway_response = (
+                        dict(request.data)
+                    )
+
+                    payment.save(
+                        update_fields=[
+                            "status",
+                            "failure_reason",
+                            "gateway_response",
+                            "updated_at",
+                        ]
+                    )
+
+        # ==================================================
+        # UNKNOWN STATUS
+        # ==================================================
+
+        else:
+
+            # Store unknown callback for debugging/audit.
+            with transaction.atomic():
+
+                payment = (
+                    Payment.objects
+                    .select_for_update()
+                    .get(
+                        pk=payment.pk,
+                    )
+                )
+
+                payment.gateway_response = (
+                    dict(request.data)
+                )
+
+                payment.save(
+                    update_fields=[
+                        "gateway_response",
+                        "updated_at",
+                    ]
+                )
+
+        return Response(
+            {
+                "message":
+                    "IPN received."
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 # ==========================================================
@@ -453,19 +1123,28 @@ def process_successful_payment(
 
 class CreatePaymentView(APIView):
 
+    """
+    Create an SSLCommerz payment session.
+
+    Endpoint:
+
+        POST /api/payments/create/<order_id>/
+
+    Authentication:
+        Required.
+
+    Customer can only create payment for their own order.
+    """
+
     permission_classes = [
         IsAuthenticated,
     ]
 
     @transaction.atomic
-    def post(
-        self,
-        request,
-        order_id,
-    ):
+    def post(self, request, order_id):
 
         # --------------------------------------------------
-        # Get order
+        # Lock order
         # --------------------------------------------------
 
         order = get_object_or_404(
@@ -475,7 +1154,7 @@ class CreatePaymentView(APIView):
         )
 
         # --------------------------------------------------
-        # Payment method
+        # Only SSLCommerz orders
         # --------------------------------------------------
 
         if (
@@ -485,11 +1164,10 @@ class CreatePaymentView(APIView):
 
             return Response(
                 {
-                    "success": False,
                     "detail": (
-                        "This order does not use "
-                        "SSLCommerz payment."
-                    ),
+                        "This order does not "
+                        "use SSLCommerz."
+                    )
                 },
                 status=(
                     status.HTTP_400_BAD_REQUEST
@@ -497,201 +1175,268 @@ class CreatePaymentView(APIView):
             )
 
         # --------------------------------------------------
-        # Cancelled
+        # Cancelled/delivered orders cannot be paid
         # --------------------------------------------------
 
-        if (
-            order.status
-            == Order.STATUS_CANCELLED
-        ):
+        if order.status in {
+            Order.STATUS_CANCELLED,
+            Order.STATUS_DELIVERED,
+        }:
 
             return Response(
                 {
-                    "success": False,
-                    "detail": (
-                        "Cancelled orders cannot "
-                        "be paid."
-                    ),
+                    "detail":
+                        "This order cannot be paid."
                 },
                 status=(
                     status.HTTP_400_BAD_REQUEST
                 ),
             )
 
-        # --------------------------------------------------
-        # Amount
-        # --------------------------------------------------
-
-        if order.total_amount is None:
-
-            return Response(
-                {
-                    "success": False,
-                    "detail": (
-                        "Order amount is invalid."
-                    ),
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                ),
-            )
+        # ==================================================
+        # GET OR CREATE PAYMENT
+        # ==================================================
 
         try:
 
-            order_amount = Decimal(
-                str(order.total_amount)
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .get(
+                    order=order,
+                )
             )
-
-        except (
-            ValueError,
-            TypeError,
-            InvalidOperation,
-        ):
-
-            return Response(
-                {
-                    "success": False,
-                    "detail": (
-                        "Order amount is invalid."
-                    ),
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                ),
-            )
-
-        if order_amount <= 0:
-
-            return Response(
-                {
-                    "success": False,
-                    "detail": (
-                        "Order amount must be "
-                        "greater than zero."
-                    ),
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                ),
-            )
-
-        # --------------------------------------------------
-        # Existing payment
-        # --------------------------------------------------
-
-        try:
-
-            payment = order.payment
 
         except Payment.DoesNotExist:
 
-            payment = None
+            payment = Payment.objects.create(
+                order=order,
+                transaction_id=(
+                    new_transaction_id(
+                        order.id
+                    )
+                ),
+                amount=order.total_amount,
+                currency="BDT",
+            )
 
         # --------------------------------------------------
         # Already paid
         # --------------------------------------------------
 
         if (
-            payment
-            and payment.status
+            payment.status
             == Payment.STATUS_SUCCESS
         ):
 
             return Response(
                 {
-                    "success": False,
-                    "detail": (
-                        "This order has already "
-                        "been paid."
-                    ),
-                    "order_id": order.id,
-                    "payment_id": payment.id,
+                    "message":
+                        "Order is already paid.",
+                    "payment":
+                        PaymentSerializer(
+                            payment
+                        ).data,
                 },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                ),
+                status=status.HTTP_200_OK,
             )
 
-        # --------------------------------------------------
-        # Create gateway session
-        # --------------------------------------------------
+        # ==================================================
+        # NEW PAYMENT ATTEMPT
+        # ==================================================
 
-        gateway = SSLCommerzGateway()
+        payment.transaction_id = (
+            new_transaction_id(
+                order.id
+            )
+        )
+
+        payment.amount = (
+            order.total_amount
+        )
+
+        payment.currency = "BDT"
+
+        payment.attempt_count += 1
+
+        payment.mark_pending()
+
+        payment.save()
+
+        # ==================================================
+        # CREATE SSLCommerz SESSION
+        # ==================================================
 
         try:
 
-            (
-                transaction_id,
-                gateway_response,
-            ) = gateway.create_session(
-                order=order,
-                customer=request.user,
+            gateway_response, gateway_url = (
+                initiate_payment(
+                    payment
+                )
             )
 
-        except requests.RequestException:
+        except SSLCommerzError as exc:
+
+            payment.mark_failed(
+                str(exc)
+            )
+
+            payment.save(
+                update_fields=[
+                    "status",
+                    "failure_reason",
+                    "updated_at",
+                ]
+            )
 
             return Response(
                 {
-                    "success": False,
-                    "detail": (
-                        "Unable to connect to "
-                        "SSLCommerz."
-                    ),
+                    "detail":
+                        str(exc)
                 },
                 status=(
                     status.HTTP_502_BAD_GATEWAY
                 ),
             )
 
-        except ValueError as exc:
+        # ==================================================
+        # SAVE GATEWAY SESSION
+        # ==================================================
 
-            return Response(
-                {
-                    "success": False,
-                    "detail": str(exc),
-                },
-                status=(
-                    status.HTTP_500_INTERNAL_SERVER_ERROR
-                ),
-            )
-
-        except Exception:
-
-            return Response(
-                {
-                    "success": False,
-                    "detail": (
-                        "Unable to initialize "
-                        "payment."
-                    ),
-                },
-                status=(
-                    status.HTTP_500_INTERNAL_SERVER_ERROR
-                ),
-            )
-
-        # --------------------------------------------------
-        # Gateway status
-        # --------------------------------------------------
-
-        gateway_status = str(
+        payment.session_key = str(
             gateway_response.get(
-                "status",
+                "sessionkey",
                 "",
             )
-        ).upper().strip()
+        )[:100]
 
-        if gateway_status != "SUCCESS":
+        payment.gateway_response = (
+            gateway_response
+        )
+
+        payment.save(
+            update_fields=[
+                "session_key",
+                "gateway_response",
+                "updated_at",
+            ]
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        return Response(
+            {
+                "message":
+                    "Payment session created.",
+
+                "gateway_url":
+                    gateway_url,
+
+                "payment":
+                    PaymentSerializer(
+                        payment
+                    ).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ==========================================================
+# PAYMENT STATUS
+# ==========================================================
+
+class PaymentStatusView(APIView):
+
+    """
+    Get payment status for customer's order.
+
+    Endpoint:
+
+        GET /api/payments/status/<order_id>/
+
+    Authentication:
+        Required.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request, order_id):
+
+        payment = get_object_or_404(
+            Payment.objects.select_related(
+                "order",
+            ),
+            order__id=order_id,
+            order__customer=request.user,
+        )
+
+        return Response(
+            PaymentSerializer(
+                payment
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
+# RETRY PAYMENT
+# ==========================================================
+
+class RetryPaymentView(APIView):
+
+    """
+    Create a new SSLCommerz payment attempt.
+
+    Endpoint:
+
+        POST /api/payments/retry/<order_id>/
+
+    Retry is allowed when:
+
+        Order = Pending
+
+    Retry is NOT allowed when:
+
+        Order = Processing
+        Order = Delivered
+        Order = Cancelled
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(self, request, order_id):
+
+        # --------------------------------------------------
+        # Lock order
+        # --------------------------------------------------
+
+        order = get_object_or_404(
+            Order.objects.select_for_update(),
+            id=order_id,
+            customer=request.user,
+        )
+
+        # --------------------------------------------------
+        # Only SSLCommerz
+        # --------------------------------------------------
+
+        if (
+            order.payment_method
+            != Order.PAYMENT_SSLCOMMERZ
+        ):
 
             return Response(
                 {
-                    "success": False,
-                    "detail": (
-                        gateway_response.get(
-                            "failedreason",
-                            "Unable to initialize payment.",
-                        )
-                    ),
+                    "detail":
+                        "Retry is available only "
+                        "for SSLCommerz."
                 },
                 status=(
                     status.HTTP_400_BAD_REQUEST
@@ -699,645 +1444,172 @@ class CreatePaymentView(APIView):
             )
 
         # --------------------------------------------------
-        # Gateway URL
+        # Retry only pending orders
         # --------------------------------------------------
 
-        gateway_page_url = (
-            gateway_response.get(
-                "GatewayPageURL"
+        if (
+            order.status
+            != Order.STATUS_PENDING
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "Only pending orders "
+                        "can retry payment."
+                    )
+                },
+                status=(
+                    status.HTTP_400_BAD_REQUEST
+                ),
             )
-            or gateway_response.get(
-                "gatewayPageURL"
+
+        # ==================================================
+        # GET OR CREATE PAYMENT
+        # ==================================================
+
+        try:
+
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .get(
+                    order=order,
+                )
             )
-            or gateway_response.get(
-                "gateway_page_url"
+
+        except Payment.DoesNotExist:
+
+            payment = Payment.objects.create(
+                order=order,
+                transaction_id=(
+                    new_transaction_id(
+                        order.id
+                    )
+                ),
+                amount=order.total_amount,
+                currency="BDT",
+            )
+
+        # --------------------------------------------------
+        # Already paid
+        # --------------------------------------------------
+
+        if (
+            payment.status
+            == Payment.STATUS_SUCCESS
+        ):
+
+            return Response(
+                {
+                    "message":
+                        "Order is already paid.",
+
+                    "payment":
+                        PaymentSerializer(
+                            payment
+                        ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # ==================================================
+        # CREATE NEW PAYMENT ATTEMPT
+        # ==================================================
+
+        payment.transaction_id = (
+            new_transaction_id(
+                order.id
             )
         )
 
-        if not gateway_page_url:
+        payment.amount = (
+            order.total_amount
+        )
 
-            return Response(
-                {
-                    "success": False,
-                    "detail": (
-                        "SSLCommerz did not return "
-                        "a payment URL."
-                    ),
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                ),
+        payment.currency = "BDT"
+
+        payment.attempt_count += 1
+
+        payment.mark_pending()
+
+        payment.save()
+
+        # ==================================================
+        # CREATE NEW SSLCommerz SESSION
+        # ==================================================
+
+        try:
+
+            gateway_response, gateway_url = (
+                initiate_payment(
+                    payment
+                )
             )
 
-        # --------------------------------------------------
-        # Create / update payment
-        # --------------------------------------------------
+        except SSLCommerzError as exc:
 
-        if payment is None:
-
-            payment = Payment.objects.create(
-
-                order=order,
-
-                transaction_id=(
-                    transaction_id
-                ),
-
-                amount=order_amount,
-
-                currency="BDT",
-
-                gateway=(
-                    Payment.GATEWAY_SSLCOMMERZ
-                ),
-
-                status=(
-                    Payment.STATUS_PENDING
-                ),
+            payment.mark_failed(
+                str(exc)
             )
-
-        else:
-
-            payment.transaction_id = (
-                transaction_id
-            )
-
-            payment.amount = (
-                order_amount
-            )
-
-            payment.currency = "BDT"
-
-            payment.gateway = (
-                Payment.GATEWAY_SSLCOMMERZ
-            )
-
-            payment.status = (
-                Payment.STATUS_PENDING
-            )
-
-            payment.gateway_transaction_id = ""
-            payment.bank_transaction_id = ""
-            payment.validation_id = ""
-
-            payment.card_type = ""
-            payment.card_brand = ""
-            payment.card_issuer = ""
-
-            payment.paid_at = None
 
             payment.save(
                 update_fields=[
-                    "transaction_id",
-                    "amount",
-                    "currency",
-                    "gateway",
                     "status",
-
-                    "gateway_transaction_id",
-                    "bank_transaction_id",
-                    "validation_id",
-
-                    "card_type",
-                    "card_brand",
-                    "card_issuer",
-
-                    "paid_at",
+                    "failure_reason",
                     "updated_at",
                 ]
             )
 
-        # --------------------------------------------------
-        # Response
-        # --------------------------------------------------
+            return Response(
+                {
+                    "detail":
+                        str(exc)
+                },
+                status=(
+                    status.HTTP_502_BAD_GATEWAY
+                ),
+            )
+
+        # ==================================================
+        # SAVE SESSION INFORMATION
+        # ==================================================
+
+        payment.session_key = str(
+            gateway_response.get(
+                "sessionkey",
+                "",
+            )
+        )[:100]
+
+        payment.gateway_response = (
+            gateway_response
+        )
+
+        payment.save(
+            update_fields=[
+                "session_key",
+                "gateway_response",
+                "updated_at",
+            ]
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
 
         return Response(
             {
-                "success": True,
+                "message":
+                    "New payment attempt created.",
 
-                "message": (
-                    "Payment session created "
-                    "successfully."
-                ),
+                "gateway_url":
+                    gateway_url,
 
-                "payment_url": (
-                    gateway_page_url
-                ),
-
-                "transaction_id": (
-                    payment.transaction_id
-                ),
-
-                "payment_id": payment.id,
-
-                "order_id": order.id,
-
-                "amount": str(
-                    payment.amount
-                ),
-
-                "currency": payment.currency,
+                "payment":
+                    PaymentSerializer(
+                        payment
+                    ).data,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )
-
-
-# ==========================================================
-# SUCCESS CALLBACK
-# ==========================================================
-
-@csrf_exempt
-def payment_success(request):
-
-    validation_id = get_request_value(
-        request,
-        "val_id",
-    )
-
-    transaction_id = get_request_value(
-        request,
-        "tran_id",
-    )
-
-    if (
-        not validation_id
-        or not transaction_id
-    ):
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "reason": (
-                    "invalid_payment_response"
-                ),
-            },
-        )
-
-    try:
-
-        payment = (
-            Payment.objects
-            .select_related(
-                "order",
-                "order__customer",
-            )
-            .get(
-                transaction_id=transaction_id,
-            )
-        )
-
-    except Payment.DoesNotExist:
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "reason": (
-                    "payment_not_found"
-                ),
-            },
-        )
-
-    # ------------------------------------------------------
-    # Already successful
-    # ------------------------------------------------------
-
-    if (
-        payment.status
-        == Payment.STATUS_SUCCESS
-    ):
-
-        return redirect_to_react(
-            "payment/success/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "transaction_id": (
-                    payment.transaction_id
-                ),
-            },
-        )
-
-    # ------------------------------------------------------
-    # Validate
-    # ------------------------------------------------------
-
-    gateway = SSLCommerzGateway()
-
-    try:
-
-        validation = (
-            gateway.validate_payment(
-                validation_id
-            )
-        )
-
-    except requests.RequestException:
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "reason": (
-                    "gateway_validation_error"
-                ),
-            },
-        )
-
-    except Exception:
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "reason": (
-                    "payment_validation_error"
-                ),
-            },
-        )
-
-    # ------------------------------------------------------
-    # Validate response
-    # ------------------------------------------------------
-
-    is_valid, error_message = (
-        validate_sslcommerz_payment(
-            payment,
-            validation,
-        )
-    )
-
-    if not is_valid:
-
-        payment.mark_failed()
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "reason": (
-                    "validation_failed"
-                ),
-            },
-        )
-
-    # ------------------------------------------------------
-    # Process
-    # ------------------------------------------------------
-
-    try:
-
-        payment = (
-            process_successful_payment(
-                payment,
-                validation,
-            )
-        )
-
-    except ValueError:
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "reason": (
-                    "order_processing_failed"
-                ),
-            },
-        )
-
-    except Exception:
-
-        return redirect_to_react(
-            "payment/failed/",
-            {
-                "order_id": payment.order_id,
-                "payment_id": payment.id,
-                "reason": (
-                    "payment_processing_failed"
-                ),
-            },
-        )
-
-    return redirect_to_react(
-        "payment/success/",
-        {
-            "order_id": payment.order_id,
-            "payment_id": payment.id,
-            "transaction_id": (
-                payment.transaction_id
-            ),
-        },
-    )
-
-
-# ==========================================================
-# FAIL CALLBACK
-# ==========================================================
-
-@csrf_exempt
-def payment_fail(request):
-
-    transaction_id = get_request_value(
-        request,
-        "tran_id",
-    )
-
-    order_id = None
-    payment_id = None
-
-    if transaction_id:
-
-        try:
-
-            payment = (
-                Payment.objects.get(
-                    transaction_id=transaction_id
-                )
-            )
-
-            order_id = payment.order_id
-            payment_id = payment.id
-
-            payment.mark_failed()
-
-        except Payment.DoesNotExist:
-
-            pass
-
-    return redirect_to_react(
-        "payment/failed/",
-        {
-            "order_id": order_id,
-            "payment_id": payment_id,
-            "reason": "payment_failed",
-        },
-    )
-
-
-# ==========================================================
-# CANCEL CALLBACK
-# ==========================================================
-
-@csrf_exempt
-def payment_cancel(request):
-
-    transaction_id = get_request_value(
-        request,
-        "tran_id",
-    )
-
-    order_id = None
-    payment_id = None
-
-    if transaction_id:
-
-        try:
-
-            payment = (
-                Payment.objects.get(
-                    transaction_id=transaction_id
-                )
-            )
-
-            order_id = payment.order_id
-            payment_id = payment.id
-
-            payment.mark_cancelled()
-
-        except Payment.DoesNotExist:
-
-            pass
-
-    return redirect_to_react(
-        "payment/cancelled/",
-        {
-            "order_id": order_id,
-            "payment_id": payment_id,
-            "reason": "payment_cancelled",
-        },
-    )
-
-
-# ==========================================================
-# IPN
-# ==========================================================
-
-@csrf_exempt
-def payment_ipn(request):
-
-    transaction_id = get_request_value(
-        request,
-        "tran_id",
-    )
-
-    validation_id = get_request_value(
-        request,
-        "val_id",
-    )
-
-    # ------------------------------------------------------
-    # Required fields
-    # ------------------------------------------------------
-
-    if (
-        not transaction_id
-        or not validation_id
-    ):
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Invalid IPN request."
-                ),
-            },
-            status=(
-                status.HTTP_400_BAD_REQUEST
-            ),
-        )
-
-    # ------------------------------------------------------
-    # Payment
-    # ------------------------------------------------------
-
-    try:
-
-        payment = (
-            Payment.objects
-            .select_related(
-                "order",
-                "order__customer",
-            )
-            .get(
-                transaction_id=transaction_id,
-            )
-        )
-
-    except Payment.DoesNotExist:
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Payment transaction "
-                    "not found."
-                ),
-            },
-            status=(
-                status.HTTP_404_NOT_FOUND
-            ),
-        )
-
-    # ------------------------------------------------------
-    # Idempotency
-    # ------------------------------------------------------
-
-    if (
-        payment.status
-        == Payment.STATUS_SUCCESS
-    ):
-
-        return Response(
-            {
-                "success": True,
-                "message": (
-                    "Payment already processed."
-                ),
-                "order_id": payment.order_id,
-                "transaction_id": (
-                    payment.transaction_id
-                ),
-                "payment_id": payment.id,
-                "status": payment.status,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    # ------------------------------------------------------
-    # Validate with SSLCommerz
-    # ------------------------------------------------------
-
-    gateway = SSLCommerzGateway()
-
-    try:
-
-        validation = (
-            gateway.validate_payment(
-                validation_id
-            )
-        )
-
-    except requests.RequestException:
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Unable to validate "
-                    "IPN payment."
-                ),
-            },
-            status=(
-                status.HTTP_502_BAD_GATEWAY
-            ),
-        )
-
-    except Exception:
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "IPN validation error."
-                ),
-            },
-            status=(
-                status.HTTP_400_BAD_REQUEST
-            ),
-        )
-
-    # ------------------------------------------------------
-    # Validate
-    # ------------------------------------------------------
-
-    is_valid, error_message = (
-        validate_sslcommerz_payment(
-            payment,
-            validation,
-        )
-    )
-
-    if not is_valid:
-
-        payment.mark_failed()
-
-        return Response(
-            {
-                "success": False,
-                "detail": error_message,
-            },
-            status=(
-                status.HTTP_400_BAD_REQUEST
-            ),
-        )
-
-    # ------------------------------------------------------
-    # Process
-    # ------------------------------------------------------
-
-    try:
-
-        payment = (
-            process_successful_payment(
-                payment,
-                validation,
-            )
-        )
-
-    except ValueError as exc:
-
-        return Response(
-            {
-                "success": False,
-                "detail": str(exc),
-                "order_id": payment.order_id,
-            },
-            status=(
-                status.HTTP_400_BAD_REQUEST
-            ),
-        )
-
-    except Exception:
-
-        return Response(
-            {
-                "success": False,
-                "detail": (
-                    "Unable to process "
-                    "IPN payment."
-                ),
-            },
-            status=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-        )
-
-    return Response(
-        {
-            "success": True,
-            "message": (
-                "IPN processed successfully."
-            ),
-            "order_id": payment.order_id,
-            "transaction_id": (
-                payment.transaction_id
-            ),
-            "payment_id": payment.id,
-            "status": payment.status,
-        },
-        status=status.HTTP_200_OK,
-    )

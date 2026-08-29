@@ -1,76 +1,21 @@
-import uuid
+from urllib.parse import urlencode
+
+from django.conf import settings
 
 
-def generate_transaction_id():
-    """
-    Generate a unique SSLCommerz transaction ID.
-    """
+def frontend_redirect(path, **params):
 
-    return uuid.uuid4().hex.upper()
+    base = settings.FRONTEND_URL.rstrip("/")
 
-
-def get_customer_name(user):
-
-    try:
-        full_name = user.get_full_name()
-
-    except AttributeError:
-        full_name = ""
-
-    if full_name:
-        return full_name.strip()
-
-    return getattr(
-        user,
-        "username",
-        "",
-    ) or "Customer"
-
-
-def get_customer_email(user):
+    query = urlencode(
+        {
+            key: value
+            for key, value in params.items()
+            if value is not None and value != ""
+        }
+    )
 
     return (
-        getattr(
-            user,
-            "email",
-            "",
-        )
-        or "customer@example.com"
+        f"{base}{path}"
+        + (f"?{query}" if query else "")
     )
-
-
-def get_customer_phone(user):
-
-    return (
-        getattr(
-            user,
-            "phone",
-            "",
-        )
-        or "01700000000"
-    )
-
-
-def get_shipping_address(order):
-
-    address = getattr(
-        order,
-        "shipping_address",
-        "",
-    )
-
-    if address is None:
-        return ""
-
-    return str(address).strip()
-
-
-def clean_sslcommerz_text(
-    value,
-    max_length=200,
-):
-
-    if value is None:
-        return ""
-
-    return str(value).strip()[:max_length]
