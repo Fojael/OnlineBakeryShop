@@ -1,9 +1,5 @@
-# ==========================================================
-# payments/views.py
-# ==========================================================
-
-from decimal import Decimal
 from uuid import uuid4
+from decimal import Decimal
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -34,16 +30,34 @@ from .utils import frontend_redirect
 # ==========================================================
 
 def new_transaction_id(order_id):
-    """
-    Generate a unique SSLCommerz transaction ID.
 
-    Maximum length:
-        30 characters
-    """
-
-    value = f"BAKE{order_id}{uuid4().hex.upper()}"
+    value = (
+        f"BAKE"
+        f"{order_id}"
+        f"{uuid4().hex.upper()}"
+    )
 
     return value[:30]
+
+
+# ==========================================================
+# CALLBACK VALUE
+# ==========================================================
+
+def _callback_value(
+    request,
+    key,
+):
+
+    value = (
+        request.data.get(key)
+        or
+        request.query_params.get(key)
+        or
+        ""
+    )
+
+    return str(value).strip()
 
 
 # ==========================================================
@@ -51,29 +65,20 @@ def new_transaction_id(order_id):
 # ==========================================================
 
 def _callback_transaction_id(request):
-    """
-    Read transaction ID from SSLCommerz callback.
 
-    SSLCommerz can send the data through:
-        POST body
-        GET query parameters
-    """
-
-    return str(
-        request.data.get("tran_id")
-        or request.query_params.get("tran_id")
-        or ""
-    ).strip()
+    return _callback_value(
+        request,
+        "tran_id",
+    )
 
 
 # ==========================================================
-# GET PAYMENT BY TRANSACTION ID
+# PAYMENT BY TRANSACTION
 # ==========================================================
 
-def _get_payment_by_transaction(transaction_id):
-    """
-    Find payment using SSLCommerz transaction ID.
-    """
+def _get_payment_by_transaction(
+    transaction_id,
+):
 
     return get_object_or_404(
         Payment.objects.select_related(
@@ -89,33 +94,14 @@ def _get_payment_by_transaction(transaction_id):
 # ==========================================================
 
 @transaction.atomic
-def finalize_success(payment, validation):
-    """
-    Finalize a successfully validated SSLCommerz payment.
+def finalize_success(
+    payment,
+    validation,
+):
 
-    This function performs the important server-side operations:
-
-        1. Lock payment
-        2. Lock order
-        3. Validate transaction ID
-        4. Validate currency
-        5. Validate amount
-        6. Validate SSLCommerz status
-        7. Check risk level
-        8. Lock order items
-        9. Check stock
-        10. Deduct stock
-        11. Remove purchased products from cart
-        12. Mark payment successful
-        13. Store gateway information
-        14. Set order to Processing
-
-    It is protected by database transaction.atomic().
-    """
-
-    # ------------------------------------------------------
-    # Lock payment
-    # ------------------------------------------------------
+    # ======================================================
+    # LOCK PAYMENT
+    # ======================================================
 
     payment = (
         Payment.objects
@@ -129,9 +115,9 @@ def finalize_success(payment, validation):
         )
     )
 
-    # ------------------------------------------------------
-    # Lock order
-    # ------------------------------------------------------
+    # ======================================================
+    # LOCK ORDER
+    # ======================================================
 
     order = (
         Order.objects
@@ -141,21 +127,35 @@ def finalize_success(payment, validation):
         )
     )
 
-    # ------------------------------------------------------
-    # Already successful
+    # ======================================================
+    # ALREADY SUCCESSFUL
     #
-    # Important for IPN + success callback.
-    #
-    # SSLCommerz may notify our backend more than once.
-    # We must not deduct stock twice.
-    # ------------------------------------------------------
+    # This prevents duplicate stock deduction.
+    # ======================================================
 
-    if payment.status == Payment.STATUS_SUCCESS:
+    if (
+        payment.status
+        == Payment.STATUS_SUCCESS
+    ):
+
         return payment, False
 
-    # ------------------------------------------------------
-    # Validate transaction ID
-    # ------------------------------------------------------
+    # ======================================================
+    # ORDER MUST NOT BE CANCELLED
+    # ======================================================
+
+    if (
+        order.status
+        == Order.STATUS_CANCELLED
+    ):
+
+        raise SSLCommerzError(
+            "This order has already been cancelled."
+        )
+
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
 
     returned_tran_id = str(
         validation.get(
@@ -164,31 +164,39 @@ def finalize_success(payment, validation):
         )
     ).strip()
 
-    if returned_tran_id != payment.transaction_id:
+    if (
+        returned_tran_id
+        != payment.transaction_id
+    ):
 
         raise SSLCommerzError(
             "Transaction ID validation failed."
         )
 
-    # ------------------------------------------------------
-    # Validate currency
-    # ------------------------------------------------------
+    # ======================================================
+    # CURRENCY
+    # ======================================================
 
     returned_currency = str(
         validation.get("currency")
-        or validation.get("currency_type")
-        or ""
+        or
+        validation.get("currency_type")
+        or
+        ""
     ).upper()
 
-    if returned_currency != payment.currency:
+    if (
+        returned_currency
+        != payment.currency
+    ):
 
         raise SSLCommerzError(
             "Payment currency validation failed."
         )
 
-    # ------------------------------------------------------
-    # Validate amount
-    # ------------------------------------------------------
+    # ======================================================
+    # AMOUNT
+    # ======================================================
 
     try:
 
@@ -196,27 +204,32 @@ def finalize_success(payment, validation):
             str(
                 validation.get(
                     "amount",
+                    "",
                 )
             )
         )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
 
         raise SSLCommerzError(
             "Payment amount validation failed."
         )
 
-    if returned_amount != Decimal(
-        payment.amount
+    if (
+        returned_amount
+        != Decimal(payment.amount)
     ):
 
         raise SSLCommerzError(
             "Payment amount does not match the order."
         )
 
-    # ------------------------------------------------------
-    # Validate SSLCommerz status
-    # ------------------------------------------------------
+    # ======================================================
+    # SSL COMMERZ STATUS
+    # ======================================================
 
     gateway_status = str(
         validation.get(
@@ -234,13 +247,9 @@ def finalize_success(payment, validation):
             "SSLCommerz did not validate the transaction."
         )
 
-    # ------------------------------------------------------
-    # Risk validation
-    #
-    # SSLCommerz risk_level:
-    #     0 = normal
-    #     1 = risky
-    # ------------------------------------------------------
+    # ======================================================
+    # RISK
+    # ======================================================
 
     if str(
         validation.get(
@@ -254,7 +263,7 @@ def finalize_success(payment, validation):
         )
 
     # ======================================================
-    # GET AND LOCK ORDER ITEMS
+    # ORDER ITEMS
     # ======================================================
 
     order_items = list(
@@ -275,7 +284,7 @@ def finalize_success(payment, validation):
         )
 
     # ======================================================
-    # CHECK PRODUCT STOCK
+    # CHECK STOCK
     # ======================================================
 
     for item in order_items:
@@ -283,17 +292,33 @@ def finalize_success(payment, validation):
         product = item.product
 
         # --------------------------------------------------
-        # Product must still be active
+        # Product active/available
         # --------------------------------------------------
 
-        if not product.is_active:
+        if hasattr(
+            product,
+            "is_active",
+        ):
 
-            raise SSLCommerzError(
-                f"{product.name} is no longer available."
-            )
+            if not product.is_active:
+
+                raise SSLCommerzError(
+                    f"{product.name} is no longer available."
+                )
+
+        if hasattr(
+            product,
+            "is_available",
+        ):
+
+            if not product.is_available:
+
+                raise SSLCommerzError(
+                    f"{product.name} is no longer available."
+                )
 
         # --------------------------------------------------
-        # Quantity must be valid
+        # Quantity
         # --------------------------------------------------
 
         if item.quantity <= 0:
@@ -303,7 +328,7 @@ def finalize_success(payment, validation):
             )
 
         # --------------------------------------------------
-        # Check stock
+        # Stock
         # --------------------------------------------------
 
         if (
@@ -320,22 +345,26 @@ def finalize_success(payment, validation):
     # DEDUCT STOCK
     # ======================================================
 
-    for item in order_items:
+    if not order.stock_deducted:
 
-        product = item.product
+        for item in order_items:
 
-        product.stock_quantity -= (
-            item.quantity
-        )
+            product = item.product
 
-        product.save(
-            update_fields=[
-                "stock_quantity",
-            ]
-        )
+            product.stock_quantity -= (
+                item.quantity
+            )
+
+            product.save(
+                update_fields=[
+                    "stock_quantity",
+                ],
+            )
+
+        order.stock_deducted = True
 
     # ======================================================
-    # REMOVE PURCHASED ITEMS FROM CART
+    # REMOVE PURCHASED CART ITEMS
     # ======================================================
 
     try:
@@ -372,7 +401,7 @@ def finalize_success(payment, validation):
                 continue
 
             # ------------------------------------------------
-            # Remove item if cart quantity is fully purchased
+            # Fully purchased
             # ------------------------------------------------
 
             if (
@@ -383,7 +412,7 @@ def finalize_success(payment, validation):
                 cart_item.delete()
 
             # ------------------------------------------------
-            # Otherwise reduce quantity
+            # Partially purchased
             # ------------------------------------------------
 
             else:
@@ -395,14 +424,16 @@ def finalize_success(payment, validation):
                 cart_item.save(
                     update_fields=[
                         "quantity",
-                    ]
+                    ],
                 )
 
     # ======================================================
     # UPDATE PAYMENT
     # ======================================================
 
-    payment.status = Payment.STATUS_SUCCESS
+    payment.status = (
+        Payment.STATUS_SUCCESS
+    )
 
     payment.validation_id = str(
         validation.get(
@@ -449,27 +480,30 @@ def finalize_success(payment, validation):
             "gateway_response",
             "paid_at",
             "updated_at",
-        ]
+        ],
     )
 
     # ======================================================
     # UPDATE ORDER
     # ======================================================
 
-    order.status = Order.STATUS_PROCESSING
+    order.status = (
+        Order.STATUS_PROCESSING
+    )
 
     order.save(
         update_fields=[
             "status",
+            "stock_deducted",
             "updated_at",
-        ]
+        ],
     )
 
     return payment, True
 
 
 # ==========================================================
-# SSLCommerz SUCCESS
+# SSL COMMERZ SUCCESS
 # ==========================================================
 
 @method_decorator(
@@ -478,45 +512,25 @@ def finalize_success(payment, validation):
 )
 class SSLCommerzSuccessView(APIView):
 
-    """
-    SSLCommerz success callback.
-
-    Endpoint:
-
-        POST /api/payments/sslcommerz/success/
-
-    or:
-
-        GET /api/payments/sslcommerz/success/
-
-    SSLCommerz sends the customer here after successful payment.
-
-    IMPORTANT:
-        We DO NOT trust the callback alone.
-
-        We call SSLCommerz validation API and validate:
-            transaction ID
-            amount
-            currency
-            status
-            risk level
-    """
-
     authentication_classes = []
 
     permission_classes = []
 
     def post(self, request):
 
+        return self._handle(request)
+
+    def get(self, request):
+
+        return self._handle(request)
+
+    def _handle(self, request):
+
         transaction_id = (
             _callback_transaction_id(
                 request
             )
         )
-
-        # --------------------------------------------------
-        # Transaction ID required
-        # --------------------------------------------------
 
         if not transaction_id:
 
@@ -534,9 +548,9 @@ class SSLCommerzSuccessView(APIView):
 
         try:
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # Find payment
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             payment = (
                 _get_payment_by_transaction(
@@ -544,30 +558,45 @@ class SSLCommerzSuccessView(APIView):
                 )
             )
 
-            # ----------------------------------------------
-            # Server-side validation with SSLCommerz
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Validation ID
+            #
+            # Supports both POST and GET.
+            # ------------------------------------------------
+
+            val_id = _callback_value(
+                request,
+                "val_id",
+            )
+
+            if not val_id:
+
+                raise SSLCommerzError(
+                    "Validation ID is missing."
+                )
+
+            # ------------------------------------------------
+            # Validate with SSLCommerz
+            # ------------------------------------------------
 
             validation = (
                 validate_transaction(
-                    request.data.get(
-                        "val_id"
-                    )
+                    val_id
                 )
             )
 
-            # ----------------------------------------------
-            # Finalize payment
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Finalize
+            # ------------------------------------------------
 
             finalize_success(
                 payment,
                 validation,
             )
 
-            # ----------------------------------------------
-            # Redirect frontend
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # Frontend
+            # ------------------------------------------------
 
             return Response(
                 status=status.HTTP_302_FOUND,
@@ -575,8 +604,12 @@ class SSLCommerzSuccessView(APIView):
                     "Location":
                         frontend_redirect(
                             "/payment/success",
-                            order_id=payment.order_id,
-                            payment_id=payment.id,
+                            order_id=(
+                                payment.order_id
+                            ),
+                            payment_id=(
+                                payment.id
+                            ),
                             tran_id=(
                                 payment.transaction_id
                             ),
@@ -605,13 +638,9 @@ class SSLCommerzSuccessView(APIView):
                 },
             )
 
-    def get(self, request):
-
-        return self.post(request)
-
 
 # ==========================================================
-# SSLCommerz FAILURE
+# SSL COMMERZ FAILURE
 # ==========================================================
 
 @method_decorator(
@@ -619,10 +648,6 @@ class SSLCommerzSuccessView(APIView):
     name="dispatch",
 )
 class SSLCommerzFailView(APIView):
-
-    """
-    SSLCommerz failure callback.
-    """
 
     authentication_classes = []
 
@@ -644,10 +669,6 @@ class SSLCommerzFailView(APIView):
             )
         )
 
-        # --------------------------------------------------
-        # Missing transaction
-        # --------------------------------------------------
-
         if not transaction_id:
 
             return Response(
@@ -664,19 +685,11 @@ class SSLCommerzFailView(APIView):
                 },
             )
 
-        # --------------------------------------------------
-        # Find payment
-        # --------------------------------------------------
-
         payment = (
             _get_payment_by_transaction(
                 transaction_id
             )
         )
-
-        # --------------------------------------------------
-        # Lock payment
-        # --------------------------------------------------
 
         with transaction.atomic():
 
@@ -698,23 +711,25 @@ class SSLCommerzFailView(APIView):
             ):
 
                 reason = (
-                    request.data.get(
-                        "error"
+                    _callback_value(
+                        request,
+                        "error",
                     )
                     or
-                    request.data.get(
-                        "failedreason"
+                    _callback_value(
+                        request,
+                        "failedreason",
                     )
                     or
                     "SSLCommerz reported payment failure."
                 )
 
                 payment.mark_failed(
-                    str(reason)
+                    reason
                 )
 
-                payment.gateway_response = (
-                    dict(request.data)
+                payment.gateway_response = dict(
+                    request.data
                 )
 
                 payment.save(
@@ -723,12 +738,8 @@ class SSLCommerzFailView(APIView):
                         "failure_reason",
                         "gateway_response",
                         "updated_at",
-                    ]
+                    ],
                 )
-
-        # --------------------------------------------------
-        # Redirect frontend
-        # --------------------------------------------------
 
         return Response(
             status=status.HTTP_302_FOUND,
@@ -736,7 +747,9 @@ class SSLCommerzFailView(APIView):
                 "Location":
                     frontend_redirect(
                         "/payment/failed",
-                        order_id=payment.order_id,
+                        order_id=(
+                            payment.order_id
+                        ),
                         tran_id=(
                             payment.transaction_id
                         ),
@@ -749,7 +762,7 @@ class SSLCommerzFailView(APIView):
 
 
 # ==========================================================
-# SSLCommerz CANCEL
+# SSL COMMERZ CANCEL
 # ==========================================================
 
 @method_decorator(
@@ -757,10 +770,6 @@ class SSLCommerzFailView(APIView):
     name="dispatch",
 )
 class SSLCommerzCancelView(APIView):
-
-    """
-    SSLCommerz cancellation callback.
-    """
 
     authentication_classes = []
 
@@ -782,10 +791,6 @@ class SSLCommerzCancelView(APIView):
             )
         )
 
-        # --------------------------------------------------
-        # Missing transaction
-        # --------------------------------------------------
-
         if not transaction_id:
 
             return Response(
@@ -802,19 +807,11 @@ class SSLCommerzCancelView(APIView):
                 },
             )
 
-        # --------------------------------------------------
-        # Find payment
-        # --------------------------------------------------
-
         payment = (
             _get_payment_by_transaction(
                 transaction_id
             )
         )
-
-        # --------------------------------------------------
-        # Lock payment
-        # --------------------------------------------------
 
         with transaction.atomic():
 
@@ -839,8 +836,8 @@ class SSLCommerzCancelView(APIView):
                     "Customer cancelled the payment."
                 )
 
-                payment.gateway_response = (
-                    dict(request.data)
+                payment.gateway_response = dict(
+                    request.data
                 )
 
                 payment.save(
@@ -849,12 +846,8 @@ class SSLCommerzCancelView(APIView):
                         "failure_reason",
                         "gateway_response",
                         "updated_at",
-                    ]
+                    ],
                 )
-
-        # --------------------------------------------------
-        # Redirect frontend
-        # --------------------------------------------------
 
         return Response(
             status=status.HTTP_302_FOUND,
@@ -862,7 +855,9 @@ class SSLCommerzCancelView(APIView):
                 "Location":
                     frontend_redirect(
                         "/payment/cancelled",
-                        order_id=payment.order_id,
+                        order_id=(
+                            payment.order_id
+                        ),
                         tran_id=(
                             payment.transaction_id
                         ),
@@ -872,7 +867,7 @@ class SSLCommerzCancelView(APIView):
 
 
 # ==========================================================
-# SSLCommerz IPN
+# SSL COMMERZ IPN
 # ==========================================================
 
 @method_decorator(
@@ -880,31 +875,6 @@ class SSLCommerzCancelView(APIView):
     name="dispatch",
 )
 class SSLCommerzIPNView(APIView):
-
-    """
-    SSLCommerz Instant Payment Notification.
-
-    This endpoint is server-to-server.
-
-    It is extremely important because the browser callback
-    should NOT be treated as the final source of truth.
-
-    IPN flow:
-
-        SSLCommerz
-             |
-             v
-        Django IPN
-             |
-             v
-        Validate transaction
-             |
-             v
-        Update Payment
-             |
-             v
-        Update Order
-    """
 
     authentication_classes = []
 
@@ -917,10 +887,6 @@ class SSLCommerzIPNView(APIView):
                 request
             )
         )
-
-        # --------------------------------------------------
-        # Transaction ID required
-        # --------------------------------------------------
 
         if not transaction_id:
 
@@ -970,7 +936,7 @@ class SSLCommerzIPNView(APIView):
         ).upper()
 
         # ==================================================
-        # SUCCESSFUL IPN
+        # SUCCESS
         # ==================================================
 
         if gateway_status in {
@@ -980,21 +946,16 @@ class SSLCommerzIPNView(APIView):
 
             try:
 
-                # ------------------------------------------
-                # Validate directly with SSLCommerz
-                # ------------------------------------------
+                val_id = _callback_value(
+                    request,
+                    "val_id",
+                )
 
                 validation = (
                     validate_transaction(
-                        request.data.get(
-                            "val_id"
-                        )
+                        val_id
                     )
                 )
-
-                # ------------------------------------------
-                # Finalize payment
-                # ------------------------------------------
 
                 finalize_success(
                     payment,
@@ -1014,7 +975,7 @@ class SSLCommerzIPNView(APIView):
                 )
 
         # ==================================================
-        # FAILED / CANCELLED IPN
+        # FAILED / CANCELLED
         # ==================================================
 
         elif gateway_status in {
@@ -1034,28 +995,37 @@ class SSLCommerzIPNView(APIView):
                     )
                 )
 
-                # ------------------------------------------
+                # ------------------------------------------------
                 # Never overwrite successful payment
-                # ------------------------------------------
+                # ------------------------------------------------
 
                 if (
                     payment.status
                     != Payment.STATUS_SUCCESS
                 ):
 
-                    if gateway_status == "CANCELLED":
+                    if (
+                        gateway_status
+                        == "CANCELLED"
+                    ):
 
                         payment.mark_cancelled(
                             "SSLCommerz cancelled the payment."
                         )
 
-                    elif gateway_status == "EXPIRED":
+                    elif (
+                        gateway_status
+                        == "EXPIRED"
+                    ):
 
                         payment.mark_failed(
                             "SSLCommerz payment expired."
                         )
 
-                    elif gateway_status == "UNATTEMPTED":
+                    elif (
+                        gateway_status
+                        == "UNATTEMPTED"
+                    ):
 
                         payment.mark_failed(
                             "No payment channel was completed."
@@ -1067,8 +1037,8 @@ class SSLCommerzIPNView(APIView):
                             "SSLCommerz reported payment failure."
                         )
 
-                    payment.gateway_response = (
-                        dict(request.data)
+                    payment.gateway_response = dict(
+                        request.data
                     )
 
                     payment.save(
@@ -1077,7 +1047,7 @@ class SSLCommerzIPNView(APIView):
                             "failure_reason",
                             "gateway_response",
                             "updated_at",
-                        ]
+                        ],
                     )
 
         # ==================================================
@@ -1086,7 +1056,6 @@ class SSLCommerzIPNView(APIView):
 
         else:
 
-            # Store unknown callback for debugging/audit.
             with transaction.atomic():
 
                 payment = (
@@ -1097,15 +1066,15 @@ class SSLCommerzIPNView(APIView):
                     )
                 )
 
-                payment.gateway_response = (
-                    dict(request.data)
+                payment.gateway_response = dict(
+                    request.data
                 )
 
                 payment.save(
                     update_fields=[
                         "gateway_response",
                         "updated_at",
-                    ]
+                    ],
                 )
 
         return Response(
@@ -1123,25 +1092,16 @@ class SSLCommerzIPNView(APIView):
 
 class CreatePaymentView(APIView):
 
-    """
-    Create an SSLCommerz payment session.
-
-    Endpoint:
-
-        POST /api/payments/create/<order_id>/
-
-    Authentication:
-        Required.
-
-    Customer can only create payment for their own order.
-    """
-
     permission_classes = [
         IsAuthenticated,
     ]
 
     @transaction.atomic
-    def post(self, request, order_id):
+    def post(
+        self,
+        request,
+        order_id,
+    ):
 
         # --------------------------------------------------
         # Lock order
@@ -1154,7 +1114,7 @@ class CreatePaymentView(APIView):
         )
 
         # --------------------------------------------------
-        # Only SSLCommerz orders
+        # SSLCommerz only
         # --------------------------------------------------
 
         if (
@@ -1175,12 +1135,13 @@ class CreatePaymentView(APIView):
             )
 
         # --------------------------------------------------
-        # Cancelled/delivered orders cannot be paid
+        # Invalid states
         # --------------------------------------------------
 
         if order.status in {
             Order.STATUS_CANCELLED,
             Order.STATUS_DELIVERED,
+            Order.STATUS_PROCESSING,
         }:
 
             return Response(
@@ -1242,7 +1203,7 @@ class CreatePaymentView(APIView):
             )
 
         # ==================================================
-        # NEW PAYMENT ATTEMPT
+        # NEW ATTEMPT
         # ==================================================
 
         payment.transaction_id = (
@@ -1264,7 +1225,7 @@ class CreatePaymentView(APIView):
         payment.save()
 
         # ==================================================
-        # CREATE SSLCommerz SESSION
+        # CREATE SESSION
         # ==================================================
 
         try:
@@ -1286,7 +1247,7 @@ class CreatePaymentView(APIView):
                     "status",
                     "failure_reason",
                     "updated_at",
-                ]
+                ],
             )
 
             return Response(
@@ -1300,7 +1261,7 @@ class CreatePaymentView(APIView):
             )
 
         # ==================================================
-        # SAVE GATEWAY SESSION
+        # SAVE SESSION
         # ==================================================
 
         payment.session_key = str(
@@ -1319,7 +1280,7 @@ class CreatePaymentView(APIView):
                 "session_key",
                 "gateway_response",
                 "updated_at",
-            ]
+            ],
         )
 
         # ==================================================
@@ -1349,22 +1310,15 @@ class CreatePaymentView(APIView):
 
 class PaymentStatusView(APIView):
 
-    """
-    Get payment status for customer's order.
-
-    Endpoint:
-
-        GET /api/payments/status/<order_id>/
-
-    Authentication:
-        Required.
-    """
-
     permission_classes = [
         IsAuthenticated,
     ]
 
-    def get(self, request, order_id):
+    def get(
+        self,
+        request,
+        order_id,
+    ):
 
         payment = get_object_or_404(
             Payment.objects.select_related(
@@ -1388,30 +1342,16 @@ class PaymentStatusView(APIView):
 
 class RetryPaymentView(APIView):
 
-    """
-    Create a new SSLCommerz payment attempt.
-
-    Endpoint:
-
-        POST /api/payments/retry/<order_id>/
-
-    Retry is allowed when:
-
-        Order = Pending
-
-    Retry is NOT allowed when:
-
-        Order = Processing
-        Order = Delivered
-        Order = Cancelled
-    """
-
     permission_classes = [
         IsAuthenticated,
     ]
 
     @transaction.atomic
-    def post(self, request, order_id):
+    def post(
+        self,
+        request,
+        order_id,
+    ):
 
         # --------------------------------------------------
         # Lock order
@@ -1424,7 +1364,7 @@ class RetryPaymentView(APIView):
         )
 
         # --------------------------------------------------
-        # Only SSLCommerz
+        # SSLCommerz only
         # --------------------------------------------------
 
         if (
@@ -1444,7 +1384,7 @@ class RetryPaymentView(APIView):
             )
 
         # --------------------------------------------------
-        # Retry only pending orders
+        # Pending only
         # --------------------------------------------------
 
         if (
@@ -1514,7 +1454,7 @@ class RetryPaymentView(APIView):
             )
 
         # ==================================================
-        # CREATE NEW PAYMENT ATTEMPT
+        # NEW ATTEMPT
         # ==================================================
 
         payment.transaction_id = (
@@ -1536,7 +1476,7 @@ class RetryPaymentView(APIView):
         payment.save()
 
         # ==================================================
-        # CREATE NEW SSLCommerz SESSION
+        # CREATE SESSION
         # ==================================================
 
         try:
@@ -1558,7 +1498,7 @@ class RetryPaymentView(APIView):
                     "status",
                     "failure_reason",
                     "updated_at",
-                ]
+                ],
             )
 
             return Response(
@@ -1572,7 +1512,7 @@ class RetryPaymentView(APIView):
             )
 
         # ==================================================
-        # SAVE SESSION INFORMATION
+        # SAVE SESSION
         # ==================================================
 
         payment.session_key = str(
@@ -1591,7 +1531,7 @@ class RetryPaymentView(APIView):
                 "session_key",
                 "gateway_response",
                 "updated_at",
-            ]
+            ],
         )
 
         # ==================================================

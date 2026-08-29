@@ -19,12 +19,8 @@ const Orders = () => {
 
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [cancellingId, setCancellingId] =
-        useState(null);
-
-    const [expandedOrder, setExpandedOrder] =
-        useState(null);
-
+    const [cancellingId, setCancellingId] = useState(null);
+    const [expandedOrder, setExpandedOrder] = useState(null);
     const [search, setSearch] = useState("");
 
     // =========================================================
@@ -43,17 +39,13 @@ const Orders = () => {
                     : []
             );
         } catch (error) {
-            console.error(error);
+            console.error("Fetch orders error:", error);
 
-            if (
-                error?.response?.status === 401
-            ) {
+            if (error?.response?.status === 401) {
                 localStorage.removeItem("access");
                 localStorage.removeItem("refresh");
 
-                toast.info(
-                    "Please login again."
-                );
+                toast.info("Please login again.");
 
                 window.location.href = "/login";
                 return;
@@ -87,34 +79,25 @@ const Orders = () => {
     // =========================================================
 
     const filteredOrders = useMemo(() => {
-        const keyword = search
-            .trim()
-            .toLowerCase();
+        const keyword = search.trim().toLowerCase();
 
         if (!keyword) {
             return orders;
         }
 
         return orders.filter((order) => {
-            const orderNumber = `ORD${String(
-                order.id
-            ).padStart(3, "0")}`;
+            const orderNumber =
+                `ORD${String(order.id).padStart(3, "0")}`;
 
             return (
                 orderNumber
                     .toLowerCase()
                     .includes(keyword) ||
-                String(order.id).includes(
-                    keyword
-                ) ||
-                String(
-                    order.status || ""
-                )
+                String(order.id).includes(keyword) ||
+                String(order.status || "")
                     .toLowerCase()
                     .includes(keyword) ||
-                String(
-                    order.payment_method || ""
-                )
+                String(order.payment_method || "")
                     .toLowerCase()
                     .includes(keyword)
             );
@@ -148,13 +131,10 @@ const Orders = () => {
     // CANCEL ORDER
     // =========================================================
 
-    const handleCancelOrder = async (
-        orderId
-    ) => {
-        const confirmed =
-            window.confirm(
-                "Are you sure you want to cancel this order?"
-            );
+    const handleCancelOrder = async (orderId) => {
+        const confirmed = window.confirm(
+            "Are you sure you want to cancel this order?"
+        );
 
         if (!confirmed) {
             return;
@@ -163,19 +143,23 @@ const Orders = () => {
         try {
             setCancellingId(orderId);
 
-            await cancelOrder(orderId);
+            const response = await cancelOrder(orderId);
 
             toast.success(
-                "Order cancelled successfully."
+                response?.message ||
+                    "Order cancelled successfully."
             );
 
             await fetchOrders();
         } catch (error) {
-            console.error(error);
+            console.error(
+                "Cancel order error:",
+                error
+            );
 
             toast.error(
                 error?.response?.data?.detail ||
-                    "Failed to cancel order."
+                    "Could not cancel order."
             );
         } finally {
             setCancellingId(null);
@@ -205,12 +189,16 @@ const Orders = () => {
         );
     }
 
+    // =========================================================
+    // PAGE
+    // =========================================================
+
     return (
         <div className="container py-5">
 
-            {/* ================================================
+            {/* ==================================================
                 HEADER
-            ================================================ */}
+            ================================================== */}
 
             <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
 
@@ -240,13 +228,15 @@ const Orders = () => {
                         placeholder="Search order..."
                         value={search}
                         onChange={(e) =>
-                            setSearch(
-                                e.target.value
-                            )
+                            setSearch(e.target.value)
                         }
                     />
                 </div>
             </div>
+
+            {/* ==================================================
+                ORDER HISTORY
+            ================================================== */}
 
             <div className="card shadow">
 
@@ -257,16 +247,21 @@ const Orders = () => {
                 </div>
 
                 <div className="card-body">
-                                        {filteredOrders.length === 0 ? (
+
+                    {filteredOrders.length === 0 ? (
 
                         <div className="text-center py-5">
-                            <h5>No orders found.</h5>
+
+                            <h5>
+                                No orders found.
+                            </h5>
 
                             <p className="text-muted mb-0">
                                 {search
                                     ? "No orders match your search."
                                     : "You haven't placed any orders yet."}
                             </p>
+
                         </div>
 
                     ) : (
@@ -285,15 +280,18 @@ const Orders = () => {
                                     className="card mb-4 border"
                                 >
 
-                                    {/* =====================================
+                                    {/* ==================================================
                                         ORDER HEADER
-                                    ====================================== */}
+                                    ================================================== */}
 
                                     <div className="card-header bg-light">
 
                                         <div className="row align-items-center">
 
+                                            {/* ORDER NUMBER */}
+
                                             <div className="col-lg-3">
+
                                                 <strong>
                                                     {orderNumber}
                                                 </strong>
@@ -307,9 +305,13 @@ const Orders = () => {
                                                           )
                                                         : "N/A"}
                                                 </div>
+
                                             </div>
 
+                                            {/* STATUS */}
+
                                             <div className="col-lg-2 mt-2 mt-lg-0">
+
                                                 <span
                                                     className={getStatusBadge(
                                                         order.status
@@ -317,28 +319,41 @@ const Orders = () => {
                                                 >
                                                     {order.status}
                                                 </span>
+
                                             </div>
 
+                                            {/* ITEMS */}
+
                                             <div className="col-lg-2 mt-2 mt-lg-0">
+
                                                 <strong>
                                                     {order.item_count}
                                                 </strong>
+
                                                 <div className="small text-muted">
                                                     Items
                                                 </div>
+
                                             </div>
 
+                                            {/* TOTAL */}
+
                                             <div className="col-lg-2 mt-2 mt-lg-0">
+
                                                 <strong>
                                                     ৳
                                                     {Number(
                                                         order.total_amount || 0
                                                     ).toFixed(2)}
                                                 </strong>
+
                                                 <div className="small text-muted">
                                                     Total
                                                 </div>
+
                                             </div>
+
+                                            {/* ACTIONS */}
 
                                             <div className="col-lg-3 text-lg-end mt-3 mt-lg-0">
 
@@ -358,8 +373,11 @@ const Orders = () => {
                                                         : "View Details"}
                                                 </button>
 
-                                                {order.status ===
-                                                "Pending" && (
+                                                {/* ==========================================
+                                                    BACKEND-CONTROLLED CANCEL BUTTON
+                                                ========================================== */}
+
+                                                {order.can_cancel && (
                                                     <button
                                                         type="button"
                                                         className="btn btn-danger btn-sm"
@@ -377,6 +395,7 @@ const Orders = () => {
                                                         order.id ? (
                                                             <>
                                                                 <span className="spinner-border spinner-border-sm me-1" />
+
                                                                 Cancelling...
                                                             </>
                                                         ) : (
@@ -391,15 +410,17 @@ const Orders = () => {
 
                                     </div>
 
-                                    {/* =====================================
+                                    {/* ==================================================
                                         ORDER DETAILS
-                                    ====================================== */}
+                                    ================================================== */}
 
                                     {isExpanded && (
 
                                         <div className="card-body">
 
                                             <div className="row mb-4">
+
+                                                {/* SHIPPING ADDRESS */}
 
                                                 <div className="col-md-6">
 
@@ -414,6 +435,8 @@ const Orders = () => {
                                                     </p>
 
                                                 </div>
+
+                                                {/* PAYMENT METHOD */}
 
                                                 <div className="col-md-6">
 
@@ -431,6 +454,10 @@ const Orders = () => {
 
                                             </div>
 
+                                            {/* ==================================================
+                                                ITEMS TABLE
+                                            ================================================== */}
+
                                             <div className="table-responsive">
 
                                                 <table className="table table-bordered align-middle">
@@ -438,6 +465,7 @@ const Orders = () => {
                                                     <thead className="table-light">
 
                                                         <tr>
+
                                                             <th>
                                                                 Product
                                                             </th>
@@ -453,64 +481,79 @@ const Orders = () => {
                                                             <th>
                                                                 Subtotal
                                                             </th>
+
                                                         </tr>
 
                                                     </thead>
 
                                                     <tbody>
 
-                                                        {order.items.map(
-                                                            (
-                                                                item
-                                                            ) => (
-                                                                <tr
-                                                                    key={
-                                                                        item.id
-                                                                    }
-                                                                >
-                                                                    <td>
-                                                                        {
-                                                                            item.product_name
+                                                        {Array.isArray(
+                                                            order.items
+                                                        ) &&
+                                                            order.items.map(
+                                                                (item) => (
+                                                                    <tr
+                                                                        key={
+                                                                            item.id
                                                                         }
-                                                                    </td>
+                                                                    >
 
-                                                                    <td>
-                                                                        {
-                                                                            item.quantity
-                                                                        }
-                                                                    </td>
+                                                                        <td>
+                                                                            {
+                                                                                item.product_name
+                                                                            }
+                                                                        </td>
 
-                                                                    <td>
-                                                                        ৳
-                                                                        {Number(
-                                                                            item.price
-                                                                        ).toFixed(
-                                                                            2
-                                                                        )}
-                                                                    </td>
+                                                                        <td>
+                                                                            {
+                                                                                item.quantity
+                                                                            }
+                                                                        </td>
 
-                                                                    <td>
-                                                                        ৳
-                                                                        {Number(
-                                                                            item.subtotal
-                                                                        ).toFixed(
-                                                                            2
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            )
-                                                        )}
+                                                                        <td>
+                                                                            ৳
+                                                                            {Number(
+                                                                                item.price ||
+                                                                                    0
+                                                                            ).toFixed(
+                                                                                2
+                                                                            )}
+                                                                        </td>
+
+                                                                        <td>
+                                                                            ৳
+                                                                            {Number(
+                                                                                item.subtotal ||
+                                                                                    0
+                                                                            ).toFixed(
+                                                                                2
+                                                                            )}
+                                                                        </td>
+
+                                                                    </tr>
+                                                                )
+                                                            )}
+
                                                     </tbody>
+
                                                 </table>
+
                                             </div>
+
                                         </div>
+
                                     )}
+
                                 </div>
                             );
                         })
                     )}
+
                 </div>
+
             </div>
+
         </div>
     );
 };

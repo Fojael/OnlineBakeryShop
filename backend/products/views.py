@@ -1,23 +1,18 @@
 from rest_framework import generics
-from rest_framework.permissions import (
-    AllowAny,
-    IsAuthenticated,
-)
+from rest_framework.permissions import AllowAny
 
-from rest_framework.exceptions import PermissionDenied
-
-from accounts.permissions import (
-    IsAdmin,
-    IsSupplier,
-)
+from accounts.permissions import IsAdmin
 
 from .models import Product
 from .serializers import ProductSerializer
 
 
-# ============================================================
+# ==========================================================
 # PRODUCT LIST + CREATE
-# ============================================================
+#
+# GET  -> Anyone can browse available products
+# POST -> Admin only
+# ==========================================================
 
 class ProductListCreateView(
     generics.ListCreateAPIView
@@ -25,86 +20,28 @@ class ProductListCreateView(
 
     serializer_class = ProductSerializer
 
-    # ========================================================
-    # QUERYSET
-    # ========================================================
-
     def get_queryset(self):
 
-        user = self.request.user
-
-        # -------------------------
-        # ADMIN
-        # -------------------------
         if (
-            user.is_authenticated
-            and user.role == "ADMIN"
+            self.request.user.is_authenticated
+            and getattr(
+                self.request.user,
+                "role",
+                None,
+            ) == "ADMIN"
         ):
-            return (
-                Product.objects
-                .select_related("supplier")
-                .all()
-            )
+            return Product.objects.all()
 
-        # -------------------------
-        # SUPPLIER
-        # -------------------------
-        if (
-            user.is_authenticated
-            and user.role == "SUPPLIER"
-        ):
-            return (
-                Product.objects
-                .select_related("supplier")
-                .filter(
-                    supplier=user.supplier
-                )
-            )
-
-        # -------------------------
-        # CUSTOMER / GUEST
-        # -------------------------
-        return (
-            Product.objects
-            .select_related("supplier")
-            .filter(
-                is_available=True
-            )
+        return Product.objects.filter(
+            is_available=True
         )
-
-    # ========================================================
-    # PERMISSIONS
-    # ========================================================
 
     def get_permissions(self):
 
         if self.request.method == "POST":
+            return [IsAdmin()]
 
-            return [
-                IsAuthenticated(),
-                IsSupplier(),
-            ]
-
-        return [
-            AllowAny(),
-        ]
-
-    # ========================================================
-    # AUTO ASSIGN SUPPLIER
-    # ========================================================
-
-    def perform_create(
-        self,
-        serializer,
-    ):
-
-        serializer.save(
-            supplier=self.request.user.supplier
-        )
-
-    # ========================================================
-    # CONTEXT
-    # ========================================================
+        return [AllowAny()]
 
     def get_serializer_context(self):
 
@@ -113,73 +50,32 @@ class ProductListCreateView(
         }
 
 
-# ============================================================
-# PRODUCT DETAIL / UPDATE / DELETE
-# ============================================================
+# ==========================================================
+# PRODUCT DETAILS
+#
+# GET             -> Anyone
+# PUT / PATCH     -> Admin
+# DELETE          -> Admin
+# ==========================================================
 
 class ProductRetrieveUpdateDeleteView(
     generics.RetrieveUpdateDestroyAPIView
 ):
 
+    queryset = Product.objects.all()
+
     serializer_class = ProductSerializer
-
-    queryset = (
-        Product.objects
-        .select_related("supplier")
-    )
-
-    # ========================================================
-    # PERMISSIONS
-    # ========================================================
 
     def get_permissions(self):
 
-        if self.request.method == "GET":
-            return [AllowAny()]
+        if self.request.method in [
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ]:
+            return [IsAdmin()]
 
-        return [
-            IsAuthenticated(),
-        ]
-
-    # ========================================================
-    # OBJECT PERMISSION
-    # ========================================================
-
-    def get_object(self):
-
-        product = super().get_object()
-
-        if self.request.method == "GET":
-            return product
-
-        user = self.request.user
-
-        # -------------------------
-        # ADMIN
-        # -------------------------
-        if user.role == "ADMIN":
-            return product
-
-        # -------------------------
-        # SUPPLIER
-        # -------------------------
-        if user.role == "SUPPLIER":
-
-            if product.supplier_id != user.supplier.id:
-
-                raise PermissionDenied(
-                    "You do not have permission to modify this product."
-                )
-
-            return product
-
-        raise PermissionDenied(
-            "Permission denied."
-        )
-
-    # ========================================================
-    # CONTEXT
-    # ========================================================
+        return [AllowAny()]
 
     def get_serializer_context(self):
 

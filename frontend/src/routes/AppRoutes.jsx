@@ -1,4 +1,8 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import {
+    BrowserRouter,
+    Route,
+    Routes,
+} from "react-router-dom";
 
 import ProtectedRoute from "../components/ProtectedRoute/ProtectedRoute";
 import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
@@ -10,12 +14,8 @@ import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/Protect
 import Home from "../pages/Home/Home";
 import Products from "../pages/Products/Products";
 import ProductDetails from "../pages/ProductDetails/ProductDetails";
-import Cart from "../pages/Cart/Cart";
-import Checkout from "../pages/Checkout/Checkout";
 import Login from "../pages/Login/Login";
 import Register from "../pages/Register/Register";
-import Orders from "../pages/Orders/Orders";
-import Profile from "../pages/Profile/Profile";
 import About from "../pages/About/About";
 import Contact from "../pages/Contact/Contact";
 import NotFound from "../pages/NotFound/NotFound";
@@ -24,81 +24,138 @@ import NotFound from "../pages/NotFound/NotFound";
 // CUSTOMER PAGES
 // ============================================================
 
-import CustomerDashboard from "../pages/Customer/CustomerDashboard";
-import Wishlist from "../pages/Customer/Wishlist";
-import Address from "../pages/Address/Address";
-import AddAddress from "../pages/Address/AddAddress";
-import EditAddress from "../pages/Address/EditAddress";
-import PaymentSuccess from "../pages/Checkout/PaymentSuccess";
-import PaymentFailed from "../pages/Checkout/PaymentFailed";
-import PaymentCancelled from "../pages/Checkout/PaymentCancelled";
+import Cart from "../pages/Cart/Cart";
+import Checkout from "../pages/Checkout/Checkout";
+import Orders from "../pages/Orders/Orders";
+import Profile from "../pages/Profile/Profile";
+
+import CustomerDashboard
+    from "../pages/Customer/CustomerDashboard";
+
+import Wishlist
+    from "../pages/Customer/Wishlist";
+
+import Address
+    from "../pages/Address/Address";
+
+import AddAddress
+    from "../pages/Address/AddAddress";
+
+import EditAddress
+    from "../pages/Address/EditAddress";
+
+// ============================================================
+// PAYMENT RESULT PAGES
+// ============================================================
+
+import PaymentSuccess
+    from "../pages/Checkout/PaymentSuccess";
+
+import PaymentFailed
+    from "../pages/Checkout/PaymentFailed";
+
+import PaymentCancelled
+    from "../pages/Checkout/PaymentCancelled";
 
 // ============================================================
 // ADMIN DASHBOARD
 // ============================================================
 
-import Dashboard from "../pages/Admin/Dashboard/Dashboard";
+import Dashboard
+    from "../pages/Admin/Dashboard/Dashboard";
 
 // ============================================================
 // ADMIN PRODUCT PAGES
 // ============================================================
 
-import AdminProducts from "../pages/Admin/Products/AdminProducts";
-import AddProduct from "../pages/Admin/Products/AddProduct";
-import EditProduct from "../pages/Admin/Products/EditProduct";
+import AdminProducts
+    from "../pages/Admin/Products/AdminProducts";
+
+import AddProduct
+    from "../pages/Admin/Products/AddProduct";
+
+import EditProduct
+    from "../pages/Admin/Products/EditProduct";
 
 // ============================================================
 // ADMIN CATEGORY PAGES
 // ============================================================
 
-import Categories from "../pages/Admin/Categories/Categories";
-import AddCategory from "../pages/Admin/Categories/AddCategory";
-import EditCategory from "../pages/Admin/Categories/EditCategory";
+import Categories
+    from "../pages/Admin/Categories/Categories";
+
+import AddCategory
+    from "../pages/Admin/Categories/AddCategory";
+
+import EditCategory
+    from "../pages/Admin/Categories/EditCategory";
 
 // ============================================================
 // ADMIN INVENTORY PAGES
 // ============================================================
 
-import Inventory from "../pages/Admin/Inventory/Inventory";
-import UpdateInventory from "../pages/Admin/Inventory/UpdateInventory";
+import Inventory
+    from "../pages/Admin/Inventory/Inventory";
+
+import UpdateInventory
+    from "../pages/Admin/Inventory/UpdateInventory";
 
 // ============================================================
 // ADMIN SUPPLIER PAGES
 // ============================================================
 
-import Suppliers from "../pages/Admin/Suppliers/Suppliers";
-import AddSupplier from "../pages/Admin/Suppliers/AddSupplier";
-import EditSupplier from "../pages/Admin/Suppliers/EditSupplier";
+import Suppliers
+    from "../pages/Admin/Suppliers/Suppliers";
+
+import AddSupplier
+    from "../pages/Admin/Suppliers/AddSupplier";
+
+import EditSupplier
+    from "../pages/Admin/Suppliers/EditSupplier";
 
 // ============================================================
 // ADMIN ORDER PAGES
 // ============================================================
 
-import AdminOrders from "../pages/Admin/Orders/AdminOrders";
-import UpdateOrder from "../pages/Admin/Orders/UpdateOrder";
+import AdminOrders
+    from "../pages/Admin/Orders/AdminOrders";
+
+import UpdateOrder
+    from "../pages/Admin/Orders/UpdateOrder";
 
 // ============================================================
 // ADMIN CUSTOMER PAGES
 // ============================================================
 
-import Customers from "../pages/Admin/Customers/Customers";
+import Customers
+    from "../pages/Admin/Customers/Customers";
 
 // ============================================================
 // ADMIN OTHER PAGES
 // ============================================================
 
-import Reports from "../pages/Admin/Reports/Reports";
-import AIPrediction from "../pages/Admin/AIPrediction/AIPrediction";
-import Notifications from "../pages/Admin/Notifications/Notifications";
+import Reports
+    from "../pages/Admin/Reports/Reports";
+
+import AIPrediction
+    from "../pages/Admin/AIPrediction/AIPrediction";
+
+import Notifications
+    from "../pages/Admin/Notifications/Notifications";
+
 
 // ============================================================
 // APP ROUTES
 // ============================================================
 
 const AppRoutes = () => {
+
     return (
+
         <BrowserRouter>
+
             <main>
+
                 <Routes>
 
                     {/* ==================================================
@@ -140,8 +197,9 @@ const AppRoutes = () => {
                         element={<Register />}
                     />
 
+
                     {/* ==================================================
-                        CUSTOMER PROTECTED ROUTES
+                        CUSTOMER ROUTES
                     ================================================== */}
 
                     <Route
@@ -179,36 +237,39 @@ const AppRoutes = () => {
                             </ProtectedRoute>
                         }
                     />
-{/* ==================================================
-    PAYMENT RESULT PAGES
-================================================== */}
 
-<Route
-    path="/checkout/success"
-    element={
-        <ProtectedRoute>
-            <PaymentSuccess />
-        </ProtectedRoute>
-    }
-/>
 
-<Route
-    path="/checkout/failed"
-    element={
-        <ProtectedRoute>
-            <PaymentFailed />
-        </ProtectedRoute>
-    }
-/>
+                    {/* ==================================================
+                        PAYMENT RESULT ROUTES
+                    ================================================== */}
 
-<Route
-    path="/checkout/cancelled"
-    element={
-        <ProtectedRoute>
-            <PaymentCancelled />
-        </ProtectedRoute>
-    }
-/>
+                    <Route
+                        path="/checkout/success"
+                        element={
+                            <ProtectedRoute>
+                                <PaymentSuccess />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/checkout/failed"
+                        element={
+                            <ProtectedRoute>
+                                <PaymentFailed />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/checkout/cancelled"
+                        element={
+                            <ProtectedRoute>
+                                <PaymentCancelled />
+                            </ProtectedRoute>
+                        }
+                    />
+
 
                     {/* ==================================================
                         CUSTOMER DASHBOARD
@@ -222,6 +283,7 @@ const AppRoutes = () => {
                             </ProtectedRoute>
                         }
                     />
+
                     <Route
                         path="/wishlist"
                         element={
@@ -230,36 +292,39 @@ const AppRoutes = () => {
                             </ProtectedRoute>
                         }
                     />
-{/* ==================================================
-    CUSTOMER ADDRESS BOOK
-================================================== */}
 
-<Route
-    path="/address"
-    element={
-        <ProtectedRoute>
-            <Address />
-        </ProtectedRoute>
-    }
-/>
 
-<Route
-    path="/address/add"
-    element={
-        <ProtectedRoute>
-            <AddAddress />
-        </ProtectedRoute>
-    }
-/>
+                    {/* ==================================================
+                        CUSTOMER ADDRESS BOOK
+                    ================================================== */}
 
-<Route
-    path="/address/edit/:id"
-    element={
-        <ProtectedRoute>
-            <EditAddress />
-        </ProtectedRoute>
-    }
-/>
+                    <Route
+                        path="/address"
+                        element={
+                            <ProtectedRoute>
+                                <Address />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/address/add"
+                        element={
+                            <ProtectedRoute>
+                                <AddAddress />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/address/edit/:id"
+                        element={
+                            <ProtectedRoute>
+                                <EditAddress />
+                            </ProtectedRoute>
+                        }
+                    />
+
 
                     {/* ==================================================
                         ADMIN DASHBOARD
@@ -273,6 +338,7 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
+
 
                     {/* ==================================================
                         ADMIN PRODUCTS
@@ -305,6 +371,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         ADMIN CATEGORIES
                     ================================================== */}
@@ -336,6 +403,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         ADMIN INVENTORY
                     ================================================== */}
@@ -357,6 +425,7 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
+
 
                     {/* ==================================================
                         ADMIN SUPPLIERS
@@ -389,6 +458,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         ADMIN ORDERS
                     ================================================== */}
@@ -411,6 +481,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         ADMIN CUSTOMERS
                     ================================================== */}
@@ -423,6 +494,7 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
+
 
                     {/* ==================================================
                         ADMIN REPORTS
@@ -437,6 +509,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         ADMIN AI PREDICTION
                     ================================================== */}
@@ -449,6 +522,7 @@ const AppRoutes = () => {
                             </ProtectedAdminRoute>
                         }
                     />
+
 
                     {/* ==================================================
                         ADMIN NOTIFICATIONS
@@ -463,6 +537,7 @@ const AppRoutes = () => {
                         }
                     />
 
+
                     {/* ==================================================
                         404
                     ================================================== */}
@@ -473,7 +548,9 @@ const AppRoutes = () => {
                     />
 
                 </Routes>
+
             </main>
+
         </BrowserRouter>
     );
 };

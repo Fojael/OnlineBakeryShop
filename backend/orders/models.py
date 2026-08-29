@@ -139,10 +139,25 @@ class Order(models.Model):
     @property
     def can_cancel(self):
 
-        return self.status in [
-            self.STATUS_PENDING,
-            self.STATUS_PROCESSING,
-        ]
+        # COD orders can be cancelled while pending/processing.
+        if self.payment_method == self.PAYMENT_COD:
+
+            return self.status in [
+                self.STATUS_PENDING,
+                self.STATUS_PROCESSING,
+            ]
+
+        # Online payments can only be cancelled while
+        # the payment is still pending.
+        if hasattr(self, "payment"):
+
+            if (
+                self.payment.status
+                == self.payment.STATUS_SUCCESS
+            ):
+                return False
+
+        return self.status == self.STATUS_PENDING
 
     # ==========================================================
     # STRING

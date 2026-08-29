@@ -10,9 +10,16 @@ from .views import (
     SSLCommerzSuccessView,
 )
 
+
 app_name = "payments"
 
+
 urlpatterns = [
+
+    # ======================================================
+    # PAYMENT
+    # ======================================================
+
     path(
         "create/<int:order_id>/",
         CreatePaymentView.as_view(),
@@ -30,6 +37,10 @@ urlpatterns = [
         RetryPaymentView.as_view(),
         name="retry-payment",
     ),
+
+    # ======================================================
+    # SSL COMMERZ
+    # ======================================================
 
     path(
         "sslcommerz/success/",

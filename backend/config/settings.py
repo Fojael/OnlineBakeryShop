@@ -216,48 +216,41 @@ SIMPLE_JWT = {
 FRONTEND_URL = "http://localhost:5173"
 
 
-SSLCOMMERZ_IS_SANDBOX = (
-    os.getenv(
-        "SSLCOMMERZ_IS_SANDBOX",
-        "True",
-    ).lower()
-    == "true"
+# ==========================================================
+# SSL COMMERZ
+# ==========================================================
+
+SSLCOMMERZ_IS_SANDBOX = True
+
+SSLCOMMERZ_STORE_ID = "YOUR_SANDBOX_STORE_ID"
+
+SSLCOMMERZ_STORE_PASSWORD = (
+    "YOUR_SANDBOX_STORE_PASSWORD"
 )
 
-SSLCOMMERZ_STORE_ID = os.getenv(
-    "SSLCOMMERZ_STORE_ID",
-    "",
+
+# ==========================================================
+# CALLBACK URLS
+# ==========================================================
+
+SSLCOMMERZ_SUCCESS_URL = (
+    "http://YOUR_PUBLIC_BACKEND_URL/"
+    "api/payments/sslcommerz/success/"
 )
 
-SSLCOMMERZ_STORE_PASSWORD = os.getenv(
-    "SSLCOMMERZ_STORE_PASSWORD",
-    "",
+SSLCOMMERZ_FAIL_URL = (
+    "http://YOUR_PUBLIC_BACKEND_URL/"
+    "api/payments/sslcommerz/fail/"
 )
 
-FRONTEND_URL = os.getenv(
-    "FRONTEND_URL",
-    "http://localhost:5173",
-).rstrip("/")
-
-
-SSLCOMMERZ_SUCCESS_URL = os.getenv(
-    "SSLCOMMERZ_SUCCESS_URL",
-    "http://127.0.0.1:8000/api/payments/sslcommerz/success/",
+SSLCOMMERZ_CANCEL_URL = (
+    "http://YOUR_PUBLIC_BACKEND_URL/"
+    "api/payments/sslcommerz/cancel/"
 )
 
-SSLCOMMERZ_FAIL_URL = os.getenv(
-    "SSLCOMMERZ_FAIL_URL",
-    "http://127.0.0.1:8000/api/payments/sslcommerz/fail/",
-)
-
-SSLCOMMERZ_CANCEL_URL = os.getenv(
-    "SSLCOMMERZ_CANCEL_URL",
-    "http://127.0.0.1:8000/api/payments/sslcommerz/cancel/",
-)
-
-SSLCOMMERZ_IPN_URL = os.getenv(
-    "SSLCOMMERZ_IPN_URL",
-    "http://127.0.0.1:8000/api/payments/sslcommerz/ipn/",
+SSLCOMMERZ_IPN_URL = (
+    "http://YOUR_PUBLIC_BACKEND_URL/"
+    "api/payments/sslcommerz/ipn/"
 )
 # ==========================
 # LOGIN

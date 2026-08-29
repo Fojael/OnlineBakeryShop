@@ -1,142 +1,126 @@
-import { useState } from "react";
-
 import {
-  Link,
-  useSearchParams,
+    Link,
+    useSearchParams,
 } from "react-router-dom";
-
-import {
-  retryPayment,
-  redirectToGateway,
-} from "../../services/paymentService";
 
 
 const PaymentFailed = () => {
 
-  const [
-    searchParams
-  ] = useSearchParams();
+    const [
+        searchParams,
+    ] = useSearchParams();
 
 
-  const orderId =
-    searchParams.get(
-      "order_id"
-    );
+    const orderId =
+        searchParams.get("order_id");
 
 
-  const reason =
-    searchParams.get(
-      "reason"
-    ) ||
-    "The payment could not be completed.";
+    const transactionId =
+        searchParams.get("tran_id");
 
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+    const reason =
+        searchParams.get("reason");
 
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+    return (
+
+        <div className="container py-5">
+
+            <div className="row justify-content-center">
+
+                <div className="col-md-7">
+
+                    <div className="card shadow-sm">
+
+                        <div className="card-body text-center p-5">
+
+                            <div
+                                className="display-4 mb-3"
+                            >
+                                ✕
+                            </div>
 
 
-  const handleRetry =
-    async () => {
-
-      if (!orderId) {
-
-        setError(
-          "Order ID is missing."
-        );
-
-        return;
-      }
+                            <h2 className="mb-3">
+                                Payment Failed
+                            </h2>
 
 
-      try {
-
-        setLoading(true);
-        setError("");
-
-
-        const data =
-          await retryPayment(
-            orderId
-          );
+                            <p className="text-muted">
+                                Your payment could not
+                                be completed.
+                            </p>
 
 
-        localStorage.setItem(
-          "pending_payment_order_id",
-          String(orderId)
-        );
+                            {reason && (
+
+                                <div className="alert alert-danger">
+
+                                    {reason}
+
+                                </div>
+
+                            )}
 
 
-        redirectToGateway(
-          data.gateway_url
-        );
+                            {orderId && (
 
-      } catch (err) {
+                                <p>
+                                    <strong>
+                                        Order ID:
+                                    </strong>{" "}
+                                    {orderId}
+                                </p>
 
-        setError(
-          err?.response?.data?.detail ||
-          "Could not start a new payment attempt."
-        );
-
-      } finally {
-
-        setLoading(false);
-      }
-    };
+                            )}
 
 
-  return (
-    <div className="container py-5">
+                            {transactionId && (
 
-      <h2>
-        Payment Failed
-      </h2>
+                                <p>
+                                    <strong>
+                                        Transaction ID:
+                                    </strong>{" "}
+                                    {transactionId}
+                                </p>
+
+                            )}
 
 
-      <p>
-        {reason}
-      </p>
+                            <div className="d-flex gap-2 justify-content-center mt-4">
+
+                                {orderId && (
+
+                                    <Link
+                                        to={`/orders/${orderId}`}
+                                        className="btn btn-primary"
+                                    >
+                                        View Order
+                                    </Link>
+
+                                )}
 
 
-      {error && (
-        <div className="alert alert-danger">
-          {error}
+                                <Link
+                                    to="/orders"
+                                    className="btn btn-outline-secondary"
+                                >
+                                    My Orders
+                                </Link>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
         </div>
-      )}
-
-
-      {orderId && (
-
-        <button
-          type="button"
-          className="btn btn-primary me-2"
-          onClick={handleRetry}
-          disabled={loading}
-        >
-          {loading
-            ? "Starting..."
-            : "Retry Payment"}
-        </button>
-
-      )}
-
-
-      <Link
-        to="/orders"
-        className="btn btn-secondary"
-      >
-        View Orders
-      </Link>
-
-    </div>
-  );
+    );
 };
 
 

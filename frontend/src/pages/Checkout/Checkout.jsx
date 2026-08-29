@@ -1,5 +1,14 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+    useState,
+} from "react";
+
+import {
+    useNavigate,
+} from "react-router-dom";
+
+import {
+    toast,
+} from "react-toastify";
 
 import {
     createOrder,
@@ -7,15 +16,17 @@ import {
 
 import {
     createPayment,
-    redirectToGateway,
 } from "../../services/paymentService";
 
 
 const Checkout = () => {
 
-    const navigate =
-        useNavigate();
+    const navigate = useNavigate();
 
+
+    // ========================================================
+    // STATE
+    // ========================================================
 
     const [
         shippingAddress,
@@ -26,9 +37,7 @@ const Checkout = () => {
     const [
         paymentMethod,
         setPaymentMethod,
-    ] = useState(
-        "Cash on Delivery"
-    );
+    ] = useState("Cash on Delivery");
 
 
     const [
@@ -37,49 +46,35 @@ const Checkout = () => {
     ] = useState(false);
 
 
-    const [
-        error,
-        setError,
-    ] = useState("");
+    // ========================================================
+    // PLACE ORDER
+    // ========================================================
 
+    const handlePlaceOrder = async () => {
 
-    // ======================================================
-    // SUBMIT
-    // ======================================================
+        if (!shippingAddress.trim()) {
 
-    const handleSubmit = async (
-        event
-    ) => {
-
-        event.preventDefault();
-
-
-        // --------------------------------------------------
-        // Validate address
-        // --------------------------------------------------
-
-        if (
-            !shippingAddress.trim()
-        ) {
-
-            setError(
-                "Shipping address is required."
+            toast.error(
+                "Please enter your shipping address."
             );
 
             return;
         }
 
 
+        if (loading) {
+            return;
+        }
+
+
+        setLoading(true);
+
+
         try {
 
-            setLoading(true);
-
-            setError("");
-
-
-            // ------------------------------------------------
-            // Create order
-            // ------------------------------------------------
+            // ==================================================
+            // CREATE ORDER
+            // ==================================================
 
             const orderResponse =
                 await createOrder({
@@ -89,6 +84,7 @@ const Checkout = () => {
 
                     payment_method:
                         paymentMethod,
+
                 });
 
 
@@ -96,34 +92,30 @@ const Checkout = () => {
                 orderResponse.order;
 
 
-            if (!order) {
+            if (!order || !order.id) {
 
                 throw new Error(
-                    "Order was not returned by the server."
+                    "Order ID was not returned."
                 );
             }
 
 
-            // =================================================
-            // COD
-            // =================================================
+            // ==================================================
+            // CASH ON DELIVERY
+            // ==================================================
 
             if (
                 paymentMethod ===
                 "Cash on Delivery"
             ) {
 
-                localStorage.removeItem(
-                    "cart"
-                );
-
-                localStorage.removeItem(
-                    "checkout"
+                toast.success(
+                    "Order placed successfully."
                 );
 
 
                 navigate(
-                    `/payment/success?order_id=${order.id}&cod=1`
+                    `/orders/${order.id}`
                 );
 
 
@@ -131,19 +123,38 @@ const Checkout = () => {
             }
 
 
-            // =================================================
-            // ONLINE PAYMENT
-            // =================================================
-
-            const paymentResponse =
-                await createPayment(
-                    order.id
-                );
-
+            // ==================================================
+            // SSLCOMMERZ
+            // ==================================================
 
             if (
-                !paymentResponse?.gateway_url
+                paymentMethod ===
+                "SSLCommerz"
             ) {
+
+                const paymentResponse =
+                    await createPayment(
+                        order.id
+                    );
+
+
+                if (
+                    paymentResponse &&
+                    paymentResponse.gateway_url
+                ) {
+
+                    toast.info(
+                        "Redirecting to SSLCommerz..."
+                    );
+
+
+                    window.location.href =
+                        paymentResponse.gateway_url;
+
+
+                    return;
+                }
+
 
                 throw new Error(
                     "Payment gateway URL was not returned."
@@ -151,37 +162,31 @@ const Checkout = () => {
             }
 
 
-            localStorage.setItem(
-                "pending_payment_order_id",
-                String(order.id)
+            // ==================================================
+            // UNSUPPORTED METHOD
+            // ==================================================
+
+            throw new Error(
+                "Unsupported payment method."
             );
 
-
-            redirectToGateway(
-                paymentResponse.gateway_url
-            );
-
-        } catch (err) {
+        } catch (error) {
 
             console.error(
-                "Checkout error:",
-                err
+                "Order creation error:",
+                error
             );
-
-
-            const data =
-                err?.response?.data;
 
 
             const message =
-                data?.detail ||
-                data?.message ||
-                data?.error ||
-                err?.message ||
-                "Could not start checkout.";
+                error?.response?.data?.detail
+                ||
+                error?.message
+                ||
+                "Could not place order.";
 
 
-            setError(
+            toast.error(
                 message
             );
 
@@ -192,132 +197,163 @@ const Checkout = () => {
     };
 
 
-    // ======================================================
-    // UI
-    // ======================================================
+    // ========================================================
+    // RENDER
+    // ========================================================
 
     return (
 
-        <div className="container py-4">
+        <div className="container py-5">
 
-            <h2 className="mb-4">
-                Checkout
-            </h2>
+            <div className="row justify-content-center">
+
+                <div className="col-lg-8">
+
+                    <div className="card shadow-sm">
+
+                        <div className="card-body p-4">
+
+                            <h2 className="mb-4">
+                                Checkout
+                            </h2>
 
 
-            {error && (
+                            {/* ==================================
+                                SHIPPING ADDRESS
+                            ================================== */}
 
-                <div className="alert alert-danger">
+                            <div className="mb-4">
 
-                    {error}
+                                <label
+                                    className="form-label"
+                                >
+                                    Shipping Address
+                                </label>
+
+                                <textarea
+                                    className="form-control"
+                                    rows="4"
+                                    value={
+                                        shippingAddress
+                                    }
+                                    onChange={(event) =>
+                                        setShippingAddress(
+                                            event.target.value
+                                        )
+                                    }
+                                    placeholder="Enter your complete shipping address"
+                                    disabled={loading}
+                                />
+
+                            </div>
+
+
+                            {/* ==================================
+                                PAYMENT METHOD
+                            ================================== */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    className="form-label"
+                                >
+                                    Payment Method
+                                </label>
+
+
+                                {/* COD */}
+
+                                <div className="form-check mb-2">
+
+                                    <input
+                                        className="form-check-input"
+                                        type="radio"
+                                        name="paymentMethod"
+                                        id="cod"
+                                        value="Cash on Delivery"
+                                        checked={
+                                            paymentMethod ===
+                                            "Cash on Delivery"
+                                        }
+                                        onChange={(event) =>
+                                            setPaymentMethod(
+                                                event.target.value
+                                            )
+                                        }
+                                        disabled={loading}
+                                    />
+
+                                    <label
+                                        className="form-check-label"
+                                        htmlFor="cod"
+                                    >
+                                        Cash on Delivery
+                                    </label>
+
+                                </div>
+
+
+                                {/* SSLCommerz */}
+
+                                <div className="form-check">
+
+                                    <input
+                                        className="form-check-input"
+                                        type="radio"
+                                        name="paymentMethod"
+                                        id="sslcommerz"
+                                        value="SSLCommerz"
+                                        checked={
+                                            paymentMethod ===
+                                            "SSLCommerz"
+                                        }
+                                        onChange={(event) =>
+                                            setPaymentMethod(
+                                                event.target.value
+                                            )
+                                        }
+                                        disabled={loading}
+                                    />
+
+                                    <label
+                                        className="form-check-label"
+                                        htmlFor="sslcommerz"
+                                    >
+                                        SSLCommerz
+                                    </label>
+
+                                </div>
+
+                            </div>
+
+
+                            {/* ==================================
+                                PLACE ORDER BUTTON
+                            ================================== */}
+
+                            <button
+                                type="button"
+                                className="btn btn-primary w-100"
+                                onClick={
+                                    handlePlaceOrder
+                                }
+                                disabled={loading}
+                            >
+
+                                {loading
+                                    ? "Processing..."
+                                    : "Place Order"
+                                }
+
+                            </button>
+
+                        </div>
+
+                    </div>
 
                 </div>
-            )}
 
-
-            <form
-                onSubmit={
-                    handleSubmit
-                }
-            >
-
-                {/* ==========================================
-                    SHIPPING ADDRESS
-                =========================================== */}
-
-                <div className="mb-3">
-
-                    <label
-                        className="form-label"
-                        htmlFor="shipping-address"
-                    >
-                        Shipping Address
-                    </label>
-
-
-                    <textarea
-                        id="shipping-address"
-                        className="form-control"
-                        rows="4"
-                        value={
-                            shippingAddress
-                        }
-                        onChange={
-                            (event) =>
-                                setShippingAddress(
-                                    event.target.value
-                                )
-                        }
-                        required
-                    />
-
-                </div>
-
-
-                {/* ==========================================
-                    PAYMENT METHOD
-                =========================================== */}
-
-                <div className="mb-3">
-
-                    <label
-                        className="form-label"
-                        htmlFor="payment-method"
-                    >
-                        Payment Method
-                    </label>
-
-
-                    <select
-                        id="payment-method"
-                        className="form-select"
-                        value={
-                            paymentMethod
-                        }
-                        onChange={
-                            (event) =>
-                                setPaymentMethod(
-                                    event.target.value
-                                )
-                        }
-                    >
-
-                        <option
-                            value="Cash on Delivery"
-                        >
-                            Cash on Delivery
-                        </option>
-
-
-                        <option
-                            value="SSLCommerz"
-                        >
-                            SSLCommerz
-                        </option>
-
-                    </select>
-
-                </div>
-
-
-                {/* ==========================================
-                    SUBMIT
-                =========================================== */}
-
-                <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={loading}
-                >
-
-                    {loading
-                        ? "Processing..."
-                        : "Place Order"
-                    }
-
-                </button>
-
-            </form>
+            </div>
 
         </div>
     );

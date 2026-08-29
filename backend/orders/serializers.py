@@ -89,6 +89,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "delivery_charge",
             "total_amount",
             "status",
+            "stock_deducted",
             "is_paid",
             "can_cancel",
             "items",
@@ -109,7 +110,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
             return obj.payment.status
 
-        if obj.payment_method == Order.PAYMENT_COD:
+        if (
+            obj.payment_method
+            == Order.PAYMENT_COD
+        ):
 
             return "Cash on Delivery"
 
@@ -128,7 +132,9 @@ class OrderSerializer(serializers.ModelSerializer):
 # ORDER CREATE SERIALIZER
 # ==========================================================
 
-class OrderCreateSerializer(serializers.ModelSerializer):
+class OrderCreateSerializer(
+    serializers.ModelSerializer
+):
 
     class Meta:
 
@@ -153,6 +159,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 "Shipping address is required."
             )
 
+        if len(value) < 10:
+
+            raise serializers.ValidationError(
+                "Please provide a complete shipping address."
+            )
+
         return value
 
     # ======================================================
@@ -164,7 +176,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         allowed = [
             Order.PAYMENT_COD,
             Order.PAYMENT_SSLCOMMERZ,
-            Order.PAYMENT_STRIPE,
         ]
 
         if value not in allowed:

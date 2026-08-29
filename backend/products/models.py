@@ -5,10 +5,6 @@ from suppliers.models import Supplier
 
 class Product(models.Model):
 
-    # ==========================================================
-    # CATEGORY
-    # ==========================================================
-
     CATEGORY_CHOICES = [
         ("Cake", "Cake"),
         ("Bread", "Bread"),
@@ -71,20 +67,20 @@ class Product(models.Model):
     )
 
     # ==========================================================
-    # INVENTORY
+    # STOCK
     # ==========================================================
 
     stock_quantity = models.PositiveIntegerField(
         default=0,
     )
 
+    # ==========================================================
+    # AVAILABILITY
+    # ==========================================================
+
     is_available = models.BooleanField(
         default=True,
     )
-
-    # ==========================================================
-    # FEATURED
-    # ==========================================================
 
     featured = models.BooleanField(
         default=False,
