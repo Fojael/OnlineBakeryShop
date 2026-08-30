@@ -79,6 +79,16 @@ class Order(models.Model):
     )
 
     # ==========================================================
+    # STOCK
+    # Used when payment succeeds to prevent deducting stock twice.
+    # Does NOT affect Payment app.
+    # ==========================================================
+
+    stock_deducted = models.BooleanField(
+        default=False,
+    )
+
+    # ==========================================================
     # STATUS
     # ==========================================================
 
@@ -121,7 +131,7 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
     # ==========================================================
-    # PROPERTIES
+    # PAYMENT
     # ==========================================================
 
     @property
@@ -136,26 +146,18 @@ class Order(models.Model):
 
         return False
 
+    # ==========================================================
+    # CANCEL
+    # ==========================================================
+
     @property
     def can_cancel(self):
-
-        # ------------------------------------------------------
-        # Cancelled orders
-        # ------------------------------------------------------
 
         if self.status == self.STATUS_CANCELLED:
             return False
 
-        # ------------------------------------------------------
-        # Delivered orders
-        # ------------------------------------------------------
-
         if self.status == self.STATUS_DELIVERED:
             return False
-
-        # ------------------------------------------------------
-        # Only Pending / Processing orders
-        # ------------------------------------------------------
 
         if self.status not in [
             self.STATUS_PENDING,
@@ -163,24 +165,11 @@ class Order(models.Model):
         ]:
             return False
 
-        # ------------------------------------------------------
         # COD
-        #
-        # Pending and Processing COD orders can be cancelled.
-        # ------------------------------------------------------
-
         if self.payment_method == self.PAYMENT_COD:
             return True
 
-        # ------------------------------------------------------
         # SSLCommerz
-        #
-        # Successfully paid online orders cannot be cancelled.
-        #
-        # Pending/failed/cancelled payment orders can be cancelled
-        # while the order itself is still Pending.
-        # ------------------------------------------------------
-
         if self.payment_method == self.PAYMENT_SSLCOMMERZ:
 
             if hasattr(self, "payment"):
@@ -192,10 +181,6 @@ class Order(models.Model):
                     return False
 
             return self.status == self.STATUS_PENDING
-
-        # ------------------------------------------------------
-        # Other payment methods
-        # ------------------------------------------------------
 
         return False
 
@@ -234,6 +219,33 @@ class OrderItem(models.Model):
     )
 
     # ==========================================================
+    # SUPPLIER STATUS
+    #
+    # Each supplier manages only their own item.
+    # This does NOT change Order.status.
+    # ==========================================================
+
+    STATUS_PENDING = "Pending"
+    STATUS_PROCESSING = "Processing"
+    STATUS_READY = "Ready"
+    STATUS_DELIVERED = "Delivered"
+    STATUS_CANCELLED = "Cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_READY, "Ready"),
+        (STATUS_DELIVERED, "Delivered"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    supplier_status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    # ==========================================================
     # QUANTITY
     # ==========================================================
 
@@ -249,7 +261,7 @@ class OrderItem(models.Model):
         max_digits=10,
         decimal_places=2,
     )
-
+  
     # ==========================================================
     # TIMESTAMP
     # ==========================================================
@@ -276,4 +288,5 @@ class OrderItem(models.Model):
         return (
             f"{self.product.name} × "
             f"{self.quantity}"
+            f"({self.supplier_status})"
         )

@@ -3,9 +3,7 @@ from rest_framework import serializers
 from .models import Payment
 
 
-class PaymentSerializer(
-    serializers.ModelSerializer
-):
+class PaymentSerializer(serializers.ModelSerializer):
 
     order_id = serializers.IntegerField(
         source="order.id",

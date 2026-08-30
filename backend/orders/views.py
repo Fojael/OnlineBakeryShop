@@ -11,11 +11,24 @@ from rest_framework.views import APIView
 from cart.models import Cart, CartItem
 from payments.models import Payment
 
+from accounts.permissions import IsSupplier
+from notifications.models import Notification
 from .models import Order, OrderItem
 from .serializers import (
     OrderSerializer,
     OrderCreateSerializer,
+    SupplierOrderSerializer,
+    SupplierOrderItemStatusSerializer,
 )
+
+from django.db.models import (
+    Sum,
+    Count,
+    F,
+    DecimalField,
+    ExpressionWrapper,
+)
+from django.utils import timezone
 
 
 # ==========================================================
@@ -284,6 +297,27 @@ class OrderListCreateView(APIView):
         OrderItem.objects.bulk_create(
             order_items,
         )
+
+        # ==================================================
+        # NOTIFY SUPPLIERS
+        # ==================================================
+
+        suppliers = {
+            item.product.supplier
+            for item in cart_items
+        }
+
+        for supplier in suppliers:
+
+            Notification.objects.create(
+                recipient=supplier,
+                title="New Order",
+                message=(
+                    f"Order #{order.id} contains "
+                    "one or more of your products."
+                ),
+                notification_type=Notification.TYPE_NEW_ORDER,
+            )
 
         # ==================================================
         # CASH ON DELIVERY
@@ -599,6 +633,26 @@ class CancelOrderView(APIView):
                 ],
             )
 
+            # ==================================================
+            # NOTIFY SUPPLIERS
+            # ==================================================
+
+            suppliers = {
+                item.product.supplier
+                for item in order.items.select_related("product")
+            }
+
+            for supplier in suppliers:
+
+                Notification.objects.create(
+                    recipient=supplier,
+                    title="Order Cancelled",
+                    message=(
+                        f"Order #{order.id} has been cancelled."
+                    ),
+                    notification_type=Notification.TYPE_CANCELLED,
+                )
+
             serializer = OrderSerializer(
                 order,
                 context={
@@ -705,6 +759,26 @@ class CancelOrderView(APIView):
                     "updated_at",
                 ],
             )
+
+            # ==================================================
+            # NOTIFY SUPPLIERS
+            # ==================================================
+
+            suppliers = {
+                item.product.supplier
+                for item in order.items.select_related("product")
+            }
+
+            for supplier in suppliers:
+
+                Notification.objects.create(
+                    recipient=supplier,
+                    title="Order Cancelled",
+                    message=(
+                        f"Order #{order.id} has been cancelled."
+                    ),
+                    notification_type=Notification.TYPE_CANCELLED,
+                )
 
             serializer = OrderSerializer(
                 order,
@@ -1094,6 +1168,24 @@ class AdminOrderUpdateView(APIView):
             ],
         )
 
+        if new_status == Order.STATUS_CANCELLED:
+
+            suppliers = {
+                item.product.supplier
+                for item in order.items.select_related("product")
+            }
+
+            for supplier in suppliers:
+
+                Notification.objects.create(
+                    recipient=supplier,
+                    title="Order Cancelled",
+                    message=(
+                        f"Order #{order.id} has been cancelled."
+                    ),
+                    notification_type=Notification.TYPE_CANCELLED,
+                )
+
         # ==================================================
         # RESPONSE
         # ==================================================
@@ -1112,5 +1204,416 @@ class AdminOrderUpdateView(APIView):
                 ),
                 "order": serializer.data,
             },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER - ORDER LIST
+# ==========================================================
+
+class SupplierOrderListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request):
+
+        supplier = request.user
+
+        orders = (
+            Order.objects
+            .filter(
+                items__product__supplier=supplier,
+            )
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            )
+            .distinct()
+            .order_by(
+                "-created_at",
+            )
+        )
+
+        serializer = SupplierOrderSerializer(
+            orders,
+            many=True,
+            context={
+                "request": request,
+                "supplier": supplier,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER - ORDER DETAIL
+# ==========================================================
+
+class SupplierOrderDetailView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request, order_id):
+
+        supplier = request.user
+
+        order = get_object_or_404(
+            Order.objects
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            )
+            .filter(
+                items__product__supplier=supplier,
+            )
+            .distinct(),
+            id=order_id,
+        )
+
+        serializer = SupplierOrderSerializer(
+            order,
+            context={
+                "request": request,
+                "supplier": supplier,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER - UPDATE ORDER ITEM STATUS
+# ==========================================================
+
+class SupplierOrderItemStatusUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    @transaction.atomic
+    def patch(
+        self,
+        request,
+        item_id,
+    ):
+
+        supplier = request.user
+
+        order_item = get_object_or_404(
+            OrderItem.objects.select_related(
+                "product",
+                "order",
+            ).select_for_update(),
+            id=item_id,
+            product__supplier=supplier,
+        )
+
+        serializer = (
+            SupplierOrderItemStatusSerializer(
+                data=request.data,
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        new_status = serializer.validated_data[
+            "supplier_status"
+        ]
+
+        order_item.supplier_status = new_status
+
+        order_item.save(
+            update_fields=[
+                "supplier_status",
+            ],
+        )
+
+        # ----------------------------------------------
+        # Auto-update parent order
+        # ----------------------------------------------
+
+        order = order_item.order
+
+        all_items = order.items.all()
+
+        if all(
+            item.supplier_status
+            == OrderItem.STATUS_DELIVERED
+            for item in all_items
+        ):
+
+            if (
+                order.status
+                != Order.STATUS_DELIVERED
+            ):
+
+                order.status = (
+                    Order.STATUS_DELIVERED
+                )
+
+                order.save(
+                    update_fields=[
+                        "status",
+                        "updated_at",
+                    ],
+                )
+
+                Notification.objects.create(
+                    recipient=order.customer,
+                    title="Order Delivered",
+                    message=f"Your Order #{order.id} has been delivered.",
+                    notification_type=Notification.TYPE_DELIVERED,
+                )
+        return Response(
+            {
+                "message":
+                    "Order item updated successfully.",
+                "supplier_status":
+                    order_item.supplier_status,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER DASHBOARD
+# ==========================================================
+
+class SupplierDashboardView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request):
+
+        supplier = request.user
+
+        items = (
+            OrderItem.objects
+            .select_related(
+                "order",
+                "product",
+            )
+            .filter(
+                product__supplier=supplier,
+            )
+        )
+
+        total_orders = (
+            items.values(
+                "order",
+            )
+            .distinct()
+            .count()
+        )
+
+        pending_items = items.filter(
+            supplier_status=OrderItem.STATUS_PENDING,
+        ).count()
+
+        processing_items = items.filter(
+            supplier_status=OrderItem.STATUS_PROCESSING,
+        ).count()
+
+        ready_items = items.filter(
+            supplier_status=OrderItem.STATUS_READY,
+        ).count()
+
+        delivered_items = items.filter(
+            supplier_status=OrderItem.STATUS_DELIVERED,
+        ).count()
+
+        total_sales = Decimal("0.00")
+
+        delivered = items.filter(
+            supplier_status=OrderItem.STATUS_DELIVERED,
+        )
+
+        for item in delivered:
+
+            total_sales += (
+                item.price
+                * item.quantity
+            )
+
+        return Response(
+            {
+                "total_orders": total_orders,
+                "pending_items": pending_items,
+                "processing_items": processing_items,
+                "ready_items": ready_items,
+                "delivered_items": delivered_items,
+                "total_sales": total_sales,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER SALES ANALYTICS
+# ==========================================================
+
+class SupplierSalesAnalyticsView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request):
+
+        supplier = request.user
+
+        today = timezone.localdate()
+
+        month = today.month
+        year = today.year
+
+        delivered_items = (
+            OrderItem.objects
+            .select_related(
+                "order",
+                "product",
+            )
+            .filter(
+                product__supplier=supplier,
+                supplier_status=OrderItem.STATUS_DELIVERED,
+            )
+        )
+
+        amount = ExpressionWrapper(
+            F("price") * F("quantity"),
+            output_field=DecimalField(
+                max_digits=12,
+                decimal_places=2,
+            ),
+        )
+
+        total_sales = (
+            delivered_items.aggregate(
+                total=Sum(amount),
+            )["total"]
+            or 0
+        )
+
+        today_sales = (
+            delivered_items.filter(
+                created_at__date=today,
+            ).aggregate(
+                total=Sum(amount),
+            )["total"]
+            or 0
+        )
+
+        monthly_sales = (
+            delivered_items.filter(
+                created_at__year=year,
+                created_at__month=month,
+            ).aggregate(
+                total=Sum(amount),
+            )["total"]
+            or 0
+        )
+
+        yearly_sales = (
+            delivered_items.filter(
+                created_at__year=year,
+            ).aggregate(
+                total=Sum(amount),
+            )["total"]
+            or 0
+        )
+
+        total_orders = (
+            delivered_items.values(
+                "order",
+            )
+            .distinct()
+            .count()
+        )
+
+        total_products = delivered_items.count()
+
+        return Response(
+            {
+                "today_sales": today_sales,
+                "monthly_sales": monthly_sales,
+                "yearly_sales": yearly_sales,
+                "total_sales": total_sales,
+                "delivered_orders": total_orders,
+                "delivered_items": total_products,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# SUPPLIER PRODUCT PERFORMANCE
+# ==========================================================
+
+class SupplierProductPerformanceView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request):
+
+        supplier = request.user
+
+        amount = ExpressionWrapper(
+            F("price") * F("quantity"),
+            output_field=DecimalField(
+                max_digits=12,
+                decimal_places=2,
+            ),
+        )
+
+        products = (
+            OrderItem.objects
+            .filter(
+                product__supplier=supplier,
+                supplier_status=OrderItem.STATUS_DELIVERED,
+            )
+            .values(
+                "product",
+                "product__name",
+            )
+            .annotate(
+                units_sold=Sum("quantity"),
+                revenue=Sum(amount),
+                orders=Count(
+                    "order",
+                    distinct=True,
+                ),
+            )
+            .order_by(
+                "-revenue",
+            )
+        )
+
+        return Response(
+            products,
             status=status.HTTP_200_OK,
         )

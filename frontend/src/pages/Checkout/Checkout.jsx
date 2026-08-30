@@ -23,7 +23,6 @@ const Checkout = () => {
 
     const navigate = useNavigate();
 
-
     // ========================================================
     // STATE
     // ========================================================
@@ -33,12 +32,10 @@ const Checkout = () => {
         setShippingAddress,
     ] = useState("");
 
-
     const [
         paymentMethod,
         setPaymentMethod,
     ] = useState("Cash on Delivery");
-
 
     const [
         loading,
@@ -52,6 +49,10 @@ const Checkout = () => {
 
     const handlePlaceOrder = async () => {
 
+        // ----------------------------------------------------
+        // Validate shipping address
+        // ----------------------------------------------------
+
         if (!shippingAddress.trim()) {
 
             toast.error(
@@ -61,110 +62,168 @@ const Checkout = () => {
             return;
         }
 
+        // ----------------------------------------------------
+        // Prevent duplicate request
+        // ----------------------------------------------------
 
         if (loading) {
             return;
         }
 
-
         setLoading(true);
-
 
         try {
 
-            // ==================================================
+            // =================================================
+            // ORDER DATA
+            // =================================================
+
+            const orderData = {
+                shipping_address:
+                    shippingAddress.trim(),
+
+                payment_method:
+                    paymentMethod,
+            };
+
+            console.log(
+                "Sending order data:",
+                orderData
+            );
+
+            // =================================================
             // CREATE ORDER
-            // ==================================================
+            // =================================================
 
-            const orderResponse =
-                await createOrder({
+            const response = await createOrder(
+                orderData
+            );
 
-                    shipping_address:
-                        shippingAddress.trim(),
+            console.log(
+                "Complete order response:",
+                response
+            );
 
-                    payment_method:
-                        paymentMethod,
+            console.log(
+                "Order response data:",
+                response.data
+            );
 
-                });
-
+            // =================================================
+            // GET ORDER
+            // =================================================
 
             const order =
-                orderResponse.order;
+                response.data?.order ||
+                response.data;
 
+            const orderId =
+                order?.id ||
+                response.data?.order_id ||
+                response.data?.id;
 
-            if (!order || !order.id) {
+            // =================================================
+            // CHECK ORDER ID
+            // =================================================
+
+            if (!orderId) {
+
+                console.error(
+                    "Order ID missing. Backend returned:",
+                    response.data
+                );
 
                 throw new Error(
-                    "Order ID was not returned."
+                    "Order was created, but Order ID was not returned."
                 );
             }
 
+            console.log(
+                "Created Order ID:",
+                orderId
+            );
 
-            // ==================================================
+            // =================================================
             // CASH ON DELIVERY
-            // ==================================================
+            // =================================================
 
             if (
-                paymentMethod ===
-                "Cash on Delivery"
+                paymentMethod
+                === "Cash on Delivery"
             ) {
 
                 toast.success(
                     "Order placed successfully."
                 );
 
-
                 navigate(
-                    `/orders/${order.id}`
+                    `/orders/${orderId}`
                 );
-
 
                 return;
             }
 
-
-            // ==================================================
-            // SSLCOMMERZ
-            // ==================================================
+            // =================================================
+            // SSL COMMERZ
+            // =================================================
 
             if (
-                paymentMethod ===
-                "SSLCommerz"
+                paymentMethod
+                === "SSLCommerz"
             ) {
+
+                console.log(
+                    "Creating SSLCommerz payment for order:",
+                    orderId
+                );
 
                 const paymentResponse =
                     await createPayment(
-                        order.id
+                        orderId
                     );
 
+                console.log(
+                    "Payment response:",
+                    paymentResponse
+                );
 
-                if (
-                    paymentResponse &&
-                    paymentResponse.gateway_url
-                ) {
+                // =================================================
+                // GET GATEWAY URL
+                // =================================================
 
-                    toast.info(
-                        "Redirecting to SSLCommerz..."
+                const gatewayUrl =
+                    paymentResponse?.gateway_url ||
+                    paymentResponse?.data?.gateway_url;
+
+                if (!gatewayUrl) {
+
+                    console.error(
+                        "Gateway URL missing:",
+                        paymentResponse
                     );
 
-
-                    window.location.href =
-                        paymentResponse.gateway_url;
-
-
-                    return;
+                    throw new Error(
+                        "Payment gateway URL was not returned."
+                    );
                 }
 
-
-                throw new Error(
-                    "Payment gateway URL was not returned."
+                toast.info(
+                    "Redirecting to SSLCommerz..."
                 );
+
+                // =================================================
+                // REDIRECT TO SSL COMMERZ
+                // =================================================
+
+                window.location.href =
+                    gatewayUrl;
+
+                return;
             }
 
-
-            // ==================================================
-            // UNSUPPORTED METHOD
-            // ==================================================
+            // =================================================
+            // UNSUPPORTED PAYMENT METHOD
+            // =================================================
 
             throw new Error(
                 "Unsupported payment method."
@@ -173,21 +232,23 @@ const Checkout = () => {
         } catch (error) {
 
             console.error(
-                "Order creation error:",
+                "Checkout error:",
                 error
             );
 
+            console.error(
+                "Backend error response:",
+                error?.response?.data
+            );
 
-            const message =
-                error?.response?.data?.detail
-                ||
-                error?.message
-                ||
+            const backendMessage =
+                error?.response?.data?.detail ||
+                error?.response?.data?.message ||
+                error?.message ||
                 "Could not place order.";
 
-
             toast.error(
-                message
+                backendMessage
             );
 
         } finally {
@@ -217,7 +278,6 @@ const Checkout = () => {
                                 Checkout
                             </h2>
 
-
                             {/* ==================================
                                 SHIPPING ADDRESS
                             ================================== */}
@@ -236,7 +296,9 @@ const Checkout = () => {
                                     value={
                                         shippingAddress
                                     }
-                                    onChange={(event) =>
+                                    onChange={(
+                                        event
+                                    ) =>
                                         setShippingAddress(
                                             event.target.value
                                         )
@@ -260,8 +322,9 @@ const Checkout = () => {
                                     Payment Method
                                 </label>
 
-
-                                {/* COD */}
+                                {/* ==============================
+                                    COD
+                                ============================== */}
 
                                 <div className="form-check mb-2">
 
@@ -272,10 +335,13 @@ const Checkout = () => {
                                         id="cod"
                                         value="Cash on Delivery"
                                         checked={
-                                            paymentMethod ===
+                                            paymentMethod
+                                            ===
                                             "Cash on Delivery"
                                         }
-                                        onChange={(event) =>
+                                        onChange={(
+                                            event
+                                        ) =>
                                             setPaymentMethod(
                                                 event.target.value
                                             )
@@ -293,7 +359,9 @@ const Checkout = () => {
                                 </div>
 
 
-                                {/* SSLCommerz */}
+                                {/* ==============================
+                                    SSL COMMERZ
+                                ============================== */}
 
                                 <div className="form-check">
 
@@ -304,10 +372,13 @@ const Checkout = () => {
                                         id="sslcommerz"
                                         value="SSLCommerz"
                                         checked={
-                                            paymentMethod ===
+                                            paymentMethod
+                                            ===
                                             "SSLCommerz"
                                         }
-                                        onChange={(event) =>
+                                        onChange={(
+                                            event
+                                        ) =>
                                             setPaymentMethod(
                                                 event.target.value
                                             )

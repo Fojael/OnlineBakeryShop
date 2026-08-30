@@ -1,3 +1,4 @@
+from itertools import product
 from uuid import uuid4
 from decimal import Decimal
 
@@ -351,14 +352,24 @@ def finalize_success(
 
             product = item.product
 
-            product.stock_quantity -= (
-                item.quantity
-            )
+            product.stock_quantity -= item.quantity
+
+            update_fields = [
+                "stock_quantity",
+            ]
+
+            if hasattr(product, "is_available"):
+
+                product.is_available = (
+                    product.stock_quantity > 0
+                )
+
+                update_fields.append(
+                    "is_available"
+                )
 
             product.save(
-                update_fields=[
-                    "stock_quantity",
-                ],
+                update_fields=update_fields
             )
 
         order.stock_deducted = True

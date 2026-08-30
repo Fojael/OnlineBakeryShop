@@ -81,6 +81,11 @@ urlpatterns = [
             "address.urls"
         ),
     ),
+    
+    path(
+    "api/notifications/",
+    include("notifications.urls"),
+    ),
     path(
         "api/auth/refresh/",
         TokenRefreshView.as_view(),

@@ -7,6 +7,13 @@ from .views import (
     AdminOrderListView,
     AdminOrderDetailView,
     AdminOrderUpdateView,
+    
+    SupplierOrderListView,
+    SupplierOrderDetailView,
+    SupplierOrderItemStatusUpdateView,
+    SupplierDashboardView,
+    SupplierSalesAnalyticsView,
+    SupplierProductPerformanceView,
 )
 
 
@@ -37,7 +44,45 @@ urlpatterns = [
         name="admin-order-update",
     ),
 
+    # ======================================================
+    # SUPPLIER
+    # ======================================================
 
+    path(
+        "supplier/",
+        SupplierOrderListView.as_view(),
+        name="supplier-order-list",
+    ),
+
+    path(
+        "supplier/<int:order_id>/",
+        SupplierOrderDetailView.as_view(),
+        name="supplier-order-detail",
+    ),
+    
+    path(
+    "supplier/items/<int:item_id>/update/",
+    SupplierOrderItemStatusUpdateView.as_view(),
+    name="supplier-order-item-update",
+    ),
+    
+    path(
+    "supplier/dashboard/",
+    SupplierDashboardView.as_view(),
+    name="supplier-dashboard",
+    ),
+    
+    path(
+    "supplier/analytics/",
+    SupplierSalesAnalyticsView.as_view(),
+    name="supplier-sales-analytics",
+    ),
+    
+    path(
+    "supplier/products/performance/",
+    SupplierProductPerformanceView.as_view(),
+    name="supplier-product-performance",
+    ),
     # ======================================================
     # CUSTOMER
     # ======================================================

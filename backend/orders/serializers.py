@@ -275,3 +275,150 @@ class OrderCreateSerializer(
             )
 
         return value
+# ==========================================================
+# SUPPLIER ORDER ITEM SERIALIZER
+# ==========================================================
+
+class SupplierOrderItemSerializer(
+    serializers.ModelSerializer
+):
+
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True,
+    )
+
+  
+
+    subtotal = serializers.SerializerMethodField()
+
+    class Meta:
+
+        model = OrderItem
+
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "quantity",
+            "price",
+            "subtotal",
+            
+            "created_at",
+        ]
+
+        read_only_fields = fields
+
+    def get_subtotal(
+        self,
+        obj,
+    ):
+
+        return obj.subtotal
+
+
+# ==========================================================
+# SUPPLIER ORDER SERIALIZER
+# ==========================================================
+
+class SupplierOrderSerializer(
+    serializers.ModelSerializer
+):
+
+    customer_name = serializers.CharField(
+        source="customer.username",
+        read_only=True,
+    )
+
+    customer_email = serializers.EmailField(
+        source="customer.email",
+        read_only=True,
+    )
+
+    items = serializers.SerializerMethodField()
+
+    payment_status = serializers.SerializerMethodField()
+
+    transaction_id = serializers.SerializerMethodField()
+
+    class Meta:
+
+        model = Order
+
+        fields = [
+            "id",
+            "customer_name",
+            "customer_email",
+            "shipping_address",
+            "payment_method",
+            "payment_status",
+            "transaction_id",
+            "status",
+            "items",
+            "created_at",
+        ]
+
+        read_only_fields = fields
+
+    # ======================================================
+    # ONLY RETURN THIS SUPPLIER'S ITEMS
+    # ======================================================
+
+    def get_items(
+        self,
+        obj,
+    ):
+
+        supplier = self.context["supplier"]
+
+        items = obj.items.filter(
+            product__supplier=supplier
+        )
+
+        return SupplierOrderItemSerializer(
+            items,
+            many=True,
+        ).data
+
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
+    def get_payment_status(
+        self,
+        obj,
+    ):
+
+        if hasattr(obj, "payment"):
+            return obj.payment.status
+
+        if obj.payment_method == Order.PAYMENT_COD:
+            return "Cash on Delivery"
+
+        return None
+
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
+
+    def get_transaction_id(
+        self,
+        obj,
+    ):
+
+        if hasattr(obj, "payment"):
+            return obj.payment.transaction_id
+
+        return None
+    
+# ==========================================================
+# SUPPLIER ORDER ITEM STATUS SERIALIZER
+# ==========================================================
+
+class SupplierOrderItemStatusSerializer(
+    serializers.Serializer,
+):
+
+    supplier_status = serializers.ChoiceField(
+        choices=OrderItem.STATUS_CHOICES,
+    )

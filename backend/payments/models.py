@@ -158,10 +158,17 @@ class Payment(models.Model):
     def mark_pending(self):
 
         self.status = self.STATUS_PENDING
-
         self.failure_reason = ""
-
         self.paid_at = None
+
+    # ==========================================================
+    # MARK SUCCESS
+    # ==========================================================
+
+    def mark_success(self):
+
+        self.status = self.STATUS_SUCCESS
+        self.failure_reason = ""
 
     # ==========================================================
     # MARK FAILED

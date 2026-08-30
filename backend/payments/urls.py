@@ -4,43 +4,32 @@ from .views import (
     CreatePaymentView,
     PaymentStatusView,
     RetryPaymentView,
-    SSLCommerzCancelView,
-    SSLCommerzFailView,
-    SSLCommerzIPNView,
     SSLCommerzSuccessView,
+    SSLCommerzFailView,
+    SSLCommerzCancelView,
+    SSLCommerzIPNView,
 )
-
-
-app_name = "payments"
 
 
 urlpatterns = [
 
-    # ======================================================
-    # PAYMENT
-    # ======================================================
-
     path(
-        "create/<int:order_id>/",
+        "orders/<int:order_id>/create/",
         CreatePaymentView.as_view(),
         name="create-payment",
     ),
 
     path(
-        "status/<int:order_id>/",
+        "orders/<int:order_id>/status/",
         PaymentStatusView.as_view(),
         name="payment-status",
     ),
 
     path(
-        "retry/<int:order_id>/",
+        "orders/<int:order_id>/retry/",
         RetryPaymentView.as_view(),
         name="retry-payment",
     ),
-
-    # ======================================================
-    # SSL COMMERZ
-    # ======================================================
 
     path(
         "sslcommerz/success/",

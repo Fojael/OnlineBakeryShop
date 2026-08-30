@@ -37,10 +37,44 @@ export const createOrder = async (
     orderData
 ) => {
 
-    return await api.post(
-        "/orders/",
-        orderData
-    );
+    try {
+
+        console.log(
+            "Creating order:",
+            orderData
+        );
+
+        const response = await api.post(
+            "/orders/",
+            orderData
+        );
+
+        console.log(
+            "Order created:",
+            response.data
+        );
+
+        return response;
+
+    } catch (error) {
+
+        console.error(
+            "Order creation API error:",
+            error
+        );
+
+        console.error(
+            "Backend response:",
+            error.response?.data
+        );
+
+        console.error(
+            "Backend status:",
+            error.response?.status
+        );
+
+        throw error;
+    }
 
 };
 
@@ -98,13 +132,10 @@ export const updateAdminOrderStatus = async (
 ) => {
 
     return await api.patch(
-
         `/orders/admin/${orderId}/update/`,
-
         {
             status: status,
         }
-
     );
 
 };
