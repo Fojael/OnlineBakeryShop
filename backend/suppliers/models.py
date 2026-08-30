@@ -4,6 +4,10 @@ from django.db import models
 
 class Supplier(models.Model):
 
+    # ==========================================================
+    # USER ACCOUNT
+    # ==========================================================
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -12,8 +16,12 @@ class Supplier(models.Model):
         blank=True,
     )
 
+    # ==========================================================
+    # SUPPLIER INFORMATION
+    # ==========================================================
+
     name = models.CharField(
-        max_length=150
+        max_length=150,
     )
 
     company = models.CharField(
@@ -35,9 +43,17 @@ class Supplier(models.Model):
         blank=True,
     )
 
+    # ==========================================================
+    # STATUS
+    # ==========================================================
+
     is_active = models.BooleanField(
         default=True,
     )
+
+    # ==========================================================
+    # TIMESTAMPS
+    # ==========================================================
 
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -47,5 +63,10 @@ class Supplier(models.Model):
         auto_now=True,
     )
 
+    # ==========================================================
+    # STRING
+    # ==========================================================
+
     def __str__(self):
+
         return self.name
