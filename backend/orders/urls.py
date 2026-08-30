@@ -16,6 +16,29 @@ app_name = "orders"
 urlpatterns = [
 
     # ======================================================
+    # ADMIN
+    # ======================================================
+
+    path(
+        "admin/",
+        AdminOrderListView.as_view(),
+        name="admin-order-list",
+    ),
+
+    path(
+        "admin/<int:order_id>/",
+        AdminOrderDetailView.as_view(),
+        name="admin-order-detail",
+    ),
+
+    path(
+        "admin/<int:order_id>/update/",
+        AdminOrderUpdateView.as_view(),
+        name="admin-order-update",
+    ),
+
+
+    # ======================================================
     # CUSTOMER
     # ======================================================
 
@@ -37,25 +60,4 @@ urlpatterns = [
         name="cancel-order",
     ),
 
-    # ======================================================
-    # ADMIN
-    # ======================================================
-
-    path(
-        "admin/",
-        AdminOrderListView.as_view(),
-        name="admin-order-list",
-    ),
-
-    path(
-        "admin/<int:order_id>/",
-        AdminOrderDetailView.as_view(),
-        name="admin-order-detail",
-    ),
-
-    path(
-        "admin/<int:order_id>/update/",
-        AdminOrderUpdateView.as_view(),
-        name="admin-order-update",
-    ),
 ]

@@ -22,21 +22,35 @@ from .serializers import (
 # REGISTER
 # ==========================================================
 
-class RegisterView(generics.CreateAPIView):
+class RegisterView(
+    generics.CreateAPIView
+):
+
     queryset = User.objects.all()
+
     serializer_class = RegisterSerializer
-    permission_classes = [AllowAny]
+
+    permission_classes = [
+        AllowAny
+    ]
 
 
 # ==========================================================
 # LOGIN
 # ==========================================================
 
-class LoginView(APIView):
+class LoginView(
+    APIView
+):
 
-    permission_classes = [AllowAny]
+    permission_classes = [
+        AllowAny
+    ]
 
-    def post(self, request):
+    def post(
+        self,
+        request,
+    ):
 
         serializer = LoginSerializer(
             data=request.data
@@ -46,48 +60,93 @@ class LoginView(APIView):
             raise_exception=True
         )
 
-        user = serializer.validated_data["user"]
+        user = serializer.validated_data[
+            "user"
+        ]
 
-        refresh = RefreshToken.for_user(user)
+        # ==================================================
+        # CREATE JWT TOKENS
+        # ==================================================
 
-        return Response({
+        refresh = RefreshToken.for_user(
+            user
+        )
 
-            "access": str(refresh.access_token),
+        access = refresh.access_token
 
-            "refresh": str(refresh),
+        # ==================================================
+        # PROFILE IMAGE
+        # ==================================================
 
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "phone": user.phone,
-                "role": user.role,
-                "profile_image": (
-                    request.build_absolute_uri(
-                        user.profile_image.url
-                    )
-                    if user.profile_image
-                    else None
-                ),
-            }
+        profile_image = None
 
-        })
+        if user.profile_image:
+
+            profile_image = (
+                request.build_absolute_uri(
+                    user.profile_image.url
+                )
+            )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        return Response(
+
+            {
+                "access": str(access),
+
+                "refresh": str(refresh),
+
+                "user": {
+
+                    "id": user.id,
+
+                    "username": user.username,
+
+                    "email": user.email,
+
+                    "phone": user.phone,
+
+                    "role": user.role,
+
+                    "profile_image":
+                        profile_image,
+
+                },
+            },
+
+            status=status.HTTP_200_OK,
+        )
 
 
 # ==========================================================
 # PROFILE
 # ==========================================================
 
-class ProfileView(generics.RetrieveUpdateAPIView):
+class ProfileView(
+    generics.RetrieveUpdateAPIView
+):
 
     serializer_class = UserSerializer
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [
+        IsAuthenticated
+    ]
 
-    def get_object(self):
+    def get_object(
+        self
+    ):
+
         return self.request.user
 
-    def update(self, request, *args, **kwargs):
+    def update(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
 
         user = self.get_object()
 
@@ -103,23 +162,33 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
         serializer.save()
 
-        return Response({
-            "message":
-                "Profile updated successfully.",
-            "user":
-                serializer.data,
-        })
+        return Response(
+            {
+                "message":
+                    "Profile updated successfully.",
+
+                "user":
+                    serializer.data,
+            }
+        )
 
 
 # ==========================================================
 # CHANGE PASSWORD
 # ==========================================================
 
-class ChangePasswordView(APIView):
+class ChangePasswordView(
+    APIView
+):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [
+        IsAuthenticated
+    ]
 
-    def post(self, request):
+    def post(
+        self,
+        request,
+    ):
 
         serializer = ChangePasswordSerializer(
             data=request.data
@@ -131,20 +200,30 @@ class ChangePasswordView(APIView):
 
         user = request.user
 
+        # ==================================================
+        # CHECK OLD PASSWORD
+        # ==================================================
+
         if not user.check_password(
             serializer.validated_data[
                 "old_password"
             ]
         ):
+
             return Response(
+
                 {
-                    "old_password":
-                        [
-                            "Old password is incorrect."
-                        ]
+                    "old_password": [
+                        "Old password is incorrect."
+                    ]
                 },
+
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # ==================================================
+        # SET NEW PASSWORD
+        # ==================================================
 
         user.set_password(
             serializer.validated_data[
@@ -155,10 +234,12 @@ class ChangePasswordView(APIView):
         user.save()
 
         return Response(
+
             {
                 "message":
                     "Password changed successfully."
             },
+
             status=status.HTTP_200_OK,
         )
 
@@ -167,22 +248,32 @@ class ChangePasswordView(APIView):
 # LOGOUT
 # ==========================================================
 
-class LogoutView(APIView):
+class LogoutView(
+    APIView
+):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [
+        IsAuthenticated
+    ]
 
-    def post(self, request):
+    def post(
+        self,
+        request,
+    ):
 
         refresh_token = request.data.get(
             "refresh"
         )
 
         if not refresh_token:
+
             return Response(
+
                 {
                     "detail":
                         "Refresh token is required."
                 },
+
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -195,20 +286,24 @@ class LogoutView(APIView):
             token.blacklist()
 
             return Response(
+
                 {
                     "message":
                         "Logout successful."
                 },
+
                 status=status.HTTP_205_RESET_CONTENT,
             )
 
         except Exception:
 
             return Response(
+
                 {
                     "detail":
                         "Invalid or expired refresh token."
                 },
+
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -217,24 +312,36 @@ class LogoutView(APIView):
 # ADMIN DASHBOARD
 # ==========================================================
 
-class AdminDashboardView(APIView):
+class AdminDashboardView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
         IsAdmin,
     ]
 
-    def get(self, request):
+    def get(
+        self,
+        request,
+    ):
 
-        return Response({
+        return Response(
 
-            "message":
-                "Welcome Admin",
+            {
+                "message":
+                    "Welcome Admin",
 
-            "admin": {
-                "id": request.user.id,
-                "username": request.user.username,
-                "email": request.user.email,
+                "admin": {
+
+                    "id":
+                        request.user.id,
+
+                    "username":
+                        request.user.username,
+
+                    "email":
+                        request.user.email,
+                }
             }
-
-        })
+        )

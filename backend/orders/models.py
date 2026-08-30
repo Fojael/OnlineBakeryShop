@@ -139,25 +139,65 @@ class Order(models.Model):
     @property
     def can_cancel(self):
 
-        # COD orders can be cancelled while pending/processing.
+        # ------------------------------------------------------
+        # Cancelled orders
+        # ------------------------------------------------------
+
+        if self.status == self.STATUS_CANCELLED:
+            return False
+
+        # ------------------------------------------------------
+        # Delivered orders
+        # ------------------------------------------------------
+
+        if self.status == self.STATUS_DELIVERED:
+            return False
+
+        # ------------------------------------------------------
+        # Only Pending / Processing orders
+        # ------------------------------------------------------
+
+        if self.status not in [
+            self.STATUS_PENDING,
+            self.STATUS_PROCESSING,
+        ]:
+            return False
+
+        # ------------------------------------------------------
+        # COD
+        #
+        # Pending and Processing COD orders can be cancelled.
+        # ------------------------------------------------------
+
         if self.payment_method == self.PAYMENT_COD:
+            return True
 
-            return self.status in [
-                self.STATUS_PENDING,
-                self.STATUS_PROCESSING,
-            ]
+        # ------------------------------------------------------
+        # SSLCommerz
+        #
+        # Successfully paid online orders cannot be cancelled.
+        #
+        # Pending/failed/cancelled payment orders can be cancelled
+        # while the order itself is still Pending.
+        # ------------------------------------------------------
 
-        # Online payments can only be cancelled while
-        # the payment is still pending.
-        if hasattr(self, "payment"):
+        if self.payment_method == self.PAYMENT_SSLCOMMERZ:
 
-            if (
-                self.payment.status
-                == self.payment.STATUS_SUCCESS
-            ):
-                return False
+            if hasattr(self, "payment"):
 
-        return self.status == self.STATUS_PENDING
+                if (
+                    self.payment.status
+                    == self.payment.STATUS_SUCCESS
+                ):
+                    return False
+
+            return self.status == self.STATUS_PENDING
+
+        # ------------------------------------------------------
+        # Other payment methods
+        # ------------------------------------------------------
+
+        return False
 
     # ==========================================================
     # STRING

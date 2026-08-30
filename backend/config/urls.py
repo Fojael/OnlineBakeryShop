@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework_simplejwt.views import TokenRefreshView
 
 
 urlpatterns = [
@@ -79,6 +80,11 @@ urlpatterns = [
         include(
             "address.urls"
         ),
+    ),
+    path(
+        "api/auth/refresh/",
+        TokenRefreshView.as_view(),
+        name="token-refresh",
     ),
 ]
 

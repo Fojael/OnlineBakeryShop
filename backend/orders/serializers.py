@@ -7,17 +7,31 @@ from .models import Order, OrderItem
 # ORDER ITEM SERIALIZER
 # ==========================================================
 
-class OrderItemSerializer(serializers.ModelSerializer):
+class OrderItemSerializer(
+    serializers.ModelSerializer
+):
+
+    # ======================================================
+    # PRODUCT ID
+    # ======================================================
 
     product_id = serializers.IntegerField(
         source="product.id",
         read_only=True,
     )
 
+    # ======================================================
+    # PRODUCT NAME
+    # ======================================================
+
     product_name = serializers.CharField(
         source="product.name",
         read_only=True,
     )
+
+    # ======================================================
+    # SUBTOTAL
+    # ======================================================
 
     subtotal = serializers.SerializerMethodField()
 
@@ -37,7 +51,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
         read_only_fields = fields
 
-    def get_subtotal(self, obj):
+    # ======================================================
+    # GET SUBTOTAL
+    # ======================================================
+
+    def get_subtotal(
+        self,
+        obj,
+    ):
 
         return obj.subtotal
 
@@ -46,30 +67,73 @@ class OrderItemSerializer(serializers.ModelSerializer):
 # ORDER SERIALIZER
 # ==========================================================
 
-class OrderSerializer(serializers.ModelSerializer):
+class OrderSerializer(
+    serializers.ModelSerializer
+):
+
+    # ======================================================
+    # CUSTOMER NAME
+    # ======================================================
 
     customer_name = serializers.CharField(
         source="customer.username",
         read_only=True,
     )
 
+    # ======================================================
+    # CUSTOMER EMAIL
+    # ======================================================
+
     customer_email = serializers.EmailField(
         source="customer.email",
         read_only=True,
     )
+
+    # ======================================================
+    # ORDER ITEMS
+    # ======================================================
 
     items = OrderItemSerializer(
         many=True,
         read_only=True,
     )
 
+    # ======================================================
+    # ITEM COUNT
+    # ======================================================
+
     item_count = serializers.SerializerMethodField()
 
-    payment_status = serializers.SerializerMethodField()
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
 
-    transaction_id = serializers.SerializerMethodField()
+    payment_status = (
+        serializers.SerializerMethodField()
+    )
+
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
+
+    transaction_id = (
+        serializers.SerializerMethodField()
+    )
+
+    # ======================================================
+    # PAYMENT FLAG
+    # ======================================================
 
     is_paid = serializers.ReadOnlyField()
+
+    # ======================================================
+    # CAN CANCEL
+    #
+    # Uses Order.can_cancel property.
+    #
+    # IMPORTANT:
+    # No stock_deducted field is used.
+    # ======================================================
 
     can_cancel = serializers.ReadOnlyField()
 
@@ -89,7 +153,6 @@ class OrderSerializer(serializers.ModelSerializer):
             "delivery_charge",
             "total_amount",
             "status",
-            "stock_deducted",
             "is_paid",
             "can_cancel",
             "items",
@@ -100,11 +163,25 @@ class OrderSerializer(serializers.ModelSerializer):
 
         read_only_fields = fields
 
-    def get_item_count(self, obj):
+    # ======================================================
+    # ITEM COUNT
+    # ======================================================
+
+    def get_item_count(
+        self,
+        obj,
+    ):
 
         return obj.items.count()
 
-    def get_payment_status(self, obj):
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
+    def get_payment_status(
+        self,
+        obj,
+    ):
 
         if hasattr(obj, "payment"):
 
@@ -119,7 +196,14 @@ class OrderSerializer(serializers.ModelSerializer):
 
         return None
 
-    def get_transaction_id(self, obj):
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
+
+    def get_transaction_id(
+        self,
+        obj,
+    ):
 
         if hasattr(obj, "payment"):
 
@@ -149,7 +233,10 @@ class OrderCreateSerializer(
     # SHIPPING ADDRESS
     # ======================================================
 
-    def validate_shipping_address(self, value):
+    def validate_shipping_address(
+        self,
+        value,
+    ):
 
         value = value.strip()
 
@@ -171,7 +258,10 @@ class OrderCreateSerializer(
     # PAYMENT METHOD
     # ======================================================
 
-    def validate_payment_method(self, value):
+    def validate_payment_method(
+        self,
+        value,
+    ):
 
         allowed = [
             Order.PAYMENT_COD,

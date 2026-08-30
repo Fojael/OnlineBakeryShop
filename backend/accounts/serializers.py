@@ -7,19 +7,25 @@ from .models import User
 
 
 # ==========================================================
-# REGISTER
+# REGISTER SERIALIZER
 # ==========================================================
 
-class RegisterSerializer(serializers.ModelSerializer):
+class RegisterSerializer(
+    serializers.ModelSerializer
+):
 
     password = serializers.CharField(
         write_only=True,
         validators=[validate_password],
-        style={"input_type": "password"},
+        style={
+            "input_type": "password"
+        },
     )
 
     class Meta:
+
         model = User
+
         fields = [
             "id",
             "username",
@@ -28,45 +34,106 @@ class RegisterSerializer(serializers.ModelSerializer):
             "password",
         ]
 
-    def create(self, validated_data):
-        password = validated_data.pop("password")
+        read_only_fields = [
+            "id",
+        ]
 
-        user = User(
-            role="CUSTOMER",
-            **validated_data
+    # ======================================================
+    # CREATE USER
+    # ======================================================
+
+    def create(
+        self,
+        validated_data,
+    ):
+
+        password = validated_data.pop(
+            "password"
         )
 
-        user.set_password(password)
+        user = User(
+            role=User.ROLE_CUSTOMER,
+            **validated_data,
+        )
+
+        user.set_password(
+            password
+        )
+
         user.save()
 
         return user
 
 
 # ==========================================================
-# LOGIN
+# LOGIN SERIALIZER
 # ==========================================================
 
-class LoginSerializer(serializers.Serializer):
+class LoginSerializer(
+    serializers.Serializer
+):
 
-    email = serializers.EmailField()
+    email = serializers.EmailField(
+        required=True,
+    )
 
     password = serializers.CharField(
         write_only=True,
-        style={"input_type": "password"},
+        required=True,
+        style={
+            "input_type": "password"
+        },
     )
 
-    def validate(self, attrs):
-        email = attrs.get("email")
-        password = attrs.get("password")
+    def validate(
+        self,
+        attrs,
+    ):
 
-        user = authenticate(
-            username=email,
-            password=password,
+        email = attrs.get(
+            "email"
         )
 
-        if not user:
+        password = attrs.get(
+            "password"
+        )
+
+        # ==================================================
+        # FIND USER
+        # ==================================================
+
+        try:
+
+            user = User.objects.get(
+                email__iexact=email
+            )
+
+        except User.DoesNotExist:
+
             raise serializers.ValidationError(
                 "Invalid email or password."
+            )
+
+        # ==================================================
+        # CHECK PASSWORD
+        # ==================================================
+
+        if not user.check_password(
+            password
+        ):
+
+            raise serializers.ValidationError(
+                "Invalid email or password."
+            )
+
+        # ==================================================
+        # CHECK ACTIVE
+        # ==================================================
+
+        if not user.is_active:
+
+            raise serializers.ValidationError(
+                "This account is inactive."
             )
 
         attrs["user"] = user
@@ -75,10 +142,12 @@ class LoginSerializer(serializers.Serializer):
 
 
 # ==========================================================
-# PROFILE
+# PROFILE SERIALIZER
 # ==========================================================
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(
+    serializers.ModelSerializer
+):
 
     profile_image = serializers.ImageField(
         required=False,
@@ -86,6 +155,7 @@ class UserSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
+
         model = User
 
         fields = [
@@ -104,29 +174,47 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 # ==========================================================
-# CHANGE PASSWORD
+# CHANGE PASSWORD SERIALIZER
 # ==========================================================
 
-class ChangePasswordSerializer(serializers.Serializer):
+class ChangePasswordSerializer(
+    serializers.Serializer
+):
 
     old_password = serializers.CharField(
         write_only=True,
-        style={"input_type": "password"},
+        style={
+            "input_type": "password"
+        },
     )
 
     new_password = serializers.CharField(
         write_only=True,
-        validators=[validate_password],
-        style={"input_type": "password"},
+        validators=[
+            validate_password
+        ],
+        style={
+            "input_type": "password"
+        },
     )
 
     confirm_password = serializers.CharField(
         write_only=True,
-        style={"input_type": "password"},
+        style={
+            "input_type": "password"
+        },
     )
 
-    def validate(self, attrs):
-        if attrs["new_password"] != attrs["confirm_password"]:
+    def validate(
+        self,
+        attrs,
+    ):
+
+        if (
+            attrs["new_password"]
+            != attrs["confirm_password"]
+        ):
+
             raise serializers.ValidationError(
                 {
                     "confirm_password":

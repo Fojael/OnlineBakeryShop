@@ -5,12 +5,22 @@ from .views import (
     InventoryUpdateView,
 )
 
+from .dashboard_views import (
+    InventoryDashboardView,
+)
+
 urlpatterns = [
 
     path(
         "",
         InventoryListView.as_view(),
         name="inventory-list",
+    ),
+
+    path(
+        "dashboard/",
+        InventoryDashboardView.as_view(),
+        name="inventory-dashboard",
     ),
 
     path(

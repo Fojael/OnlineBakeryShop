@@ -1,146 +1,110 @@
 import api from "./api";
 
 
-// ==========================================================
-// CUSTOMER ORDERS
-// ==========================================================
+// ============================================================
+// CUSTOMER - GET ALL ORDERS
+// ============================================================
 
+export const getOrders = async () => {
 
-// GET /api/orders/
-export const getMyOrders = async () => {
-
-    const response = await api.get(
+    return await api.get(
         "/orders/"
     );
 
-    return response.data;
 };
 
 
-// GET /api/orders/<orderId>/
+// ============================================================
+// CUSTOMER - GET SINGLE ORDER
+// ============================================================
+
 export const getOrder = async (
     orderId
 ) => {
 
-    const response = await api.get(
+    return await api.get(
         `/orders/${orderId}/`
     );
 
-    return response.data;
 };
 
 
-// POST /api/orders/
+// ============================================================
+// CUSTOMER - CREATE ORDER
+// ============================================================
+
 export const createOrder = async (
-    data
+    orderData
 ) => {
 
-    const response = await api.post(
+    return await api.post(
         "/orders/",
-        data
+        orderData
     );
 
-    return response.data;
 };
 
 
-// POST /api/orders/<orderId>/cancel/
+// ============================================================
+// CUSTOMER - CANCEL ORDER
+// ============================================================
+
 export const cancelOrder = async (
     orderId
 ) => {
 
-    const response = await api.post(
+    return await api.post(
         `/orders/${orderId}/cancel/`
     );
 
-    return response.data;
 };
 
 
-// ==========================================================
-// ADMIN ORDERS
-// ==========================================================
+// ============================================================
+// ADMIN - GET ALL ORDERS
+// ============================================================
 
-
-// GET /api/orders/admin/
 export const getAdminOrders = async () => {
 
-    const response = await api.get(
+    return await api.get(
         "/orders/admin/"
     );
 
-    return response.data;
 };
 
 
-// GET /api/orders/admin/<orderId>/
+// ============================================================
+// ADMIN - GET SINGLE ORDER
+// ============================================================
+
 export const getAdminOrder = async (
     orderId
 ) => {
 
-    const response = await api.get(
+    return await api.get(
         `/orders/admin/${orderId}/`
     );
 
-    return response.data;
 };
 
 
-// PATCH /api/orders/admin/<orderId>/update/
+// ============================================================
+// ADMIN - UPDATE ORDER STATUS
+// ============================================================
+
 export const updateAdminOrderStatus = async (
     orderId,
     status
 ) => {
 
-    const response = await api.patch(
+    return await api.patch(
+
         `/orders/admin/${orderId}/update/`,
+
         {
             status: status,
         }
+
     );
 
-    return response.data;
 };
-
-
-// ==========================================================
-// ALIASES
-// ==========================================================
-
-export const getOrders =
-    getMyOrders;
-
-export const getCustomerOrders =
-    getMyOrders;
-
-export const getOrderDetails =
-    getOrder;
-
-export const updateOrderStatus =
-    updateAdminOrderStatus;
-
-
-// ==========================================================
-// DEFAULT EXPORT
-// ==========================================================
-
-const orderService = {
-
-    getMyOrders,
-    getOrder,
-    createOrder,
-    cancelOrder,
-
-    getAdminOrders,
-    getAdminOrder,
-    updateAdminOrderStatus,
-
-    getOrders,
-    getCustomerOrders,
-    getOrderDetails,
-    updateOrderStatus,
-
-};
-
-
-export default orderService;

@@ -1,53 +1,76 @@
-from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db import models
 
 
 class User(AbstractUser):
-    # ==========================================================
-    # USER ROLES
-    # ==========================================================
-
-    ROLE_CHOICES = (
-        ("ADMIN", "Admin"),
-        ("CUSTOMER", "Customer"),
-        ("SUPPLIER", "Supplier"),
-        ("DELIVERY", "Delivery Rider"),
-    )
 
     # ==========================================================
-    # AUTHENTICATION
+    # EMAIL
     # ==========================================================
 
     email = models.EmailField(
         unique=True,
-        db_index=True,
     )
 
-    USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["username"]
-
     # ==========================================================
-    # PROFILE
+    # PHONE
     # ==========================================================
 
     phone = models.CharField(
         max_length=20,
         blank=True,
-    )
-
-    profile_image = models.ImageField(
-        upload_to="profiles/",
-        default="profiles/default.png",
-        blank=True,
         null=True,
     )
+
+    # ==========================================================
+    # ROLE
+    # ==========================================================
+
+    ROLE_CUSTOMER = "CUSTOMER"
+    ROLE_ADMIN = "ADMIN"
+    ROLE_SUPPLIER = "SUPPLIER"
+    ROLE_DELIVERY = "DELIVERY"
+
+    ROLE_CHOICES = [
+        (ROLE_CUSTOMER, "Customer"),
+        (ROLE_ADMIN, "Admin"),
+        (ROLE_SUPPLIER, "Supplier"),
+        (ROLE_DELIVERY, "Delivery Rider"),
+    ]
 
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default="CUSTOMER",
-        db_index=True,
+        default=ROLE_CUSTOMER,
     )
+
+    # ==========================================================
+    # PROFILE IMAGE
+    # ==========================================================
+
+    profile_image = models.ImageField(
+        upload_to="profiles/",
+        blank=True,
+        null=True,
+    )
+
+    # ==========================================================
+    # EMAIL LOGIN
+    # ==========================================================
+
+    USERNAME_FIELD = "email"
+
+    REQUIRED_FIELDS = [
+        "username",
+    ]
+
+    # ==========================================================
+    # STRING REPRESENTATION
+    # ==========================================================
+
+    def __str__(self):
+
+        return self.email
 
     # ==========================================================
     # ACCOUNT STATUS
