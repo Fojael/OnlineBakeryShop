@@ -3,22 +3,30 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from accounts.models import User
-
 from products.models import Product
 
 from .models import Supplier
 
 
 # ==========================================================
-# PRODUCT (Dashboard)
+# SUPPLIER PRODUCT SERIALIZER
 # ==========================================================
 
 class SupplierProductSerializer(
     serializers.ModelSerializer
 ):
+    """
+    Serializer used by suppliers to manage
+    their own products.
+    """
 
     category_name = serializers.CharField(
         source="category.name",
+        read_only=True,
+    )
+
+    supplier_name = serializers.CharField(
+        source="supplier.name",
         read_only=True,
     )
 
@@ -45,6 +53,10 @@ class SupplierProductSerializer(
 
             "id",
 
+            "supplier",
+
+            "supplier_name",
+
             "name",
 
             "category",
@@ -63,7 +75,61 @@ class SupplierProductSerializer(
 
             "is_available",
 
+            "created_at",
+
+            "updated_at",
+
         )
+
+        read_only_fields = (
+
+            "id",
+
+            "supplier",
+
+            "supplier_name",
+
+            "category_name",
+
+            "current_stock",
+
+            "minimum_stock",
+
+            "inventory_status",
+
+            "created_at",
+
+            "updated_at",
+
+        )
+
+    # ======================================================
+    # PRICE VALIDATION
+    # ======================================================
+
+    def validate_price(self, value):
+
+        if value < 0:
+
+            raise serializers.ValidationError(
+                "Price cannot be negative."
+            )
+
+        return value
+
+    # ======================================================
+    # STOCK VALIDATION
+    # ======================================================
+
+    def validate_stock_quantity(self, value):
+
+        if value < 0:
+
+            raise serializers.ValidationError(
+                "Stock quantity cannot be negative."
+            )
+
+        return value
 
 
 # ==========================================================
@@ -206,8 +272,6 @@ class SupplierRegisterSerializer(
 
         )
 
-    # ======================================================
-
     def validate_username(
         self,
         value,
@@ -222,8 +286,6 @@ class SupplierRegisterSerializer(
             )
 
         return value
-
-    # ======================================================
 
     def validate_email(
         self,
@@ -240,8 +302,6 @@ class SupplierRegisterSerializer(
 
         return value
 
-    # ======================================================
-
     def validate(
         self,
         attrs,
@@ -253,17 +313,13 @@ class SupplierRegisterSerializer(
         ):
 
             raise serializers.ValidationError(
-
                 {
                     "confirm_password":
                         "Passwords do not match."
                 }
-
             )
 
         return attrs
-
-    # ======================================================
 
     def create(
         self,
@@ -381,7 +437,7 @@ class SupplierProfileSerializer(
 
 
 # ==========================================================
-# DASHBOARD
+# SUPPLIER DASHBOARD
 # ==========================================================
 
 class SupplierDashboardSerializer(

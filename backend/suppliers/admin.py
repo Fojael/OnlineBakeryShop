@@ -4,6 +4,10 @@ from django.utils import timezone
 from .models import Supplier
 
 
+# ==========================================================
+# APPROVE SUPPLIERS
+# ==========================================================
+
 @admin.action(
     description="Approve selected suppliers"
 )
@@ -28,13 +32,19 @@ def approve_suppliers(
         )
 
         if supplier.user:
+
             supplier.user.is_active = True
+
             supplier.user.save(
                 update_fields=[
                     "is_active",
                 ]
             )
 
+
+# ==========================================================
+# REMOVE APPROVAL
+# ==========================================================
 
 @admin.action(
     description="Remove supplier approval"
@@ -60,13 +70,19 @@ def unapprove_suppliers(
         )
 
         if supplier.user:
+
             supplier.user.is_active = False
+
             supplier.user.save(
                 update_fields=[
                     "is_active",
                 ]
             )
 
+
+# ==========================================================
+# ACTIVATE SUPPLIERS
+# ==========================================================
 
 @admin.action(
     description="Activate selected suppliers"
@@ -80,6 +96,7 @@ def activate_suppliers(
     for supplier in queryset.select_related("user"):
 
         supplier.is_active = True
+
         supplier.save(
             update_fields=[
                 "is_active",
@@ -87,13 +104,19 @@ def activate_suppliers(
         )
 
         if supplier.user:
+
             supplier.user.is_active = True
+
             supplier.user.save(
                 update_fields=[
                     "is_active",
                 ]
             )
 
+
+# ==========================================================
+# DEACTIVATE SUPPLIERS
+# ==========================================================
 
 @admin.action(
     description="Deactivate selected suppliers"
@@ -107,6 +130,7 @@ def deactivate_suppliers(
     for supplier in queryset.select_related("user"):
 
         supplier.is_active = False
+
         supplier.save(
             update_fields=[
                 "is_active",
@@ -114,13 +138,19 @@ def deactivate_suppliers(
         )
 
         if supplier.user:
+
             supplier.user.is_active = False
+
             supplier.user.save(
                 update_fields=[
                     "is_active",
                 ]
             )
 
+
+# ==========================================================
+# SUPPLIER ADMIN
+# ==========================================================
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
@@ -243,4 +273,5 @@ class SupplierAdmin(admin.ModelAdmin):
                 ),
             },
         ),
+
     )

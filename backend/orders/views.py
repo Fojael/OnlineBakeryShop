@@ -1647,6 +1647,10 @@ class SupplierOrderItemStatusUpdateView(APIView):
 
         # ==================================================
         # GET ORDER ITEM
+        #
+        # IMPORTANT:
+        # The supplier can only access their own
+        # product's order item.
         # ==================================================
 
         order_item = get_object_or_404(
@@ -1662,7 +1666,7 @@ class SupplierOrderItemStatusUpdateView(APIView):
         )
 
         # ==================================================
-        # VALIDATE STATUS
+        # VALIDATE REQUEST
         # ==================================================
 
         serializer = (
@@ -1680,6 +1684,129 @@ class SupplierOrderItemStatusUpdateView(APIView):
         ]
 
         old_status = order_item.supplier_status
+
+        # ==================================================
+        # SUPPLIER DELIVERY RESTRICTION
+        #
+        # Supplier must NOT mark an item as Delivered.
+        #
+        # Delivery rider will handle:
+        #
+        # Ready
+        #   ↓
+        # Accepted
+        #   ↓
+        # Picked Up
+        #   ↓
+        # Out for Delivery
+        #   ↓
+        # Delivered
+        # ==================================================
+
+        if new_status == OrderItem.STATUS_DELIVERED:
+
+            return Response(
+                {
+                    "detail": (
+                        "Suppliers cannot mark "
+                        "orders as Delivered. "
+                        "The delivery rider handles "
+                        "the delivery process."
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ==================================================
+        # SUPPLIER ALLOWED STATUSES
+        #
+        # Supplier workflow:
+        #
+        # Pending
+        #    ↓
+        # Processing
+        #    ↓
+        # Ready
+        # ==================================================
+
+        allowed_supplier_statuses = [
+            OrderItem.STATUS_PENDING,
+            OrderItem.STATUS_PROCESSING,
+            OrderItem.STATUS_READY,
+        ]
+
+        if new_status not in allowed_supplier_statuses:
+
+            return Response(
+                {
+                    "detail": (
+                        "Invalid supplier status."
+                    ),
+                    "allowed_statuses": (
+                        allowed_supplier_statuses
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # STATUS TRANSITION VALIDATION
+        #
+        # Pending → Processing
+        # Processing → Ready
+        #
+        # We also allow the supplier to keep the same
+        # status.
+        # ==================================================
+
+        valid_transitions = {
+
+            OrderItem.STATUS_PENDING: [
+                OrderItem.STATUS_PENDING,
+                OrderItem.STATUS_PROCESSING,
+            ],
+
+            OrderItem.STATUS_PROCESSING: [
+                OrderItem.STATUS_PROCESSING,
+                OrderItem.STATUS_READY,
+            ],
+
+            OrderItem.STATUS_READY: [
+                OrderItem.STATUS_READY,
+            ],
+
+            # Kept only for compatibility with existing
+            # records. A Delivered item cannot be changed
+            # by the supplier.
+            OrderItem.STATUS_DELIVERED: [
+                OrderItem.STATUS_DELIVERED,
+            ],
+
+            OrderItem.STATUS_CANCELLED: [
+                OrderItem.STATUS_CANCELLED,
+            ],
+        }
+
+        if (
+            new_status
+            not in valid_transitions.get(
+                old_status,
+                [],
+            )
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        f"Invalid status transition: "
+                        f"{old_status} → {new_status}."
+                    ),
+                    "workflow": (
+                        "Pending → Processing → Ready"
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # ==================================================
         # NO CHANGE
@@ -1701,7 +1828,7 @@ class SupplierOrderItemStatusUpdateView(APIView):
             )
 
         # ==================================================
-        # UPDATE ITEM
+        # UPDATE SUPPLIER ITEM STATUS
         # ==================================================
 
         order_item.supplier_status = new_status
@@ -1719,10 +1846,13 @@ class SupplierOrderItemStatusUpdateView(APIView):
         order = order_item.order
 
         # ==================================================
-        # CUSTOMER NOTIFICATION
+        # CUSTOMER NOTIFICATIONS
         # ==================================================
 
-        if new_status == OrderItem.STATUS_PROCESSING:
+        if (
+            new_status
+            == OrderItem.STATUS_PROCESSING
+        ):
 
             notify_customer(
                 customer=order.customer,
@@ -1736,14 +1866,18 @@ class SupplierOrderItemStatusUpdateView(APIView):
                 ),
             )
 
-        elif new_status == OrderItem.STATUS_READY:
+        elif (
+            new_status
+            == OrderItem.STATUS_READY
+        ):
 
             notify_customer(
                 customer=order.customer,
                 title="Order Ready",
                 message=(
                     f"Your Order #{order.id} "
-                    "has been prepared and is ready."
+                    "has been prepared and is ready "
+                    "for delivery."
                 ),
                 notification_type=(
                     Notification.TYPE_INFO
@@ -1751,59 +1885,17 @@ class SupplierOrderItemStatusUpdateView(APIView):
             )
 
         # ==================================================
-        # CHECK ALL ITEMS
+        # UPDATE PARENT ORDER TO PROCESSING
+        #
+        # Supplier activity can move an order from
+        # Pending → Processing.
+        #
+        # Supplier does NOT move the order to Delivered.
         # ==================================================
 
-        all_items = list(
-            order.items.all()
-        )
-
-        # ==================================================
-        # ALL DELIVERED
-        # ==================================================
-
-        if all_items and all(
-            item.supplier_status
-            == OrderItem.STATUS_DELIVERED
-            for item in all_items
-        ):
-
-            if (
-                order.status
-                != Order.STATUS_DELIVERED
-            ):
-
-                order.status = (
-                    Order.STATUS_DELIVERED
-                )
-
-                order.save(
-                    update_fields=[
-                        "status",
-                        "updated_at",
-                    ],
-                )
-
-                notify_customer(
-                    customer=order.customer,
-                    title="Order Delivered",
-                    message=(
-                        f"Your Order #{order.id} "
-                        "has been delivered."
-                    ),
-                    notification_type=(
-                        Notification.TYPE_DELIVERED
-                    ),
-                )
-
-        # ==================================================
-        # SOME ITEM PROCESSING
-        # ==================================================
-
-        elif any(
-            item.supplier_status
+        if (
+            new_status
             == OrderItem.STATUS_PROCESSING
-            for item in all_items
         ):
 
             if (
@@ -1823,21 +1915,39 @@ class SupplierOrderItemStatusUpdateView(APIView):
                 )
 
         # ==================================================
+        # IMPORTANT
+        #
+        # DO NOT DO THIS HERE:
+        #
+        # if all_items and all(
+        #     item.supplier_status
+        #     == OrderItem.STATUS_DELIVERED
+        #     for item in all_items
+        # ):
+        #     order.status = Order.STATUS_DELIVERED
+        #
+        # Delivery completion will be handled by the
+        # Delivery Dashboard in Phase 10.
+        # ==================================================
+
+        # ==================================================
         # RESPONSE
         # ==================================================
 
         return Response(
             {
                 "message": (
-                    "Order item updated successfully."
+                    "Order item status updated "
+                    "successfully."
                 ),
+                "order_id": order.id,
+                "order_item_id": order_item.id,
                 "supplier_status": (
                     order_item.supplier_status
                 ),
             },
             status=status.HTTP_200_OK,
         )
-
 
 # ==========================================================
 # SUPPLIER DASHBOARD

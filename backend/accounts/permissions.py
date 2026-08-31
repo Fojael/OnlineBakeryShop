@@ -5,20 +5,31 @@ from rest_framework.permissions import BasePermission
 # BASE ROLE PERMISSION
 # ==========================================================
 
-class RolePermission(BasePermission):
+class RolePermission(
+    BasePermission
+):
     """
-    Base permission class for role-based authorization.
+    Base permission class for
+    role-based authorization.
     """
 
     allowed_roles = []
 
-    def has_permission(self, request, view):
+    def has_permission(
+        self,
+        request,
+        view,
+    ):
 
         user = request.user
 
         return (
             user.is_authenticated
-            and getattr(user, "role", None) in self.allowed_roles
+            and getattr(
+                user,
+                "role",
+                None,
+            ) in self.allowed_roles
         )
 
 
@@ -26,7 +37,9 @@ class RolePermission(BasePermission):
 # ADMIN
 # ==========================================================
 
-class IsAdmin(RolePermission):
+class IsAdmin(
+    RolePermission
+):
 
     allowed_roles = [
         "ADMIN",
@@ -37,7 +50,9 @@ class IsAdmin(RolePermission):
 # CUSTOMER
 # ==========================================================
 
-class IsCustomer(RolePermission):
+class IsCustomer(
+    RolePermission
+):
 
     allowed_roles = [
         "CUSTOMER",
@@ -48,15 +63,25 @@ class IsCustomer(RolePermission):
 # SUPPLIER
 # ==========================================================
 
-class IsSupplier(RolePermission):
+class IsSupplier(
+    RolePermission
+):
 
     allowed_roles = [
         "SUPPLIER",
     ]
 
-    def has_permission(self, request, view):
+    def has_permission(
+        self,
+        request,
+        view,
+    ):
 
-        if not super().has_permission(request, view):
+        if not super().has_permission(
+            request,
+            view,
+        ):
+
             return False
 
         supplier = getattr(
@@ -76,8 +101,30 @@ class IsSupplier(RolePermission):
 # DELIVERY RIDER
 # ==========================================================
 
-class IsDeliveryRider(RolePermission):
+class IsDeliveryRider(
+    RolePermission
+):
 
     allowed_roles = [
         "DELIVERY",
     ]
+
+    def has_permission(
+        self,
+        request,
+        view,
+    ):
+
+        if not super().has_permission(
+            request,
+            view,
+        ):
+            return False
+
+        user = request.user
+
+        # Admin controls whether the rider can log in.
+        if not user.is_active:
+            return False
+
+        return True

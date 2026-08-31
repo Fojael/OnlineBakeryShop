@@ -189,10 +189,17 @@ class Supplier(models.Model):
 
         for product in self.products.all():
 
+            inventory = getattr(
+                product,
+                "inventory",
+                None,
+            )
+
             if (
-                hasattr(product, "inventory")
-                and product.inventory.status == "Low Stock"
+                inventory
+                and inventory.status == "Low Stock"
             ):
+
                 count += 1
 
         return count
@@ -204,10 +211,17 @@ class Supplier(models.Model):
 
         for product in self.products.all():
 
+            inventory = getattr(
+                product,
+                "inventory",
+                None,
+            )
+
             if (
-                hasattr(product, "inventory")
-                and product.inventory.status == "Out of Stock"
+                inventory
+                and inventory.status == "Out of Stock"
             ):
+
                 count += 1
 
         return count
@@ -218,6 +232,6 @@ class Supplier(models.Model):
         return (
             self.is_active
             and self.is_approved
-            and self.user
+            and self.user is not None
             and self.user.is_active
         )

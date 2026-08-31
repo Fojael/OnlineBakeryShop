@@ -11,8 +11,7 @@ import {
     logout,
 } from "../../services/authService";
 
-import NotificationBell
-    from "./NotificationBell";
+import NotificationBell from "../Notifications/NotificationBell";
 
 
 const Navbar = () => {

@@ -420,5 +420,18 @@ class SupplierOrderItemStatusSerializer(
 ):
 
     supplier_status = serializers.ChoiceField(
-        choices=OrderItem.STATUS_CHOICES,
+        choices=[
+            (
+                OrderItem.STATUS_PENDING,
+                "Pending",
+            ),
+            (
+                OrderItem.STATUS_PROCESSING,
+                "Processing",
+            ),
+            (
+                OrderItem.STATUS_READY,
+                "Ready",
+            ),
+        ],
     )

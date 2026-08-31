@@ -6,16 +6,23 @@ from .views import (
     SupplierRetrieveUpdateDestroyView,
     SupplierActivateView,
     SupplierDeactivateView,
+    SupplierProfileView,
 )
 
 from .dashboard_views import (
     SupplierDashboardView,
 )
 
+from .product_views import (
+    SupplierProductListCreateView,
+    SupplierProductRetrieveUpdateDestroyView,
+)
+
+
 urlpatterns = [
 
     # ==========================================================
-    # Supplier Registration
+    # SUPPLIER REGISTRATION
     # ==========================================================
 
     path(
@@ -24,8 +31,48 @@ urlpatterns = [
         name="supplier-register",
     ),
 
+
     # ==========================================================
-    # Admin Supplier CRUD
+    # SUPPLIER PROFILE
+    # ==========================================================
+
+    path(
+        "profile/",
+        SupplierProfileView.as_view(),
+        name="supplier-profile",
+    ),
+
+
+    # ==========================================================
+    # SUPPLIER DASHBOARD
+    # ==========================================================
+
+    path(
+        "dashboard/",
+        SupplierDashboardView.as_view(),
+        name="supplier-dashboard",
+    ),
+
+
+    # ==========================================================
+    # SUPPLIER PRODUCTS
+    # ==========================================================
+
+    path(
+        "products/",
+        SupplierProductListCreateView.as_view(),
+        name="supplier-products",
+    ),
+
+    path(
+        "products/<int:pk>/",
+        SupplierProductRetrieveUpdateDestroyView.as_view(),
+        name="supplier-product-detail",
+    ),
+
+
+    # ==========================================================
+    # ADMIN SUPPLIER CRUD
     # ==========================================================
 
     path(
@@ -52,13 +99,4 @@ urlpatterns = [
         name="supplier-detail",
     ),
 
-    # ==========================================================
-    # Supplier Dashboard
-    # ==========================================================
-
-    path(
-        "dashboard/",
-        SupplierDashboardView.as_view(),
-        name="supplier-dashboard",
-    ),
 ]

@@ -83,6 +83,13 @@ urlpatterns = [
     ),
     
     path(
+    "api/delivery/",
+    include(
+        "delivery.urls"
+    ),
+    ),
+    
+    path(
     "api/notifications/",
     include("notifications.urls"),
     ),
