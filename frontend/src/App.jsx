@@ -1,4 +1,5 @@
 import AppRoutes from "./routes/AppRoutes";
+import Navbar from "./components/Navbar/Navbar";
 
 import {
     ToastContainer,
@@ -11,6 +12,8 @@ function App() {
 
     return (
         <>
+
+            <Navbar />
 
             <AppRoutes />
 
@@ -28,5 +31,6 @@ function App() {
         </>
     );
 }
+
 
 export default App;

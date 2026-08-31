@@ -5,9 +5,7 @@ import api from "./api";
 // REGISTER
 // ==========================================================
 
-export const register = (
-    data
-) => {
+export const register = (data) => {
 
     return api.post(
         "auth/register/",
@@ -21,9 +19,7 @@ export const register = (
 // LOGIN
 // ==========================================================
 
-export const login = (
-    data
-) => {
+export const login = (data) => {
 
     return api.post(
         "auth/login/",
@@ -48,8 +44,7 @@ export const logout = async (
             await api.post(
                 "auth/logout/",
                 {
-                    refresh:
-                        refreshToken,
+                    refresh: refreshToken,
                 }
             );
 
@@ -138,15 +133,9 @@ export const isAuthenticated = () => {
 
     return Boolean(
 
-        localStorage.getItem(
-            "access"
-        )
+        localStorage.getItem("access") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "access"
-        )
+        sessionStorage.getItem("access")
 
     );
 
@@ -161,17 +150,9 @@ export const getAccessToken = () => {
 
     return (
 
-        localStorage.getItem(
-            "access"
-        )
+        localStorage.getItem("access") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "access"
-        )
-
-        ||
+        sessionStorage.getItem("access") ||
 
         null
 
@@ -188,17 +169,9 @@ export const getRefreshToken = () => {
 
     return (
 
-        localStorage.getItem(
-            "refresh"
-        )
+        localStorage.getItem("refresh") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "refresh"
-        )
-
-        ||
+        sessionStorage.getItem("refresh") ||
 
         null
 
@@ -215,15 +188,9 @@ export const getCurrentUser = () => {
 
     const user =
 
-        localStorage.getItem(
-            "user"
-        )
+        localStorage.getItem("user") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "user"
-        );
+        sessionStorage.getItem("user");
 
 
     if (!user) {
@@ -235,9 +202,7 @@ export const getCurrentUser = () => {
 
     try {
 
-        return JSON.parse(
-            user
-        );
+        return JSON.parse(user);
 
     } catch (error) {
 
@@ -263,9 +228,7 @@ export const getUserRole = () => {
         getCurrentUser();
 
     return (
-        user?.role
-        ||
-        null
+        user?.role || null
     );
 
 };
@@ -281,9 +244,7 @@ export const getUsername = () => {
         getCurrentUser();
 
     return (
-        user?.username
-        ||
-        null
+        user?.username || null
     );
 
 };
@@ -299,9 +260,7 @@ export const getEmail = () => {
         getCurrentUser();
 
     return (
-        user?.email
-        ||
-        null
+        user?.email || null
     );
 
 };
@@ -316,38 +275,24 @@ export const clearAuth = () => {
     const keys = [
 
         "access",
-
         "refresh",
-
         "user",
-
         "role",
-
         "username",
-
         "email",
-
         "rememberMe",
-
         "access_token",
-
         "refresh_token",
 
     ];
 
 
-    keys.forEach(
-        (key) => {
+    keys.forEach((key) => {
 
-            localStorage.removeItem(
-                key
-            );
+        localStorage.removeItem(key);
 
-            sessionStorage.removeItem(
-                key
-            );
+        sessionStorage.removeItem(key);
 
-        }
-    );
+    });
 
 };

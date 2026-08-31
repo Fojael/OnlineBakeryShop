@@ -3,33 +3,55 @@ from django.db import transaction
 from rest_framework import generics
 from rest_framework import status
 
+from rest_framework.response import Response
+
+from .models import Supplier
+
 from rest_framework.permissions import (
     AllowAny,
     IsAuthenticated,
 )
 
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
-from accounts.permissions import IsAdmin
-
-from .models import Supplier
-
-from .serializers import (
-    SupplierSerializer,
-    SupplierRegisterSerializer,
+from accounts.permissions import (
+    IsSupplier,
 )
 
+from rest_framework.exceptions import NotFound
+
+from .services import (
+    SupplierDashboardService,
+)
+
+from .serializers import (
+    SupplierRegisterSerializer,
+    SupplierProfileSerializer,
+    SupplierDashboardSerializer,
+)
 
 # ==========================================================
-# SUPPLIER REGISTER
+# SUPPLIER REGISTRATION
 # ==========================================================
 
 class SupplierRegisterView(
-    generics.CreateAPIView
+    generics.CreateAPIView,
 ):
+    """
+    Public supplier registration.
 
-    queryset = Supplier.objects.all()
+    Workflow
+
+    Register
+        ↓
+    Create User(role=SUPPLIER)
+        ↓
+    User.is_active = False
+        ↓
+    Supplier.is_approved = False
+        ↓
+    Admin approval required
+        ↓
+    Supplier can login
+    """
 
     serializer_class = (
         SupplierRegisterSerializer
@@ -39,225 +61,297 @@ class SupplierRegisterView(
         AllowAny,
     ]
 
-
-# ==========================================================
-# ADMIN
-# SUPPLIER LIST + CREATE
-# ==========================================================
-
-class SupplierListCreateView(
-    generics.ListCreateAPIView
-):
-
-    queryset = (
-        Supplier.objects
-        .select_related("user")
-        .order_by("-created_at")
-    )
-
-    serializer_class = (
-        SupplierSerializer
-    )
-
-    permission_classes = [
-        IsAuthenticated,
-        IsAdmin,
-    ]
-
-
-# ==========================================================
-# ADMIN
-# SUPPLIER DETAILS
-# ==========================================================
-
-class SupplierRetrieveUpdateDestroyView(
-    generics.RetrieveUpdateDestroyAPIView
-):
-
-    queryset = (
-        Supplier.objects
-        .select_related("user")
-        .order_by("-created_at")
-    )
-
-    serializer_class = (
-        SupplierSerializer
-    )
-
-    permission_classes = [
-        IsAuthenticated,
-        IsAdmin,
-    ]
+    queryset = Supplier.objects.none()
 
     @transaction.atomic
-    def destroy(
+    def create(
         self,
         request,
         *args,
         **kwargs,
     ):
 
-        supplier = (
-            Supplier.objects
-            .select_for_update()
-            .select_related("user")
-            .get(
-                pk=kwargs["pk"]
-            )
+        serializer = self.get_serializer(
+            data=request.data,
         )
 
-        user = supplier.user
+        serializer.is_valid(
+            raise_exception=True,
+        )
 
-        if user:
-
-            # Because Supplier.user uses
-            # on_delete=models.CASCADE
-            # deleting the user will automatically
-            # delete the supplier.
-            user.delete()
-
-        else:
-
-            supplier.delete()
+        supplier = serializer.save()
 
         return Response(
+
             {
-                "message":
-                "Supplier deleted successfully."
+
+                "success": True,
+
+                "message": (
+                    "Supplier registration submitted successfully. "
+                    "Your account is awaiting administrator approval."
+                ),
+
+                "supplier": {
+
+                    "id": supplier.id,
+
+                    "name": supplier.name,
+
+                    "company": supplier.company,
+
+                    "email": supplier.email,
+
+                    "phone": supplier.phone,
+
+                    "is_active": supplier.is_active,
+
+                    "is_approved": supplier.is_approved,
+
+                    "created_at": supplier.created_at,
+
+                },
+
             },
-            status=status.HTTP_200_OK,
+
+            status=status.HTTP_201_CREATED,
+
         )
-
-
+        
 # ==========================================================
-# ADMIN
-# ACTIVATE SUPPLIER
+# SUPPLIER PROFILE
 # ==========================================================
 
-class SupplierActivateView(
-    APIView
+class SupplierProfileView(
+    generics.RetrieveUpdateAPIView,
 ):
+    """
+    Retrieve and update the authenticated supplier profile.
+
+    Only the logged-in supplier can access this endpoint.
+    """
+
+    serializer_class = (
+        SupplierProfileSerializer
+    )
 
     permission_classes = [
+
         IsAuthenticated,
-        IsAdmin,
+
+        IsSupplier,
+
     ]
 
-    def patch(
-        self,
-        request,
-        pk,
-    ):
+    http_method_names = [
+
+        "get",
+
+        "put",
+
+        "patch",
+
+    ]
+
+    def get_object(self):
 
         try:
 
-            supplier = (
+            return (
+
                 Supplier.objects
+
                 .select_related("user")
+
                 .get(
-                    pk=pk
+
+                    user=self.request.user,
+
                 )
+
             )
 
         except Supplier.DoesNotExist:
 
-            return Response(
-                {
-                    "detail":
-                    "Supplier not found."
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound(
+
+                "Supplier profile does not exist."
+
             )
 
-        if supplier.user is None:
-
-            return Response(
-                {
-                    "detail":
-                    "Supplier account not found."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        supplier.user.is_active = True
-
-        supplier.user.save(
-            update_fields=[
-                "is_active",
-            ]
-        )
-
-        return Response(
-            {
-                "message":
-                "Supplier activated successfully."
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-# ==========================================================
-# ADMIN
-# DEACTIVATE SUPPLIER
-# ==========================================================
-
-class SupplierDeactivateView(
-    APIView
-):
-
-    permission_classes = [
-        IsAuthenticated,
-        IsAdmin,
-    ]
-
-    def patch(
+    @transaction.atomic
+    def update(
         self,
         request,
-        pk,
+        *args,
+        **kwargs,
     ):
+
+        partial = kwargs.pop(
+            "partial",
+            False,
+        )
+
+        supplier = self.get_object()
+
+        serializer = self.get_serializer(
+
+            supplier,
+
+            data=request.data,
+
+            partial=partial,
+
+        )
+
+        serializer.is_valid(
+
+            raise_exception=True,
+
+        )
+
+        serializer.save()
+
+        return Response(
+
+            {
+
+                "success": True,
+
+                "message": (
+                    "Supplier profile updated successfully."
+                ),
+
+                "supplier": serializer.data,
+
+            },
+
+            status=status.HTTP_200_OK,
+
+        )
+        
+# ==========================================================
+# SUPPLIER DASHBOARD
+# ==========================================================
+
+class SupplierDashboardView(
+    generics.RetrieveAPIView,
+):
+    """
+    Supplier dashboard.
+
+    Returns dashboard statistics and products
+    for the authenticated supplier only.
+    """
+
+    serializer_class = (
+        SupplierDashboardSerializer
+    )
+
+    permission_classes = [
+
+        IsAuthenticated,
+
+        IsSupplier,
+
+    ]
+
+    queryset = (
+
+        Supplier.objects
+
+        .select_related(
+            "user",
+        )
+
+        .prefetch_related(
+            "products",
+            "products__inventory",
+            "products__category",
+        )
+
+    )
+
+    def get_object(self):
 
         try:
 
-            supplier = (
-                Supplier.objects
-                .select_related("user")
-                .get(
-                    pk=pk
-                )
+            return self.get_queryset().get(
+
+                user=self.request.user,
+
             )
 
         except Supplier.DoesNotExist:
 
-            return Response(
-                {
-                    "detail":
-                    "Supplier not found."
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+
+                "Supplier profile does not exist."
+
             )
 
-        if supplier.user is None:
+    def retrieve(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
 
-            return Response(
-                {
-                    "detail":
-                    "Supplier account not found."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        supplier = self.get_object()
 
-        supplier.user.is_active = False
+        dashboard = SupplierDashboardService(
+            supplier
+        )
 
-        supplier.user.save(
-            update_fields=[
-                "is_active",
-            ]
+        serializer = self.get_serializer(
+
+            supplier,
+
+            context={
+
+                "request": request,
+
+            },
+
+        )
+
+        data = serializer.data
+
+        data.update(
+
+            {
+
+                "total_products":
+                    dashboard.total_products(),
+
+                "available_products":
+                    dashboard.available_products(),
+
+                "low_stock":
+                    dashboard.low_stock_products(),
+
+                "out_of_stock":
+                    dashboard.out_of_stock_products(),
+
+                "total_stock":
+                    dashboard.total_stock(),
+
+            }
+
         )
 
         return Response(
+
             {
-                "message":
-                "Supplier deactivated successfully."
+
+                "success": True,
+
+                "dashboard": data,
+
             },
+
             status=status.HTTP_200_OK,
+
         )

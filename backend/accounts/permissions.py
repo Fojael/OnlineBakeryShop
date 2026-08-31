@@ -1,37 +1,83 @@
 from rest_framework.permissions import BasePermission
 
 
-class IsAdmin(BasePermission):
+# ==========================================================
+# BASE ROLE PERMISSION
+# ==========================================================
+
+class RolePermission(BasePermission):
+    """
+    Base permission class for role-based authorization.
+    """
+
+    allowed_roles = []
 
     def has_permission(self, request, view):
+
+        user = request.user
+
         return (
-            request.user.is_authenticated
-            and request.user.role == "ADMIN"
+            user.is_authenticated
+            and getattr(user, "role", None) in self.allowed_roles
         )
 
 
-class IsCustomer(BasePermission):
+# ==========================================================
+# ADMIN
+# ==========================================================
+
+class IsAdmin(RolePermission):
+
+    allowed_roles = [
+        "ADMIN",
+    ]
+
+
+# ==========================================================
+# CUSTOMER
+# ==========================================================
+
+class IsCustomer(RolePermission):
+
+    allowed_roles = [
+        "CUSTOMER",
+    ]
+
+
+# ==========================================================
+# SUPPLIER
+# ==========================================================
+
+class IsSupplier(RolePermission):
+
+    allowed_roles = [
+        "SUPPLIER",
+    ]
 
     def has_permission(self, request, view):
+
+        if not super().has_permission(request, view):
+            return False
+
+        supplier = getattr(
+            request.user,
+            "supplier",
+            None,
+        )
+
         return (
-            request.user.is_authenticated
-            and request.user.role == "CUSTOMER"
+            supplier is not None
+            and supplier.is_active
+            and supplier.is_approved
         )
 
 
-class IsSupplier(BasePermission):
+# ==========================================================
+# DELIVERY RIDER
+# ==========================================================
 
-    def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
-            and request.user.role == "SUPPLIER"
-        )
+class IsDeliveryRider(RolePermission):
 
-
-class IsDeliveryRider(BasePermission):
-
-    def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
-            and request.user.role == "DELIVERY"
-        )
+    allowed_roles = [
+        "DELIVERY",
+    ]

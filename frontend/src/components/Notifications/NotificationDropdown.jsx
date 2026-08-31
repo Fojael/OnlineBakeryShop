@@ -1,22 +1,20 @@
-import useNotification from "../../hooks/useNotification";
+import useNotification
+    from "../../hooks/useNotification";
 
-import NotificationItem from "./NotificationItem";
+import NotificationItem
+    from "./NotificationItem";
+
 
 export default function NotificationDropdown({
-
     closeDropdown,
-
 }) {
 
     const {
-
         notifications,
-
         markAllRead,
-
         deleteAllNotifications,
-
     } = useNotification();
+
 
     return (
 
@@ -30,9 +28,12 @@ export default function NotificationDropdown({
             "
             style={{
                 width: "380px",
+                maxWidth: "90vw",
                 zIndex: 9999,
             }}
         >
+
+            {/* HEADER */}
 
             <div
                 className="
@@ -44,16 +45,20 @@ export default function NotificationDropdown({
             >
 
                 <strong>
-
                     Notifications
-
                 </strong>
 
+
                 <div
-                    className="d-flex align-items-center gap-2"
+                    className="
+                        d-flex
+                        align-items-center
+                        gap-2
+                    "
                 >
 
                     <button
+                        type="button"
                         className="
                             btn
                             btn-sm
@@ -66,7 +71,9 @@ export default function NotificationDropdown({
 
                     </button>
 
+
                     <button
+                        type="button"
                         className="
                             btn
                             btn-sm
@@ -74,16 +81,23 @@ export default function NotificationDropdown({
                         "
                         onClick={closeDropdown}
                         aria-label="Close notifications"
-                        title="Close"
                     >
 
-                        <i className="bi bi-x-lg"></i>
+                        <i
+                            className="
+                                bi
+                                bi-x-lg
+                            "
+                        />
 
                     </button>
 
                 </div>
 
             </div>
+
+
+            {/* LIST */}
 
             <div
                 className="list-group"
@@ -93,53 +107,59 @@ export default function NotificationDropdown({
                 }}
             >
 
-                {
-                    notifications.length === 0 ? (
+                {notifications.length === 0 ? (
 
-                        <div
-                            className="
-                                p-3
-                                text-center
-                                text-muted
-                            "
-                        >
+                    <div
+                        className="
+                            p-3
+                            text-center
+                            text-muted
+                        "
+                    >
 
-                            No Notifications
+                        No Notifications
 
-                        </div>
+                    </div>
 
-                    ) : (
+                ) : (
 
-                        notifications.map(
+                    notifications.map(
+                        (notification) => (
 
-                            (notification) => (
-
-                                <NotificationItem
-                                    key={notification.id}
-                                    notification={notification}
-                                />
-
-                            )
+                            <NotificationItem
+                                key={
+                                    notification.id
+                                }
+                                notification={
+                                    notification
+                                }
+                            />
 
                         )
-
                     )
-                }
+
+                )}
 
             </div>
+
+
+            {/* FOOTER */}
 
             <div
                 className="card-footer"
             >
 
                 <button
+                    type="button"
                     className="
                         btn
                         btn-danger
                         btn-sm
                         w-100
                     "
-                    onClick={deleteAllNotifications}
+                    onClick={
+                        deleteAllNotifications
+                    }
                 >
 
                     Delete All

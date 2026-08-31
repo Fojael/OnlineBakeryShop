@@ -4,9 +4,8 @@ import {
     useCallback,
 } from "react";
 
-import NotificationContext from "../context/NotificationContext";
-
-import { useAuth } from "../context/AuthContext";
+import NotificationContext
+    from "../context/NotificationContext";
 
 import {
     getNotifications,
@@ -16,283 +15,382 @@ import {
     deleteAllNotifications as deleteAllApi,
 } from "../services/notificationService";
 
+
+// ==========================================================
+// NOTIFICATION PROVIDER
+// ==========================================================
+
 export default function NotificationProvider({
     children,
 }) {
 
-    const { isAuthenticated } = useAuth();
+    // ==========================================================
+    // STATE
+    // ==========================================================
 
-    const [notifications, setNotifications] = useState([]);
+    const [
+        notifications,
+        setNotifications,
+    ] = useState([]);
 
-    const [unreadCount, setUnreadCount] = useState(0);
+    const [
+        unreadCount,
+        setUnreadCount,
+    ] = useState(0);
 
-    const [loading, setLoading] = useState(false);
+    const [
+        loading,
+        setLoading,
+    ] = useState(false);
 
-    // =============================================
-    // FETCH NOTIFICATIONS
-    // =============================================
 
-    const fetchNotifications = useCallback(async () => {
+    // ==========================================================
+    // FETCH NOTIFICATIONS FROM API
+    // ==========================================================
 
-        if (!isAuthenticated) {
+    const fetchNotifications = useCallback(
+        async () => {
 
-            return {
-                notifications: [],
-                unread_count: 0,
-            };
+            const accessToken =
+                localStorage.getItem("access")
+                ||
+                sessionStorage.getItem("access");
 
-        }
+            if (!accessToken) {
 
-        return await getNotifications();
+                return {
+                    notifications: [],
+                    unread_count: 0,
+                };
 
-    }, [isAuthenticated]);
+            }
 
-    // =============================================
-    // LOAD AFTER LOGIN
-    // =============================================
+            return await getNotifications();
 
-    useEffect(() => {
+        },
+        []
+    );
 
-        let cancelled = false;
 
-        async function load() {
+    // ==========================================================
+    // LOAD NOTIFICATIONS
+    // ==========================================================
+
+    const loadNotifications = useCallback(
+        async () => {
+
+            const accessToken =
+                localStorage.getItem("access")
+                ||
+                sessionStorage.getItem("access");
+
+            if (!accessToken) {
+
+                setNotifications([]);
+                setUnreadCount(0);
+
+                return;
+
+            }
 
             try {
 
                 setLoading(true);
 
-                const data = await fetchNotifications();
+                const data =
+                    await fetchNotifications();
 
-                if (cancelled) return;
 
                 setNotifications(
-                    data.notifications || []
+                    data?.notifications || []
                 );
 
                 setUnreadCount(
-                    data.unread_count || 0
+                    data?.unread_count || 0
                 );
 
             } catch (error) {
 
-                console.error(error);
+                console.error(
+                    "Failed to load notifications:",
+                    error
+                );
 
             } finally {
 
-                if (!cancelled) {
-
-                    setLoading(false);
-
-                }
+                setLoading(false);
 
             }
 
-        }
+        },
+        [fetchNotifications]
+    );
 
-        load();
+
+    // ==========================================================
+    // INITIAL LOAD + AUTH CHANGE LISTENER
+    // ==========================================================
+
+    useEffect(() => {
+
+        const handleAuthChange = () => {
+
+            loadNotifications();
+
+        };
+
+
+        window.addEventListener(
+            "auth-changed",
+            handleAuthChange
+        );
+
+
+        // Delay initial loading so the effect itself
+        // does not synchronously trigger state updates.
+
+        const timer = setTimeout(() => {
+
+            handleAuthChange();
+
+        }, 0);
+
 
         return () => {
 
-            cancelled = true;
+            window.removeEventListener(
+                "auth-changed",
+                handleAuthChange
+            );
+
+            clearTimeout(timer);
+
+        };
+
+    }, [loadNotifications]);
+
+
+    // ==========================================================
+    // AUTO REFRESH EVERY 30 SECONDS
+    // ==========================================================
+
+    useEffect(() => {
+
+        const interval =
+            setInterval(async () => {
+
+                const accessToken =
+                    localStorage.getItem("access")
+                    ||
+                    sessionStorage.getItem("access");
+
+
+                if (!accessToken) {
+
+                    setNotifications([]);
+                    setUnreadCount(0);
+
+                    return;
+
+                }
+
+
+                try {
+
+                    const data =
+                        await fetchNotifications();
+
+
+                    setNotifications(
+                        data?.notifications || []
+                    );
+
+                    setUnreadCount(
+                        data?.unread_count || 0
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "Notification refresh failed:",
+                        error
+                    );
+
+                }
+
+            }, 30000);
+
+
+        return () => {
+
+            clearInterval(interval);
 
         };
 
     }, [fetchNotifications]);
 
-    // =============================================
-    // AUTO REFRESH
-    // =============================================
 
-    useEffect(() => {
+    // ==========================================================
+    // MARK ONE NOTIFICATION AS READ
+    // ==========================================================
 
-        if (!isAuthenticated) {
-
-            return;
-
-        }
-
-        const interval = setInterval(async () => {
+    const markNotificationRead =
+        async (id) => {
 
             try {
 
-                const data =
-                    await fetchNotifications();
+                await markReadApi(id);
 
-                setNotifications(
-                    data.notifications || []
+
+                setNotifications((previous) =>
+                    previous.map((item) =>
+                        item.id === id
+                            ? {
+                                ...item,
+                                is_read: true,
+                            }
+                            : item
+                    )
                 );
 
-                setUnreadCount(
-                    data.unread_count || 0
+
+                setUnreadCount((previous) =>
+                    Math.max(
+                        previous - 1,
+                        0
+                    )
                 );
 
             } catch (error) {
 
-                console.error(error);
-
-            }
-
-        }, 30000);
-
-        return () => clearInterval(interval);
-
-    }, [
-        isAuthenticated,
-        fetchNotifications,
-    ]);
-
-    // =============================================
-    // MANUAL RELOAD
-    // =============================================
-
-    const loadNotifications = useCallback(async () => {
-
-        try {
-
-            const data =
-                await fetchNotifications();
-
-            setNotifications(
-                data.notifications || []
-            );
-
-            setUnreadCount(
-                data.unread_count || 0
-            );
-
-        } catch (error) {
-
-            console.error(error);
-
-        }
-
-    }, [fetchNotifications]);
-
-    // =============================================
-    // MARK ONE
-    // =============================================
-
-    const markNotificationRead = async (id) => {
-
-        try {
-
-            await markReadApi(id);
-
-            setNotifications((prev) =>
-                prev.map((item) =>
-                    item.id === id
-                        ? {
-                              ...item,
-                              is_read: true,
-                          }
-                        : item
-                )
-            );
-
-            setUnreadCount((prev) =>
-                Math.max(prev - 1, 0)
-            );
-
-        } catch (error) {
-
-            console.error(error);
-
-        }
-
-    };
-
-    // =============================================
-    // MARK ALL
-    // =============================================
-
-    const markAllRead = async () => {
-
-        try {
-
-            await markAllApi();
-
-            setNotifications((prev) =>
-                prev.map((item) => ({
-                    ...item,
-                    is_read: true,
-                }))
-            );
-
-            setUnreadCount(0);
-
-        } catch (error) {
-
-            console.error(error);
-
-        }
-
-    };
-
-    // =============================================
-    // DELETE ONE
-    // =============================================
-
-    const deleteNotification = async (id) => {
-
-        try {
-
-            const target =
-                notifications.find(
-                    (item) => item.id === id
-                );
-
-            await deleteApi(id);
-
-            setNotifications((prev) =>
-                prev.filter(
-                    (item) => item.id !== id
-                )
-            );
-
-            if (
-                target &&
-                !target.is_read
-            ) {
-
-                setUnreadCount((prev) =>
-                    Math.max(prev - 1, 0)
+                console.error(
+                    "Failed to mark notification as read:",
+                    error
                 );
 
             }
 
-        } catch (error) {
+        };
 
-            console.error(error);
 
-        }
+    // ==========================================================
+    // MARK ALL NOTIFICATIONS AS READ
+    // ==========================================================
 
-    };
+    const markAllRead =
+        async () => {
 
-    // =============================================
-    // DELETE ALL
-    // =============================================
+            try {
 
-    const deleteAllNotifications = async () => {
+                await markAllApi();
 
-        try {
 
-            await deleteAllApi();
+                setNotifications((previous) =>
+                    previous.map((item) => ({
+                        ...item,
+                        is_read: true,
+                    }))
+                );
 
-            setNotifications([]);
 
-            setUnreadCount(0);
+                setUnreadCount(0);
 
-        } catch (error) {
+            } catch (error) {
 
-            console.error(error);
+                console.error(
+                    "Failed to mark all notifications as read:",
+                    error
+                );
 
-        }
+            }
 
-    };
+        };
 
-    // =============================================
-    // CONTEXT
-    // =============================================
+
+    // ==========================================================
+    // DELETE ONE NOTIFICATION
+    // ==========================================================
+
+    const deleteNotification =
+        async (id) => {
+
+            try {
+
+                const target =
+                    notifications.find(
+                        (item) =>
+                            item.id === id
+                    );
+
+
+                await deleteApi(id);
+
+
+                setNotifications((previous) =>
+                    previous.filter(
+                        (item) =>
+                            item.id !== id
+                    )
+                );
+
+
+                if (
+                    target &&
+                    !target.is_read
+                ) {
+
+                    setUnreadCount((previous) =>
+                        Math.max(
+                            previous - 1,
+                            0
+                        )
+                    );
+
+                }
+
+            } catch (error) {
+
+                console.error(
+                    "Failed to delete notification:",
+                    error
+                );
+
+            }
+
+        };
+
+
+    // ==========================================================
+    // DELETE ALL NOTIFICATIONS
+    // ==========================================================
+
+    const deleteAllNotifications =
+        async () => {
+
+            try {
+
+                await deleteAllApi();
+
+
+                setNotifications([]);
+
+                setUnreadCount(0);
+
+            } catch (error) {
+
+                console.error(
+                    "Failed to delete all notifications:",
+                    error
+                );
+
+            }
+
+        };
+
+
+    // ==========================================================
+    // CONTEXT VALUE
+    // ==========================================================
 
     const value = {
 
@@ -313,6 +411,11 @@ export default function NotificationProvider({
         deleteAllNotifications,
 
     };
+
+
+    // ==========================================================
+    // PROVIDER
+    // ==========================================================
 
     return (
 

@@ -1,0 +1,233 @@
+/* ==========================================================
+   SUPPLIER DASHBOARD
+========================================================== */
+
+.supplier-dashboard-wrapper {
+    min-height: 100vh;
+    background-color: #f8f9fa;
+    display: flex;
+}
+
+
+/* ==========================================================
+   SIDEBAR
+========================================================== */
+
+.supplier-sidebar {
+    width: 260px;
+    min-height: 100vh;
+    background-color: #212529;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+}
+
+
+.supplier-sidebar-brand {
+    padding: 25px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+
+.supplier-sidebar-brand small {
+    color: #adb5bd;
+}
+
+
+/* ==========================================================
+   SIDEBAR MENU
+========================================================== */
+
+.supplier-sidebar-menu {
+    padding: 20px 12px;
+    flex: 1;
+}
+
+
+.supplier-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 15px;
+    margin-bottom: 5px;
+    color: #adb5bd;
+    text-decoration: none;
+    border-radius: 8px;
+    transition: 0.2s ease;
+}
+
+
+.supplier-nav-link:hover {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+
+.supplier-nav-link.active {
+    color: #ffffff;
+    background-color: #0d6efd;
+}
+
+
+.supplier-nav-link svg {
+    width: 18px;
+}
+
+
+/* ==========================================================
+   SIDEBAR FOOTER
+========================================================== */
+
+.supplier-sidebar-footer {
+    padding: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+
+.supplier-logout-btn {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: #adb5bd;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 15px;
+    border-radius: 8px;
+    text-align: left;
+}
+
+
+.supplier-logout-btn:hover {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+
+/* ==========================================================
+   MAIN CONTENT
+========================================================== */
+
+.supplier-main-content {
+    width: calc(100% - 260px);
+    margin-left: 260px;
+}
+
+
+/* ==========================================================
+   NAVBAR
+========================================================== */
+
+.supplier-navbar {
+    height: 75px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px;
+}
+
+
+.supplier-notification-link {
+    position: relative;
+    color: #495057;
+    font-size: 20px;
+    text-decoration: none;
+}
+
+
+.supplier-notification-link:hover {
+    color: #0d6efd;
+}
+
+
+.supplier-notification-badge {
+    position: absolute;
+    top: -8px;
+    right: -10px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 50px;
+    background-color: #dc3545;
+    color: #ffffff;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.supplier-user-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #343a40;
+    text-decoration: none;
+}
+
+
+.supplier-user-link svg {
+    font-size: 28px;
+}
+
+
+/* ==========================================================
+   DASHBOARD CONTENT
+========================================================== */
+
+.supplier-dashboard-content {
+    padding: 30px;
+}
+
+
+/* ==========================================================
+   RESPONSIVE
+========================================================== */
+
+@media (max-width: 991px) {
+
+    .supplier-sidebar {
+        width: 220px;
+    }
+
+    .supplier-main-content {
+        width: calc(100% - 220px);
+        margin-left: 220px;
+    }
+
+}
+
+
+@media (max-width: 767px) {
+
+    .supplier-sidebar {
+        position: relative;
+        width: 100%;
+        min-height: auto;
+    }
+
+    .supplier-dashboard-wrapper {
+        display: block;
+    }
+
+    .supplier-main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .supplier-navbar {
+        padding: 0 15px;
+    }
+
+    .supplier-dashboard-content {
+        padding: 20px 15px;
+    }
+
+}

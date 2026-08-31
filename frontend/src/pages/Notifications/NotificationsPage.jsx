@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import useNotification
+    from "../../hooks/useNotification";
 
-import useNotification from "../hooks/useNotification";
+import "../../styles/Notification.css";
 
-import "../styles/Notification.css";
 
 const NotificationsPage = () => {
 
@@ -14,8 +14,6 @@ const NotificationsPage = () => {
 
         loading,
 
-        loadNotifications,
-
         markNotificationRead,
 
         markAllRead,
@@ -26,19 +24,10 @@ const NotificationsPage = () => {
 
     } = useNotification();
 
-    useEffect(() => {
-
-        loadNotifications();
-
-    }, [loadNotifications]);
 
     return (
 
         <div className="container py-4">
-
-            {/* =============================== */}
-            {/* Header */}
-            {/* =============================== */}
 
             <div className="notification-header">
 
@@ -60,10 +49,19 @@ const NotificationsPage = () => {
 
                 </div>
 
-                <div className="notification-actions">
+
+                <div
+                    className="
+                        notification-actions
+                    "
+                >
 
                     <button
-                        className="btn btn-primary"
+                        type="button"
+                        className="
+                            btn
+                            btn-primary
+                        "
                         onClick={markAllRead}
                         disabled={
                             unreadCount === 0
@@ -72,9 +70,16 @@ const NotificationsPage = () => {
                         Mark All Read
                     </button>
 
+
                     <button
-                        className="btn btn-danger"
-                        onClick={deleteAllNotifications}
+                        type="button"
+                        className="
+                            btn
+                            btn-danger
+                        "
+                        onClick={
+                            deleteAllNotifications
+                        }
                         disabled={
                             notifications.length === 0
                         }
@@ -86,104 +91,127 @@ const NotificationsPage = () => {
 
             </div>
 
+
             <hr />
 
-            {/* =============================== */}
-            {/* Loading */}
-            {/* =============================== */}
 
-            {
-                loading && (
+            {loading && (
 
-                    <div className="text-center py-5">
+                <div
+                    className="
+                        text-center
+                        py-5
+                    "
+                >
 
-                        <div
-                            className="spinner-border"
-                            role="status"
-                        />
+                    <div
+                        className="
+                            spinner-border
+                        "
+                        role="status"
+                    >
+
+                        <span className="visually-hidden">
+                            Loading...
+                        </span>
 
                     </div>
 
-                )
-            }
+                </div>
 
-            {/* =============================== */}
-            {/* Empty */}
-            {/* =============================== */}
+            )}
 
-            {
-                !loading &&
+
+            {!loading &&
                 notifications.length === 0 && (
 
-                    <div className="empty-notification">
+                    <div
+                        className="
+                            empty-notification
+                        "
+                    >
 
                         <h4>
-
                             🎉 You're all caught up!
-
                         </h4>
 
                         <p>
-
                             No notifications found.
-
                         </p>
 
                     </div>
 
-                )
-            }
+                )}
 
-            {/* =============================== */}
-            {/* Notification List */}
-            {/* =============================== */}
 
-            {
-                !loading &&
-                notifications.map((notification) => (
+            {!loading &&
+                notifications.map(
+                    (notification) => (
 
-                    <div
-                        key={notification.id}
-                        className={`notification-card ${
-                            notification.is_read
-                                ? ""
-                                : "notification-unread"
-                        }`}
-                    >
-
-                        <div className="notification-content">
-
-                            <h5>
-
-                                {notification.title}
-
-                            </h5>
-
-                            <p>
-
-                                {notification.message}
-
-                            </p>
-
-                            <small className="text-muted">
-
-                                {
-                                    new Date(
-                                        notification.created_at
-                                    ).toLocaleString()
+                        <div
+                            key={
+                                notification.id
+                            }
+                            className={`
+                                notification-card
+                                ${
+                                    notification.is_read
+                                        ? ""
+                                        : "notification-unread"
                                 }
+                            `}
+                        >
 
-                            </small>
+                            <div
+                                className="
+                                    notification-content
+                                "
+                            >
 
-                        </div>
+                                <h5>
+                                    {
+                                        notification.title
+                                    }
+                                </h5>
 
-                        <div className="notification-buttons">
 
-                            {
-                                !notification.is_read && (
+                                <p>
+                                    {
+                                        notification.message
+                                    }
+                                </p>
+
+
+                                <small
+                                    className="
+                                        text-muted
+                                    "
+                                >
+
+                                    {new Date(
+                                        notification.created_at
+                                    ).toLocaleString()}
+
+                                </small>
+
+                            </div>
+
+
+                            <div
+                                className="
+                                    notification-buttons
+                                "
+                            >
+
+                                {!notification.is_read && (
 
                                     <button
-                                        className="btn btn-success btn-sm"
+                                        type="button"
+                                        className="
+                                            btn
+                                            btn-success
+                                            btn-sm
+                                        "
                                         onClick={() =>
                                             markNotificationRead(
                                                 notification.id
@@ -193,31 +221,37 @@ const NotificationsPage = () => {
                                         Mark Read
                                     </button>
 
-                                )
-                            }
+                                )}
 
-                            <button
-                                className="btn btn-outline-danger btn-sm"
-                                onClick={() =>
-                                    deleteNotification(
-                                        notification.id
-                                    )
-                                }
-                            >
-                                Delete
-                            </button>
+
+                                <button
+                                    type="button"
+                                    className="
+                                        btn
+                                        btn-outline-danger
+                                        btn-sm
+                                    "
+                                    onClick={() =>
+                                        deleteNotification(
+                                            notification.id
+                                        )
+                                    }
+                                >
+                                    Delete
+                                </button>
+
+                            </div>
 
                         </div>
 
-                    </div>
-
-                ))
-            }
+                    )
+                )}
 
         </div>
 
     );
 
 };
+
 
 export default NotificationsPage;

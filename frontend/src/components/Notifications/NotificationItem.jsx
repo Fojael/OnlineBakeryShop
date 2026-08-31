@@ -1,18 +1,16 @@
-import useNotification from "../../hooks/useNotification";
+import useNotification
+    from "../../hooks/useNotification";
+
 
 export default function NotificationItem({
-
     notification,
-
 }) {
 
     const {
-
         markNotificationRead,
-
         deleteNotification,
-
     } = useNotification();
+
 
     return (
 
@@ -29,18 +27,18 @@ export default function NotificationItem({
                 className="
                     d-flex
                     justify-content-between
+                    gap-3
                 "
             >
 
                 <div>
 
-                    <h6
-                        className="mb-1"
-                    >
+                    <h6 className="mb-1">
 
                         {notification.title}
 
                     </h6>
+
 
                     <small>
 
@@ -48,21 +46,24 @@ export default function NotificationItem({
 
                     </small>
 
+
                     <br />
 
+
                     <small
-                        className="text-muted"
+                        className="
+                            text-muted
+                        "
                     >
 
-                        {
-                            new Date(
-                                notification.created_at
-                            ).toLocaleString()
-                        }
+                        {new Date(
+                            notification.created_at
+                        ).toLocaleString()}
 
                     </small>
 
                 </div>
+
 
                 <div
                     className="
@@ -72,30 +73,31 @@ export default function NotificationItem({
                     "
                 >
 
-                    {
-                        !notification.is_read && (
+                    {!notification.is_read && (
 
-                            <button
-                                className="
-                                    btn
-                                    btn-success
-                                    btn-sm
-                                "
-                                onClick={() =>
-                                    markNotificationRead(
-                                        notification.id
-                                    )
-                                }
-                            >
+                        <button
+                            type="button"
+                            className="
+                                btn
+                                btn-success
+                                btn-sm
+                            "
+                            onClick={() =>
+                                markNotificationRead(
+                                    notification.id
+                                )
+                            }
+                        >
 
-                                Read
+                            Read
 
-                            </button>
+                        </button>
 
-                        )
-                    }
+                    )}
+
 
                     <button
+                        type="button"
                         className="
                             btn
                             btn-outline-danger

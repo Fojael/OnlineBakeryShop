@@ -24,17 +24,9 @@ const getAccessToken = () => {
 
     return (
 
-        localStorage.getItem(
-            "access"
-        )
+        localStorage.getItem("access") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "access"
-        )
-
-        ||
+        sessionStorage.getItem("access") ||
 
         null
 
@@ -51,17 +43,9 @@ const getRefreshToken = () => {
 
     return (
 
-        localStorage.getItem(
-            "refresh"
-        )
+        localStorage.getItem("refresh") ||
 
-        ||
-
-        sessionStorage.getItem(
-            "refresh"
-        )
-
-        ||
+        sessionStorage.getItem("refresh") ||
 
         null
 
@@ -81,12 +65,18 @@ api.interceptors.request.use(
         const token =
             getAccessToken();
 
+
         if (token) {
+
+            config.headers =
+                config.headers || {};
+
 
             config.headers.Authorization =
                 `Bearer ${token}`;
 
         }
+
 
         return config;
 
@@ -94,9 +84,7 @@ api.interceptors.request.use(
 
     (error) => {
 
-        return Promise.reject(
-            error
-        );
+        return Promise.reject(error);
 
     }
 
@@ -120,15 +108,25 @@ api.interceptors.response.use(
         const originalRequest =
             error.config;
 
+
+        // ==================================================
+        // NO CONFIG
+        // ==================================================
+
+        if (!originalRequest) {
+
+            return Promise.reject(error);
+
+        }
+
+
         // ==================================================
         // ACCESS TOKEN EXPIRED
         // ==================================================
 
         if (
 
-            error.response?.status === 401
-
-            &&
+            error.response?.status === 401 &&
 
             !originalRequest._retry
 
@@ -137,18 +135,23 @@ api.interceptors.response.use(
             originalRequest._retry =
                 true;
 
+
             const refresh =
                 getRefreshToken();
+
+
+            // ==================================================
+            // NO REFRESH TOKEN
+            // ==================================================
 
             if (!refresh) {
 
                 clearAuthentication();
 
-                return Promise.reject(
-                    error
-                );
+                return Promise.reject(error);
 
             }
+
 
             try {
 
@@ -158,23 +161,31 @@ api.interceptors.response.use(
                         "http://127.0.0.1:8000/api/auth/refresh/",
 
                         {
-                            refresh:
-                                refresh,
+                            refresh,
                         }
 
                     );
 
+
                 const newAccess =
                     response.data.access;
 
-                // ==========================================
+
+                if (!newAccess) {
+
+                    throw new Error(
+                        "New access token was not returned."
+                    );
+
+                }
+
+
+                // ==================================================
                 // SAVE NEW ACCESS TOKEN
-                // ==========================================
+                // ==================================================
 
                 if (
-                    localStorage.getItem(
-                        "access"
-                    )
+                    localStorage.getItem("access")
                 ) {
 
                     localStorage.setItem(
@@ -191,12 +202,18 @@ api.interceptors.response.use(
 
                 }
 
-                // ==========================================
-                // RETRY REQUEST
-                // ==========================================
+
+                // ==================================================
+                // RETRY ORIGINAL REQUEST
+                // ==================================================
+
+                originalRequest.headers =
+                    originalRequest.headers || {};
+
 
                 originalRequest.headers.Authorization =
                     `Bearer ${newAccess}`;
+
 
                 return api(
                     originalRequest
@@ -214,9 +231,8 @@ api.interceptors.response.use(
 
         }
 
-        return Promise.reject(
-            error
-        );
+
+        return Promise.reject(error);
 
     }
 
@@ -232,38 +248,25 @@ const clearAuthentication = () => {
     const keys = [
 
         "access",
-
         "refresh",
-
         "user",
-
         "role",
-
         "username",
-
         "email",
-
         "rememberMe",
-
         "access_token",
-
         "refresh_token",
 
     ];
 
-    keys.forEach(
-        (key) => {
 
-            localStorage.removeItem(
-                key
-            );
+    keys.forEach((key) => {
 
-            sessionStorage.removeItem(
-                key
-            );
+        localStorage.removeItem(key);
 
-        }
-    );
+        sessionStorage.removeItem(key);
+
+    });
 
 };
 

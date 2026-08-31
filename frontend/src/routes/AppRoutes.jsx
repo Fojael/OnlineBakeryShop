@@ -1,33 +1,57 @@
 import {
-    BrowserRouter,
     Route,
     Routes,
 } from "react-router-dom";
 
-import ProtectedRoute from "../components/ProtectedRoute/ProtectedRoute";
-import ProtectedAdminRoute from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
+import ProtectedRoute
+    from "../components/ProtectedRoute/ProtectedRoute";
+
+import ProtectedAdminRoute
+    from "../components/Admin/ProtectedAdminRoute/ProtectedAdminRoute";
 
 // ============================================================
 // PUBLIC PAGES
 // ============================================================
 
-import Home from "../pages/Home/Home";
-import Products from "../pages/Products/Products";
-import ProductDetails from "../pages/ProductDetails/ProductDetails";
-import Login from "../pages/Login/Login";
-import Register from "../pages/Register/Register";
-import About from "../pages/About/About";
-import Contact from "../pages/Contact/Contact";
-import NotFound from "../pages/NotFound/NotFound";
+import Home
+    from "../pages/Home/Home";
+
+import Products
+    from "../pages/Products/Products";
+
+import ProductDetails
+    from "../pages/ProductDetails/ProductDetails";
+
+import Login
+    from "../pages/Login/Login";
+
+import Register
+    from "../pages/Register/Register";
+
+import About
+    from "../pages/About/About";
+
+import Contact
+    from "../pages/Contact/Contact";
+
+import NotFound
+    from "../pages/NotFound/NotFound";
 
 // ============================================================
 // CUSTOMER PAGES
 // ============================================================
 
-import Cart from "../pages/Cart/Cart";
-import Checkout from "../pages/Checkout/Checkout";
-import Orders from "../pages/Orders/Orders";
-import Profile from "../pages/Profile/Profile";
+import Cart
+    from "../pages/Cart/Cart";
+
+import Checkout
+    from "../pages/Checkout/Checkout";
+
+import Orders
+    from "../pages/Orders/Orders";
+
+import Profile
+    from "../pages/Profile/Profile";
 
 import CustomerDashboard
     from "../pages/Customer/CustomerDashboard";
@@ -43,6 +67,13 @@ import AddAddress
 
 import EditAddress
     from "../pages/Address/EditAddress";
+
+// ============================================================
+// CUSTOMER NOTIFICATIONS
+// ============================================================
+
+import NotificationsPage
+    from "../pages/Notifications/NotificationsPage";
 
 // ============================================================
 // PAYMENT RESULT PAGES
@@ -145,6 +176,28 @@ import Notifications
 
 
 // ============================================================
+// SUPPLIER ROUTES
+// ============================================================
+import SupplierDashboard
+    from "../pages/Supplier/Dashboard/SupplierDashboard";
+
+import SupplierProfile
+    from "../pages/Supplier/Profile/SupplierProfile";
+
+import SupplierProducts
+    from "../pages/Supplier/Products/SupplierProducts";
+
+import SupplierOrders
+    from "../pages/Supplier/Orders/SupplierOrders";
+
+import SupplierOrderDetails
+    from "../pages/Supplier/Orders/SupplierOrderDetails";
+
+import SupplierPayments
+    from "../pages/Supplier/Payments/SupplierPayments";
+
+
+// ============================================================
 // APP ROUTES
 // ============================================================
 
@@ -152,407 +205,490 @@ const AppRoutes = () => {
 
     return (
 
-        <BrowserRouter>
-
-            <main>
-
-                <Routes>
-
-                    {/* ==================================================
-                        PUBLIC ROUTES
-                    ================================================== */}
-
-                    <Route
-                        path="/"
-                        element={<Home />}
-                    />
-
-                    <Route
-                        path="/products"
-                        element={<Products />}
-                    />
-
-                    <Route
-                        path="/products/:id"
-                        element={<ProductDetails />}
-                    />
-
-                    <Route
-                        path="/about"
-                        element={<About />}
-                    />
-
-                    <Route
-                        path="/contact"
-                        element={<Contact />}
-                    />
-
-                    <Route
-                        path="/login"
-                        element={<Login />}
-                    />
-
-                    <Route
-                        path="/register"
-                        element={<Register />}
-                    />
-
-
-                    {/* ==================================================
-                        CUSTOMER ROUTES
-                    ================================================== */}
-
-                    <Route
-                        path="/cart"
-                        element={
-                            <ProtectedRoute>
-                                <Cart />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/checkout"
-                        element={
-                            <ProtectedRoute>
-                                <Checkout />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/orders"
-                        element={
-                            <ProtectedRoute>
-                                <Orders />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/profile"
-                        element={
-                            <ProtectedRoute>
-                                <Profile />
-                            </ProtectedRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        PAYMENT RESULT ROUTES
-                    ================================================== */}
-
-                    <Route
-                        path="/checkout/success"
-                        element={
-                            <ProtectedRoute>
-                                <PaymentSuccess />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/checkout/failed"
-                        element={
-                            <ProtectedRoute>
-                                <PaymentFailed />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/checkout/cancelled"
-                        element={
-                            <ProtectedRoute>
-                                <PaymentCancelled />
-                            </ProtectedRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        CUSTOMER DASHBOARD
-                    ================================================== */}
-
-                    <Route
-                        path="/customer/dashboard"
-                        element={
-                            <ProtectedRoute>
-                                <CustomerDashboard />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/wishlist"
-                        element={
-                            <ProtectedRoute>
-                                <Wishlist />
-                            </ProtectedRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        CUSTOMER ADDRESS BOOK
-                    ================================================== */}
-
-                    <Route
-                        path="/address"
-                        element={
-                            <ProtectedRoute>
-                                <Address />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/address/add"
-                        element={
-                            <ProtectedRoute>
-                                <AddAddress />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/address/edit/:id"
-                        element={
-                            <ProtectedRoute>
-                                <EditAddress />
-                            </ProtectedRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN DASHBOARD
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/dashboard"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Dashboard />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN PRODUCTS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/products"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AdminProducts />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/products/add"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AddProduct />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/products/edit/:id"
-                        element={
-                            <ProtectedAdminRoute>
-                                <EditProduct />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN CATEGORIES
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/categories"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Categories />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/categories/add"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AddCategory />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/categories/edit/:id"
-                        element={
-                            <ProtectedAdminRoute>
-                                <EditCategory />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN INVENTORY
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/inventory"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Inventory />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/inventory/update/:id"
-                        element={
-                            <ProtectedAdminRoute>
-                                <UpdateInventory />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN SUPPLIERS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/suppliers"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Suppliers />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/suppliers/add"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AddSupplier />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/suppliers/edit/:id"
-                        element={
-                            <ProtectedAdminRoute>
-                                <EditSupplier />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN ORDERS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/orders"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AdminOrders />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/admin/orders/update/:id"
-                        element={
-                            <ProtectedAdminRoute>
-                                <UpdateOrder />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN CUSTOMERS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/customers"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Customers />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN REPORTS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/reports"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Reports />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN AI PREDICTION
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/ai-prediction"
-                        element={
-                            <ProtectedAdminRoute>
-                                <AIPrediction />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        ADMIN NOTIFICATIONS
-                    ================================================== */}
-
-                    <Route
-                        path="/admin/notifications"
-                        element={
-                            <ProtectedAdminRoute>
-                                <Notifications />
-                            </ProtectedAdminRoute>
-                        }
-                    />
-
-
-                    {/* ==================================================
-                        404
-                    ================================================== */}
-
-                    <Route
-                        path="*"
-                        element={<NotFound />}
-                    />
-
-                </Routes>
-
-            </main>
-
-        </BrowserRouter>
+        <Routes>
+
+            {/* ==================================================
+                PUBLIC ROUTES
+            ================================================== */}
+
+            <Route
+                path="/"
+                element={<Home />}
+            />
+
+            <Route
+                path="/products"
+                element={<Products />}
+            />
+
+            <Route
+                path="/products/:id"
+                element={<ProductDetails />}
+            />
+
+            <Route
+                path="/about"
+                element={<About />}
+            />
+
+            <Route
+                path="/contact"
+                element={<Contact />}
+            />
+
+            <Route
+                path="/login"
+                element={<Login />}
+            />
+
+            <Route
+                path="/register"
+                element={<Register />}
+            />
+
+
+            {/* ==================================================
+                CUSTOMER ROUTES
+            ================================================== */}
+
+            <Route
+                path="/cart"
+                element={
+                    <ProtectedRoute>
+                        <Cart />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/checkout"
+                element={
+                    <ProtectedRoute>
+                        <Checkout />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/orders"
+                element={
+                    <ProtectedRoute>
+                        <Orders />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/profile"
+                element={
+                    <ProtectedRoute>
+                        <Profile />
+                    </ProtectedRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                CUSTOMER NOTIFICATIONS
+            ================================================== */}
+
+            <Route
+                path="/notifications"
+                element={
+                    <ProtectedRoute>
+                        <NotificationsPage />
+                    </ProtectedRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                PAYMENT RESULT ROUTES
+            ================================================== */}
+
+            <Route
+                path="/checkout/success"
+                element={
+                    <ProtectedRoute>
+                        <PaymentSuccess />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/checkout/failed"
+                element={
+                    <ProtectedRoute>
+                        <PaymentFailed />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/checkout/cancelled"
+                element={
+                    <ProtectedRoute>
+                        <PaymentCancelled />
+                    </ProtectedRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                CUSTOMER DASHBOARD
+            ================================================== */}
+
+            <Route
+                path="/customer/dashboard"
+                element={
+                    <ProtectedRoute>
+                        <CustomerDashboard />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/wishlist"
+                element={
+                    <ProtectedRoute>
+                        <Wishlist />
+                    </ProtectedRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                CUSTOMER ADDRESS BOOK
+            ================================================== */}
+
+            <Route
+                path="/address"
+                element={
+                    <ProtectedRoute>
+                        <Address />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/address/add"
+                element={
+                    <ProtectedRoute>
+                        <AddAddress />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/address/edit/:id"
+                element={
+                    <ProtectedRoute>
+                        <EditAddress />
+                    </ProtectedRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN DASHBOARD
+            ================================================== */}
+
+            <Route
+                path="/admin/dashboard"
+                element={
+                    <ProtectedAdminRoute>
+                        <Dashboard />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN PRODUCTS
+            ================================================== */}
+
+            <Route
+                path="/admin/products"
+                element={
+                    <ProtectedAdminRoute>
+                        <AdminProducts />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/products/add"
+                element={
+                    <ProtectedAdminRoute>
+                        <AddProduct />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/products/edit/:id"
+                element={
+                    <ProtectedAdminRoute>
+                        <EditProduct />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN CATEGORIES
+            ================================================== */}
+
+            <Route
+                path="/admin/categories"
+                element={
+                    <ProtectedAdminRoute>
+                        <Categories />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/categories/add"
+                element={
+                    <ProtectedAdminRoute>
+                        <AddCategory />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/categories/edit/:id"
+                element={
+                    <ProtectedAdminRoute>
+                        <EditCategory />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN INVENTORY
+            ================================================== */}
+
+            <Route
+                path="/admin/inventory"
+                element={
+                    <ProtectedAdminRoute>
+                        <Inventory />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/inventory/update/:id"
+                element={
+                    <ProtectedAdminRoute>
+                        <UpdateInventory />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN SUPPLIERS
+            ================================================== */}
+
+            <Route
+                path="/admin/suppliers"
+                element={
+                    <ProtectedAdminRoute>
+                        <Suppliers />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/suppliers/add"
+                element={
+                    <ProtectedAdminRoute>
+                        <AddSupplier />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/suppliers/edit/:id"
+                element={
+                    <ProtectedAdminRoute>
+                        <EditSupplier />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN ORDERS
+            ================================================== */}
+
+            <Route
+                path="/admin/orders"
+                element={
+                    <ProtectedAdminRoute>
+                        <AdminOrders />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/orders/update/:id"
+                element={
+                    <ProtectedAdminRoute>
+                        <UpdateOrder />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN CUSTOMERS
+            ================================================== */}
+
+            <Route
+                path="/admin/customers"
+                element={
+                    <ProtectedAdminRoute>
+                        <Customers />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN REPORTS
+            ================================================== */}
+
+            <Route
+                path="/admin/reports"
+                element={
+                    <ProtectedAdminRoute>
+                        <Reports />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN AI PREDICTION
+            ================================================== */}
+
+            <Route
+                path="/admin/ai-prediction"
+                element={
+                    <ProtectedAdminRoute>
+                        <AIPrediction />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+
+            {/* ==================================================
+                ADMIN NOTIFICATIONS
+            ================================================== */}
+
+            <Route
+                path="/admin/notifications"
+                element={
+                    <ProtectedAdminRoute>
+                        <Notifications />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            {/* ======================================================
+    SUPPLIER
+====================================================== */}
+
+<Route
+    path="/supplier/dashboard"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierDashboard />
+        </ProtectedRoute>
+    }
+/>
+
+
+<Route
+    path="/supplier/profile"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierProfile />
+        </ProtectedRoute>
+    }
+/>
+
+
+<Route
+    path="/supplier/products"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierProducts />
+        </ProtectedRoute>
+    }
+/>
+
+
+<Route
+    path="/supplier/orders"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierOrders />
+        </ProtectedRoute>
+    }
+/>
+
+
+<Route
+    path="/supplier/orders/:id"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierOrderDetails />
+        </ProtectedRoute>
+    }
+/>
+
+
+<Route
+    path="/supplier/payments"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierPayments />
+        </ProtectedRoute>
+    }
+/>
+
+
+            {/* ==================================================
+                404
+            ================================================== */}
+
+            <Route
+                path="*"
+                element={<NotFound />}
+            />
+
+        </Routes>
+
     );
+
 };
 
 export default AppRoutes;

@@ -1,129 +1,79 @@
-.notification-header{
-
-    display:flex;
-
-    justify-content:space-between;
-
-    align-items:center;
-
-    flex-wrap:wrap;
-
-    gap:15px;
-
-    margin-bottom:20px;
-
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
-.notification-actions{
-
-    display:flex;
-
-    gap:10px;
-
+.notification-actions {
+    display: flex;
+    gap: 10px;
 }
 
-.notification-card{
-
-    display:flex;
-
-    justify-content:space-between;
-
-    align-items:center;
-
-    gap:20px;
-
-    padding:20px;
-
-    margin-bottom:15px;
-
-    border-radius:10px;
-
-    border:1px solid #ddd;
-
-    background:#ffffff;
-
-    transition:.3s;
-
+.notification-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    background: #ffffff;
+    transition: 0.3s;
 }
 
-.notification-card:hover{
-
-    box-shadow:0 5px 15px rgba(0,0,0,.08);
-
+.notification-card:hover {
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
 }
 
-.notification-unread{
-
-    border-left:6px solid #0d6efd;
-
-    background:#eef5ff;
-
+.notification-unread {
+    border-left: 6px solid #0d6efd;
+    background: #eef5ff;
 }
 
-.notification-content{
-
-    flex:1;
-
+.notification-content {
+    flex: 1;
 }
 
-.notification-content h5{
-
-    margin-bottom:8px;
-
-    font-weight:600;
-
+.notification-content h5 {
+    margin-bottom: 8px;
+    font-weight: 600;
 }
 
-.notification-content p{
-
-    margin-bottom:8px;
-
+.notification-content p {
+    margin-bottom: 8px;
 }
 
-.notification-buttons{
-
-    display:flex;
-
-    flex-direction:column;
-
-    gap:8px;
-
+.notification-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.empty-notification{
-
-    text-align:center;
-
-    padding:80px 20px;
-
-    border-radius:12px;
-
-    background:#f8f9fa;
-
+.empty-notification {
+    text-align: center;
+    padding: 80px 20px;
+    border-radius: 12px;
+    background: #f8f9fa;
 }
 
-@media(max-width:768px){
+@media (max-width: 768px) {
 
-    .notification-card{
-
-        flex-direction:column;
-
-        align-items:flex-start;
-
+    .notification-card {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
-    .notification-buttons{
-
-        width:100%;
-
-        flex-direction:row;
-
+    .notification-buttons {
+        width: 100%;
+        flex-direction: row;
     }
 
-    .notification-buttons button{
-
-        flex:1;
-
+    .notification-buttons button {
+        flex: 1;
     }
 
 }

@@ -152,6 +152,13 @@ const Login = () => {
                 );
             }
 
+            // ==========================================================
+// NOTIFY NOTIFICATION PROVIDER
+// ==========================================================
+
+            window.dispatchEvent(
+                new Event("auth-changed")
+            );
             // ==========================================
             // REMEMBER ME
             //
@@ -224,7 +231,7 @@ const Login = () => {
 
             if (userRole === "SUPPLIER") {
                 navigate(
-                    "/",
+                    "/supplier/dashboard",
                     { replace: true }
                 );
                 return;
