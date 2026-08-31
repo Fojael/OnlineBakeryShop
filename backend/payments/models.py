@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Payment(models.Model):
@@ -152,7 +153,7 @@ class Payment(models.Model):
         ordering = ["-created_at"]
 
     # ==========================================================
-    # MARK PENDING
+    # METHODS
     # ==========================================================
 
     def mark_pending(self):
@@ -161,44 +162,23 @@ class Payment(models.Model):
         self.failure_reason = ""
         self.paid_at = None
 
-    # ==========================================================
-    # MARK SUCCESS
-    # ==========================================================
-
     def mark_success(self):
 
         self.status = self.STATUS_SUCCESS
         self.failure_reason = ""
 
-    # ==========================================================
-    # MARK FAILED
-    # ==========================================================
+        if not self.paid_at:
+            self.paid_at = timezone.now()
 
-    def mark_failed(
-        self,
-        reason="Payment failed",
-    ):
+    def mark_failed(self, reason="Payment failed"):
 
         self.status = self.STATUS_FAILED
+        self.failure_reason = str(reason)[:255]
 
-        self.failure_reason = str(
-            reason
-        )[:255]
-
-    # ==========================================================
-    # MARK CANCELLED
-    # ==========================================================
-
-    def mark_cancelled(
-        self,
-        reason="Payment cancelled",
-    ):
+    def mark_cancelled(self, reason="Payment cancelled"):
 
         self.status = self.STATUS_CANCELLED
-
-        self.failure_reason = str(
-            reason
-        )[:255]
+        self.failure_reason = str(reason)[:255]
 
     # ==========================================================
     # STRING

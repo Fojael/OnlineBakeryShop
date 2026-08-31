@@ -6,6 +6,7 @@ from django.conf import settings
 
 
 class SSLCommerzError(Exception):
+    """Custom exception for SSLCommerz-related errors."""
     pass
 
 
@@ -14,16 +15,137 @@ class SSLCommerzError(Exception):
 # ==========================================================
 
 def _base_url():
-
     if settings.SSLCOMMERZ_IS_SANDBOX:
+        return "https://sandbox.sslcommerz.com"
 
+    return "https://securepay.sslcommerz.com"
+
+
+# ==========================================================
+# GATEWAY URL
+# ==========================================================
+
+def _gateway_api_url():
+    if settings.SSLCOMMERZ_IS_SANDBOX:
         return (
             "https://sandbox.sslcommerz.com"
+            "/gwprocess/v4/api.php"
         )
 
     return (
         "https://securepay.sslcommerz.com"
+        "/gwprocess/v4/api.php"
     )
+
+
+# ==========================================================
+# VALIDATE SETTINGS
+# ==========================================================
+
+def _validate_configuration():
+
+    store_id = str(
+        settings.SSLCOMMERZ_STORE_ID or ""
+    ).strip()
+
+    store_password = str(
+        settings.SSLCOMMERZ_STORE_PASSWORD or ""
+    ).strip()
+
+    public_backend_url = str(
+        settings.PUBLIC_BACKEND_URL or ""
+    ).strip().rstrip("/")
+
+    # ------------------------------------------------------
+    # STORE ID
+    # ------------------------------------------------------
+
+    if not store_id:
+
+        raise SSLCommerzError(
+            "SSLCommerz Store ID is not configured."
+        )
+
+    if store_id.lower() in {
+        "your_real_sandbox_store_id",
+        "your_sandbox_store_id",
+        "your_store_id",
+    }:
+
+        raise SSLCommerzError(
+            "Replace the placeholder SSLCommerz Store ID "
+            "with your real sandbox Store ID."
+        )
+
+    # ------------------------------------------------------
+    # STORE PASSWORD
+    # ------------------------------------------------------
+
+    if not store_password:
+
+        raise SSLCommerzError(
+            "SSLCommerz Store Password is not configured."
+        )
+
+    if store_password.lower() in {
+        "your_real_sandbox_store_password",
+        "your_sandbox_store_password",
+        "your_store_password",
+    }:
+
+        raise SSLCommerzError(
+            "Replace the placeholder SSLCommerz Store Password "
+            "with your real sandbox password."
+        )
+
+    # ------------------------------------------------------
+    # PUBLIC BACKEND URL
+    # ------------------------------------------------------
+
+    if not public_backend_url:
+
+        raise SSLCommerzError(
+            "PUBLIC_BACKEND_URL is not configured."
+        )
+
+    if "YOUR_PUBLIC_HTTPS_BACKEND_URL" in public_backend_url:
+
+        raise SSLCommerzError(
+            "Replace YOUR_PUBLIC_HTTPS_BACKEND_URL "
+            "with your actual public HTTPS backend URL."
+        )
+
+    if "localhost" in public_backend_url.lower():
+
+        raise SSLCommerzError(
+            "PUBLIC_BACKEND_URL cannot use localhost. "
+            "SSLCommerz needs a publicly accessible backend URL."
+        )
+
+    if "127.0.0.1" in public_backend_url:
+
+        raise SSLCommerzError(
+            "PUBLIC_BACKEND_URL cannot use 127.0.0.1. "
+            "SSLCommerz needs a publicly accessible backend URL."
+        )
+
+    if not public_backend_url.startswith("https://"):
+
+        raise SSLCommerzError(
+            "PUBLIC_BACKEND_URL must use HTTPS."
+        )
+
+
+# ==========================================================
+# SAFE STRING
+# ==========================================================
+
+def _safe_string(value, max_length=255):
+
+    if value is None:
+        return ""
+
+    return str(value).strip()[:max_length]
 
 
 # ==========================================================
@@ -32,83 +154,72 @@ def _base_url():
 
 def initiate_payment(payment):
 
-    order = payment.order
+    _validate_configuration()
 
+    order = payment.order
     customer = order.customer
 
-    amount = Decimal(
-        payment.amount
-    )
+    amount = Decimal(payment.amount)
 
     # ======================================================
-    # AMOUNT VALIDATION
+    # AMOUNT
     # ======================================================
 
     if amount < Decimal("10.00"):
 
         raise SSLCommerzError(
-            "SSLCommerz requires a transaction "
-            "amount of at least 10.00 BDT."
+            "SSLCommerz requires a transaction amount "
+            "of at least 10.00 BDT."
         )
 
     if amount > Decimal("500000.00"):
 
         raise SSLCommerzError(
-            "SSLCommerz transaction amount "
-            "cannot exceed 500000.00 BDT."
-        )
-
-    # ======================================================
-    # CONFIGURATION
-    # ======================================================
-
-    if not settings.SSLCOMMERZ_STORE_ID:
-
-        raise SSLCommerzError(
-            "SSLCommerz store ID is not configured."
-        )
-
-    if not settings.SSLCOMMERZ_STORE_PASSWORD:
-
-        raise SSLCommerzError(
-            "SSLCommerz store password is not configured."
+            "SSLCommerz transaction amount cannot exceed "
+            "500000.00 BDT."
         )
 
     # ======================================================
     # ORDER ITEMS
     # ======================================================
 
-    product_names = []
-
-    cart = []
-
-    for item in (
+    order_items = (
         order.items
         .select_related("product")
         .all()
-    ):
+    )
 
-        product_names.append(
-            item.product.name
+    if not order_items.exists():
+
+        raise SSLCommerzError(
+            "Cannot create payment for an empty order."
         )
 
-        cart.append(
+    product_names = []
+    cart_items = []
+
+    for item in order_items:
+
+        if not item.product:
+
+            raise SSLCommerzError(
+                "An order item has no associated product."
+            )
+
+        product_name = _safe_string(
+            item.product.name,
+            255,
+        )
+
+        product_names.append(product_name)
+
+        cart_items.append(
             {
-                "sku": str(
-                    item.product_id
-                ),
-                "product": (
-                    item.product.name[:255]
-                ),
-                "quantity": str(
-                    item.quantity
-                ),
-                "amount": str(
-                    item.subtotal
-                ),
-                "unit_price": str(
-                    item.price
-                ),
+                "sku": str(item.product_id),
+                "product": product_name,
+                "quantity": str(item.quantity),
+                "amount": str(item.subtotal),
+                "unit_price": str(item.price),
             }
         )
 
@@ -116,31 +227,140 @@ def initiate_payment(payment):
     # CUSTOMER NAME
     # ======================================================
 
-    customer_name = (
-        getattr(
-            customer,
-            "get_full_name",
-            lambda: "",
-        )()
-        or getattr(
+    customer_name = ""
+
+    if hasattr(customer, "get_full_name"):
+
+        customer_name = (
+            customer.get_full_name()
+            or ""
+        )
+
+    if not customer_name:
+
+        customer_name = getattr(
             customer,
             "username",
             "",
         )
-        or "Customer"
+
+    if not customer_name:
+
+        customer_name = "Customer"
+
+    customer_name = _safe_string(
+        customer_name,
+        50,
     )
 
-    customer_name = customer_name[:50]
+    # ======================================================
+    # EMAIL
+    # ======================================================
+
+    customer_email = _safe_string(
+        getattr(
+            customer,
+            "email",
+            "",
+        ),
+        50,
+    )
+
+    if not customer_email:
+
+        raise SSLCommerzError(
+            "Customer email is required."
+        )
 
     # ======================================================
     # PHONE
     # ======================================================
 
-    customer_phone = getattr(
-        customer,
-        "phone",
-        "",
+    customer_phone = _safe_string(
+        getattr(
+            customer,
+            "phone",
+            "",
+        ),
+        20,
     )
+
+    if not customer_phone:
+
+        customer_phone = "01700000000"
+
+    # ======================================================
+    # SHIPPING ADDRESS
+    # ======================================================
+
+    shipping_address = _safe_string(
+        getattr(
+            order,
+            "shipping_address",
+            "",
+        ),
+        50,
+    )
+
+    if not shipping_address:
+
+        shipping_address = "Dhaka"
+
+    # ======================================================
+    # CALLBACK URLS
+    # ======================================================
+
+    callback_urls = {
+
+        "success_url":
+            settings.SSLCOMMERZ_SUCCESS_URL,
+
+        "fail_url":
+            settings.SSLCOMMERZ_FAIL_URL,
+
+        "cancel_url":
+            settings.SSLCOMMERZ_CANCEL_URL,
+
+        "ipn_url":
+            settings.SSLCOMMERZ_IPN_URL,
+    }
+
+    for name, value in callback_urls.items():
+
+        value = str(value or "").strip()
+
+        if not value:
+
+            raise SSLCommerzError(
+                f"{name} is not configured."
+            )
+
+        if "YOUR_PUBLIC_HTTPS_BACKEND_URL" in value:
+
+            raise SSLCommerzError(
+                f"{name} still contains "
+                "YOUR_PUBLIC_HTTPS_BACKEND_URL."
+            )
+
+        if "localhost" in value.lower():
+
+            raise SSLCommerzError(
+                f"{name} cannot use localhost. "
+                "SSLCommerz requires a public backend URL."
+            )
+
+        if "127.0.0.1" in value:
+
+            raise SSLCommerzError(
+                f"{name} cannot use 127.0.0.1. "
+                "SSLCommerz requires a public backend URL."
+            )
+
+        if not value.startswith("https://"):
+
+            raise SSLCommerzError(
+                f"{name} must use HTTPS."
+            )
 
     # ======================================================
     # REQUEST DATA
@@ -148,11 +368,19 @@ def initiate_payment(payment):
 
     data = {
 
+        # --------------------------------------------------
+        # STORE
+        # --------------------------------------------------
+
         "store_id":
             settings.SSLCOMMERZ_STORE_ID,
 
         "store_passwd":
             settings.SSLCOMMERZ_STORE_PASSWORD,
+
+        # --------------------------------------------------
+        # PAYMENT
+        # --------------------------------------------------
 
         "total_amount":
             f"{amount:.2f}",
@@ -164,7 +392,7 @@ def initiate_payment(payment):
             payment.transaction_id,
 
         # --------------------------------------------------
-        # CALLBACK URLS
+        # CALLBACKS
         # --------------------------------------------------
 
         "success_url":
@@ -187,10 +415,10 @@ def initiate_payment(payment):
             customer_name,
 
         "cus_email":
-            customer.email[:50],
+            customer_email,
 
         "cus_add1":
-            order.shipping_address[:50],
+            shipping_address,
 
         "cus_city":
             "Dhaka",
@@ -205,17 +433,20 @@ def initiate_payment(payment):
             "Bangladesh",
 
         "cus_phone":
-            str(customer_phone)[:20],
+            customer_phone,
 
         # --------------------------------------------------
         # SHIPPING
         # --------------------------------------------------
 
+        "shipping_method":
+            "YES",
+
         "ship_name":
             customer_name,
 
         "ship_add1":
-            order.shipping_address[:50],
+            shipping_address,
 
         "ship_city":
             "Dhaka",
@@ -233,16 +464,11 @@ def initiate_payment(payment):
         # PRODUCT
         # --------------------------------------------------
 
-        "shipping_method":
-            "YES",
-
         "num_of_item":
-            str(order.items.count()),
+            str(order_items.count()),
 
         "product_name":
-            ", ".join(
-                product_names
-            )[:255],
+            ", ".join(product_names)[:255],
 
         "product_category":
             "Bakery",
@@ -251,7 +477,7 @@ def initiate_payment(payment):
             "physical-goods",
 
         "product_amount":
-            f"{order.subtotal:.2f}",
+            f"{Decimal(order.subtotal):.2f}",
 
         "vat":
             "0.00",
@@ -260,13 +486,13 @@ def initiate_payment(payment):
             "0.00",
 
         "convenience_fee":
-            f"{order.delivery_charge:.2f}",
+            f"{Decimal(order.delivery_charge):.2f}",
 
         "cart":
-            json.dumps(cart),
+            json.dumps(cart_items),
 
         # --------------------------------------------------
-        # CUSTOM VALUE
+        # CUSTOM
         # --------------------------------------------------
 
         "value_a":
@@ -274,50 +500,81 @@ def initiate_payment(payment):
     }
 
     # ======================================================
-    # API URL
-    # ======================================================
-
-    url = (
-        f"{_base_url()}"
-        "/gwprocess/v4/api.php"
-    )
-
-    # ======================================================
     # REQUEST
     # ======================================================
+
+    url = _gateway_api_url()
 
     try:
 
         response = requests.post(
             url,
             data=data,
-            timeout=30,
+            timeout=(10, 40),
         )
 
-        response.raise_for_status()
+    except requests.Timeout as exc:
 
-        payload = response.json()
+        raise SSLCommerzError(
+            "SSLCommerz request timed out."
+        ) from exc
 
-    except (
-        requests.RequestException,
-        ValueError,
-    ) as exc:
+    except requests.RequestException as exc:
 
         raise SSLCommerzError(
             f"Could not connect to SSLCommerz: {exc}"
         ) from exc
 
     # ======================================================
+    # HTTP ERROR
+    # ======================================================
+
+    if response.status_code != 200:
+
+        body = response.text[:1000]
+
+        raise SSLCommerzError(
+            "SSLCommerz returned HTTP "
+            f"{response.status_code}: {body}"
+        )
+
+    # ======================================================
+    # JSON
+    # ======================================================
+
+    try:
+
+        payload = response.json()
+
+    except ValueError as exc:
+
+        raise SSLCommerzError(
+            "SSLCommerz returned an invalid JSON response."
+        ) from exc
+
+    # ======================================================
     # GATEWAY STATUS
     # ======================================================
 
-    if payload.get("status") != "SUCCESS":
+    gateway_status = str(
+        payload.get(
+            "status",
+            "",
+        )
+    ).upper()
+
+    if gateway_status != "SUCCESS":
+
+        reason = (
+            payload.get("failedreason")
+            or payload.get("failedReason")
+            or payload.get("message")
+            or payload.get("error")
+            or "SSLCommerz could not create the payment session."
+        )
 
         raise SSLCommerzError(
-            payload.get("failedreason")
-            or
-            "SSLCommerz could not create "
-            "the payment session."
+            str(reason)
         )
 
     # ======================================================
@@ -326,17 +583,13 @@ def initiate_payment(payment):
 
     gateway_url = (
         payload.get("GatewayPageURL")
-        or
-        payload.get(
-            "redirectGatewayURL"
-        )
+        or payload.get("redirectGatewayURL")
     )
 
     if not gateway_url:
 
         raise SSLCommerzError(
-            "SSLCommerz did not return "
-            "a gateway URL."
+            "SSLCommerz did not return a gateway URL."
         )
 
     return payload, gateway_url
@@ -346,9 +599,13 @@ def initiate_payment(payment):
 # VALIDATE TRANSACTION
 # ==========================================================
 
-def validate_transaction(
-    val_id,
-):
+def validate_transaction(val_id):
+
+    _validate_configuration()
+
+    val_id = str(
+        val_id or ""
+    ).strip()
 
     if not val_id:
 
@@ -356,30 +613,10 @@ def validate_transaction(
             "Validation ID is required."
         )
 
-    # ======================================================
-    # CONFIG
-    # ======================================================
-
-    if not settings.SSLCOMMERZ_STORE_ID:
-
-        raise SSLCommerzError(
-            "SSLCommerz store ID is not configured."
-        )
-
-    if not settings.SSLCOMMERZ_STORE_PASSWORD:
-
-        raise SSLCommerzError(
-            "SSLCommerz store password is not configured."
-        )
-
-    # ======================================================
-    # PARAMETERS
-    # ======================================================
-
     params = {
 
         "val_id":
-            str(val_id),
+            val_id,
 
         "store_id":
             settings.SSLCOMMERZ_STORE_ID,
@@ -391,39 +628,58 @@ def validate_transaction(
             "json",
     }
 
-    # ======================================================
-    # URL
-    # ======================================================
-
     url = (
         f"{_base_url()}"
         "/validator/api/"
         "validationserverAPI.php"
     )
 
-    # ======================================================
-    # REQUEST
-    # ======================================================
-
     try:
 
         response = requests.get(
             url,
             params=params,
-            timeout=30,
+            timeout=(10, 40),
         )
 
-        response.raise_for_status()
+    except requests.Timeout as exc:
 
-        payload = response.json()
+        raise SSLCommerzError(
+            "SSLCommerz validation request timed out."
+        ) from exc
 
-    except (
-        requests.RequestException,
-        ValueError,
-    ) as exc:
+    except requests.RequestException as exc:
 
         raise SSLCommerzError(
             f"Could not validate SSLCommerz payment: {exc}"
+        ) from exc
+
+    # ======================================================
+    # HTTP ERROR
+    # ======================================================
+
+    if response.status_code != 200:
+
+        body = response.text[:1000]
+
+        raise SSLCommerzError(
+            "SSLCommerz validation API returned "
+            f"HTTP {response.status_code}: {body}"
+        )
+
+    # ======================================================
+    # JSON
+    # ======================================================
+
+    try:
+
+        payload = response.json()
+
+    except ValueError as exc:
+
+        raise SSLCommerzError(
+            "SSLCommerz validation API returned "
+            "invalid JSON."
         ) from exc
 
     return payload

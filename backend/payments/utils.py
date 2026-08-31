@@ -17,9 +17,11 @@ def frontend_redirect(path, **params):
         key: value
         for key, value in params.items()
         if value is not None
+        and value != ""
     }
 
     if query_params:
+
         return (
             f"{frontend_url}{path}"
             f"?{urlencode(query_params)}"

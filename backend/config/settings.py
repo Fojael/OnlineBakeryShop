@@ -213,44 +213,65 @@ SIMPLE_JWT = {
 # FRONTEND
 # ==========================================================
 
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = config(
+    "FRONTEND_URL",
+    default="http://localhost:5173",
+)
 
 
 # ==========================================================
 # SSL COMMERZ
 # ==========================================================
 
-SSLCOMMERZ_IS_SANDBOX = True
+SSLCOMMERZ_IS_SANDBOX = config(
+    "SSLCOMMERZ_IS_SANDBOX",
+    default=True,
+    cast=bool,
+)
 
-SSLCOMMERZ_STORE_ID = "YOUR_SANDBOX_STORE_ID"
+SSLCOMMERZ_STORE_ID = config(
+    "SSLCOMMERZ_STORE_ID",
+    default="",
+)
 
-SSLCOMMERZ_STORE_PASSWORD = (
-    "YOUR_SANDBOX_STORE_PASSWORD"
+SSLCOMMERZ_STORE_PASSWORD = config(
+    "SSLCOMMERZ_STORE_PASSWORD",
+    default="",
 )
 
 
 # ==========================================================
-# CALLBACK URLS
+# PUBLIC BACKEND
+# ==========================================================
+
+PUBLIC_BACKEND_URL = config(
+    "PUBLIC_BACKEND_URL",
+    default="",
+).rstrip("/")
+
+
+# ==========================================================
+# SSL COMMERZ CALLBACK URLS
 # ==========================================================
 
 SSLCOMMERZ_SUCCESS_URL = (
-    "http://YOUR_PUBLIC_BACKEND_URL/"
-    "api/payments/sslcommerz/success/"
+    f"{PUBLIC_BACKEND_URL}"
+    "/api/payments/sslcommerz/success/"
 )
 
 SSLCOMMERZ_FAIL_URL = (
-    "http://YOUR_PUBLIC_BACKEND_URL/"
-    "api/payments/sslcommerz/fail/"
+    f"{PUBLIC_BACKEND_URL}"
+    "/api/payments/sslcommerz/fail/"
 )
 
 SSLCOMMERZ_CANCEL_URL = (
-    "http://YOUR_PUBLIC_BACKEND_URL/"
-    "api/payments/sslcommerz/cancel/"
+    f"{PUBLIC_BACKEND_URL}"
+    "/api/payments/sslcommerz/cancel/"
 )
 
 SSLCOMMERZ_IPN_URL = (
-    "http://YOUR_PUBLIC_BACKEND_URL/"
-    "api/payments/sslcommerz/ipn/"
+    f"{PUBLIC_BACKEND_URL}"
+    "/api/payments/sslcommerz/ipn/"
 )
 # ==========================
 # LOGIN

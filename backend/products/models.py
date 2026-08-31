@@ -1,5 +1,4 @@
 from django.db import models
-
 from suppliers.models import Supplier
 
 
@@ -44,6 +43,7 @@ class Product(models.Model):
 
     description = models.TextField(
         default="",
+        blank=True,
     )
 
     # ==========================================================
@@ -99,8 +99,19 @@ class Product(models.Model):
     )
 
     # ==========================================================
-    # STRING REPRESENTATION
+    # META
+    # ==========================================================
+
+    class Meta:
+
+        ordering = [
+            "-created_at"
+        ]
+
+    # ==========================================================
+    # STRING
     # ==========================================================
 
     def __str__(self):
+
         return self.name
