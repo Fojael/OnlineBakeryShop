@@ -81,6 +81,10 @@ const Inventory = () => {
 
                 </div>
 
+                <Link to="/admin/dashboard" className="btn btn-outline-dark btn-sm">
+                    Back to Dashboard
+                </Link>
+
             </div>
 
             {/* Search */}

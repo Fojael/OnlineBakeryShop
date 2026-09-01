@@ -188,6 +188,9 @@ import SupplierProfile
 import SupplierProducts
     from "../pages/Supplier/Products/SupplierProducts";
 
+import SupplierInventory
+    from "../pages/Supplier/Inventory/SupplierInventory";
+
 import SupplierOrders
     from "../pages/Supplier/Orders/SupplierOrders";
 
@@ -196,6 +199,22 @@ import SupplierOrderDetails
 
 import SupplierPayments
     from "../pages/Supplier/Payments/SupplierPayments";
+
+// ============================================================
+// DELIVERY RIDER ROUTES
+// ============================================================
+
+import DeliveryDashboard
+    from "../delivery/DeliveryDashboard";
+
+import DeliveryOrders
+    from "../delivery/DeliveryOrders";
+
+import DeliveryOrderDetails
+    from "../delivery/DeliveryOrderDetails";
+
+import DeliveryProfile
+    from "../delivery/DeliveryProfile";
 
 
 // ============================================================
@@ -650,6 +669,22 @@ const AppRoutes = () => {
 
 
 {/* ======================================================
+    SUPPLIER INVENTORY
+====================================================== */}
+
+<Route
+    path="/supplier/inventory"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierInventory />
+        </ProtectedRoute>
+    }
+/>
+
+
+{/* ======================================================
     SUPPLIER ORDERS
 ====================================================== */}
 
@@ -695,6 +730,47 @@ const AppRoutes = () => {
         </ProtectedRoute>
     }
 />
+
+
+            {/* ==================================================
+                DELIVERY RIDER ROUTES
+            ================================================== */}
+
+            <Route
+                path="/delivery/dashboard"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY", "DELIVERY_RIDER"]}>
+                        <DeliveryDashboard />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/delivery/orders"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY", "DELIVERY_RIDER"]}>
+                        <DeliveryOrders />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/delivery/orders/:orderId"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY", "DELIVERY_RIDER"]}>
+                        <DeliveryOrderDetails />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/delivery/profile"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY", "DELIVERY_RIDER"]}>
+                        <DeliveryProfile />
+                    </ProtectedRoute>
+                }
+            />
 
             {/* ==================================================
                 404

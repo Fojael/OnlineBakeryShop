@@ -87,7 +87,7 @@ class Supplier(models.Model):
     # ==========================================================
 
     is_active = models.BooleanField(
-        default=True,
+        default=False,
     )
 
     # ==========================================================

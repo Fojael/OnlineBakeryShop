@@ -146,10 +146,39 @@ class SupplierDashboardSerializer(
         SupplierDashboardStatisticsSerializer()
     )
 
+    notifications = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+    )
+
     recent_activity = (
         SupplierRecentActivitySerializer(
             many=True,
         )
+    )
+
+    recent_orders = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+    )
+
+    low_stock_alerts = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+    )
+
+    inventory_summary = serializers.DictField(
+        required=False,
+        default=dict,
+    )
+
+    sales_overview = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
     )
 
     recent_products = (

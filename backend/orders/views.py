@@ -23,6 +23,9 @@ from suppliers.models import Supplier
 
 from accounts.permissions import IsSupplier
 from notifications.models import Notification
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 from .models import Order, OrderItem
 from .serializers import (
@@ -30,6 +33,20 @@ from .serializers import (
     OrderCreateSerializer,
     SupplierOrderSerializer,
     SupplierOrderItemStatusSerializer,
+)
+from delivery.serializers import (
+    DeliveryOrderSerializer,
+    DeliveryStatusSerializer,
+    DeliveryRiderCreateSerializer,
+)
+from .models import (
+    Order,
+    OrderItem,
+    Delivery,
+)
+from accounts.permissions import (
+    IsSupplier,
+    IsDeliveryRider,
 )
 
 
@@ -2345,5 +2362,921 @@ class SupplierProductPerformanceView(APIView):
 
         return Response(
             products,
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# ADMIN - CREATE DELIVERY RIDER
+# ==========================================================
+
+class AdminCreateDeliveryRiderView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+    ):
+
+        # ==================================================
+        # ADMIN PERMISSION
+        # ==================================================
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail": (
+                        "Admin permission required."
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ==================================================
+        # VALIDATE
+        # ==================================================
+
+        serializer = (
+            DeliveryRiderCreateSerializer(
+                data=request.data,
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        data = serializer.validated_data
+
+        email = data["email"].lower().strip()
+
+        username = data["username"].strip()
+
+        # ==================================================
+        # CHECK EMAIL
+        # ==================================================
+
+        if User.objects.filter(
+            email=email
+        ).exists():
+
+            return Response(
+                {
+                    "detail": (
+                        "A user with this "
+                        "email already exists."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CHECK USERNAME
+        # ==================================================
+
+        if User.objects.filter(
+            username=username
+        ).exists():
+
+            return Response(
+                {
+                    "detail": (
+                        "This username is "
+                        "already in use."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CREATE RIDER
+        # ==================================================
+
+        rider = User.objects.create_user(
+            username=username,
+            email=email,
+            password=data["password"],
+            first_name=data.get(
+                "first_name",
+                "",
+            ),
+            last_name=data.get(
+                "last_name",
+                "",
+            ),
+            phone=data.get(
+                "phone",
+                "",
+            ),
+        )
+
+        # ==================================================
+        # ROLE
+        # ==================================================
+
+        rider.role = User.ROLE_DELIVERY
+
+        # Admin-created riders are immediately active.
+        rider.is_active = True
+
+        rider.save(
+            update_fields=[
+                "role",
+                "is_active",
+            ],
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        return Response(
+            {
+                "message": (
+                    "Delivery rider created "
+                    "successfully."
+                ),
+                "rider": {
+                    "id": rider.id,
+                    "username": rider.username,
+                    "email": rider.email,
+                    "phone": rider.phone,
+                    "role": rider.role,
+                    "is_active": rider.is_active,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+        
+# ==========================================================
+# ADMIN - ASSIGN DELIVERY RIDER
+# ==========================================================
+
+class AdminAssignDeliveryView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        order_id,
+    ):
+
+        # ==================================================
+        # ADMIN PERMISSION
+        # ==================================================
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail": (
+                        "Admin permission required."
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ==================================================
+        # GET ORDER
+        # ==================================================
+
+        order = get_object_or_404(
+            Order.objects
+            .select_for_update()
+            .prefetch_related(
+                "items",
+            ),
+            id=order_id,
+        )
+
+        # ==================================================
+        # CHECK CANCELLED
+        # ==================================================
+
+        if (
+            order.status
+            == Order.STATUS_CANCELLED
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "Cancelled orders cannot "
+                        "be assigned for delivery."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CHECK DELIVERED
+        # ==================================================
+
+        if (
+            order.status
+            == Order.STATUS_DELIVERED
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "This order has already "
+                        "been delivered."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CHECK ALL SUPPLIER ITEMS READY
+        # ==================================================
+
+        items = list(
+            order.items.all()
+        )
+
+        if not items:
+
+            return Response(
+                {
+                    "detail": (
+                        "This order has no items."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        not_ready_items = [
+            item
+            for item in items
+            if item.supplier_status
+            != OrderItem.STATUS_READY
+        ]
+
+        if not_ready_items:
+
+            return Response(
+                {
+                    "detail": (
+                        "All supplier items must "
+                        "be Ready before assigning "
+                        "a delivery rider."
+                    ),
+                    "not_ready_items": [
+                        {
+                            "item_id": item.id,
+                            "product": item.product.name,
+                            "status": (
+                                item.supplier_status
+                            ),
+                        }
+                        for item in not_ready_items
+                    ],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # RIDER ID
+        # ==================================================
+
+        rider_id = request.data.get(
+            "rider_id"
+        )
+
+        if not rider_id:
+
+            return Response(
+                {
+                    "detail": (
+                        "rider_id is required."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # GET RIDER
+        # ==================================================
+
+        rider = get_object_or_404(
+            User,
+            id=rider_id,
+            role=User.ROLE_DELIVERY,
+            is_active=True,
+        )
+
+        # ==================================================
+        # CHECK EXISTING DELIVERY
+        # ==================================================
+
+        existing_delivery = (
+            Delivery.objects
+            .filter(
+                order=order,
+            )
+            .first()
+        )
+
+        if existing_delivery:
+
+            if (
+                existing_delivery.status
+                == Delivery.STATUS_DELIVERED
+            ):
+
+                return Response(
+                    {
+                        "detail": (
+                            "This order has already "
+                            "been delivered."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ------------------------------------------------
+            # REASSIGN
+            # ------------------------------------------------
+
+            existing_delivery.rider = rider
+
+            existing_delivery.status = (
+                Delivery.STATUS_ASSIGNED
+            )
+
+            existing_delivery.accepted_at = None
+            existing_delivery.picked_up_at = None
+            existing_delivery.out_for_delivery_at = None
+
+            existing_delivery.save()
+
+            delivery = existing_delivery
+
+        else:
+
+            delivery = Delivery.objects.create(
+                order=order,
+                rider=rider,
+                status=Delivery.STATUS_ASSIGNED,
+            )
+
+        # ==================================================
+        # ORDER STATUS
+        # ==================================================
+
+        if (
+            order.status
+            == Order.STATUS_PENDING
+        ):
+
+            order.status = (
+                Order.STATUS_PROCESSING
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ],
+            )
+
+        # ==================================================
+        # NOTIFY RIDER
+        # ==================================================
+
+        Notification.objects.create(
+            recipient=rider,
+            title="New Delivery Assigned",
+            message=(
+                f"Order #{order.id} "
+                "has been assigned to you."
+            ),
+            notification_type=(
+                Notification.TYPE_INFO
+            ),
+        )
+
+        # ==================================================
+        # NOTIFY CUSTOMER
+        # ==================================================
+
+        notify_customer(
+            customer=order.customer,
+            title="Delivery Assigned",
+            message=(
+                f"Order #{order.id} "
+                "has been assigned for delivery."
+            ),
+            notification_type=(
+                Notification.TYPE_INFO
+            ),
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        serializer = DeliveryOrderSerializer(
+            delivery,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            {
+                "message": (
+                    "Delivery rider assigned "
+                    "successfully."
+                ),
+                "delivery": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# DELIVERY RIDER - DASHBOARD
+# ==========================================================
+
+class DeliveryDashboardView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsDeliveryRider,
+    ]
+
+    def get(
+        self,
+        request,
+    ):
+
+        deliveries = Delivery.objects.filter(
+            rider=request.user,
+        )
+
+        total_deliveries = deliveries.count()
+
+        assigned = deliveries.filter(
+            status=Delivery.STATUS_ASSIGNED,
+        ).count()
+
+        accepted = deliveries.filter(
+            status=Delivery.STATUS_ACCEPTED,
+        ).count()
+
+        picked_up = deliveries.filter(
+            status=Delivery.STATUS_PICKED_UP,
+        ).count()
+
+        out_for_delivery = deliveries.filter(
+            status=Delivery.STATUS_OUT_FOR_DELIVERY,
+        ).count()
+
+        delivered = deliveries.filter(
+            status=Delivery.STATUS_DELIVERED,
+        ).count()
+
+        cancelled = deliveries.filter(
+            status=Delivery.STATUS_CANCELLED,
+        ).count()
+
+        return Response(
+            {
+                "total_deliveries": total_deliveries,
+                "assigned": assigned,
+                "accepted": accepted,
+                "picked_up": picked_up,
+                "out_for_delivery": out_for_delivery,
+                "delivered": delivered,
+                "cancelled": cancelled,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# DELIVERY RIDER - DELIVERY LIST
+# ==========================================================
+
+class DeliveryListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsDeliveryRider,
+    ]
+
+    def get(
+        self,
+        request,
+    ):
+
+        deliveries = (
+            Delivery.objects
+            .filter(
+                rider=request.user,
+            )
+            .select_related(
+                "order",
+                "order__customer",
+            )
+            .prefetch_related(
+                "order__items__product",
+            )
+            .order_by(
+                "-assigned_at",
+            )
+        )
+
+        serializer = DeliveryOrderSerializer(
+            deliveries,
+            many=True,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# DELIVERY RIDER - DELIVERY DETAIL
+# ==========================================================
+
+class DeliveryDetailView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsDeliveryRider,
+    ]
+
+    def get(
+        self,
+        request,
+        delivery_id,
+    ):
+
+        delivery = get_object_or_404(
+            Delivery.objects
+            .select_related(
+                "order",
+                "order__customer",
+            )
+            .prefetch_related(
+                "order__items__product",
+            ),
+            id=delivery_id,
+            rider=request.user,
+        )
+
+        serializer = DeliveryOrderSerializer(
+            delivery,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# DELIVERY RIDER - UPDATE DELIVERY STATUS
+# ==========================================================
+
+class DeliveryStatusUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsDeliveryRider,
+    ]
+
+    @transaction.atomic
+    def patch(
+        self,
+        request,
+        delivery_id,
+    ):
+
+        # ==================================================
+        # GET DELIVERY
+        # ==================================================
+
+        delivery = get_object_or_404(
+            Delivery.objects
+            .select_related(
+                "order",
+                "order__customer",
+            )
+            .select_for_update(),
+            id=delivery_id,
+            rider=request.user,
+        )
+
+        order = delivery.order
+
+        # ==================================================
+        # CHECK CANCELLED ORDER
+        # ==================================================
+
+        if (
+            order.status
+            == Order.STATUS_CANCELLED
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "This order has been "
+                        "cancelled."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # ALREADY DELIVERED
+        # ==================================================
+
+        if (
+            delivery.status
+            == Delivery.STATUS_DELIVERED
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "This delivery has "
+                        "already been completed."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # VALIDATE REQUEST
+        # ==================================================
+
+        serializer = DeliveryStatusSerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        new_status = serializer.validated_data[
+            "status"
+        ]
+
+        old_status = delivery.status
+
+        # ==================================================
+        # STATUS TRANSITIONS
+        # ==================================================
+
+        allowed_transitions = {
+
+            Delivery.STATUS_ASSIGNED: [
+                Delivery.STATUS_ACCEPTED,
+            ],
+
+            Delivery.STATUS_ACCEPTED: [
+                Delivery.STATUS_PICKED_UP,
+            ],
+
+            Delivery.STATUS_PICKED_UP: [
+                Delivery.STATUS_OUT_FOR_DELIVERY,
+            ],
+
+            Delivery.STATUS_OUT_FOR_DELIVERY: [
+                Delivery.STATUS_DELIVERED,
+            ],
+
+        }
+
+        allowed_next_statuses = (
+            allowed_transitions.get(
+                old_status,
+                [],
+            )
+        )
+
+        if new_status not in allowed_next_statuses:
+
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot change delivery "
+                        f"status from "
+                        f"'{old_status}' to "
+                        f"'{new_status}'."
+                    ),
+                    "allowed_next_statuses": (
+                        allowed_next_statuses
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # CURRENT TIME
+        # ==================================================
+
+        now = timezone.now()
+
+        # ==================================================
+        # ACCEPTED
+        # ==================================================
+
+        if (
+            new_status
+            == Delivery.STATUS_ACCEPTED
+        ):
+
+            delivery.accepted_at = now
+
+            notify_customer(
+                customer=order.customer,
+                title="Delivery Accepted",
+                message=(
+                    f"Your Order #{order.id} "
+                    "has been accepted by "
+                    "the delivery rider."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        # ==================================================
+        # PICKED UP
+        # ==================================================
+
+        elif (
+            new_status
+            == Delivery.STATUS_PICKED_UP
+        ):
+
+            delivery.picked_up_at = now
+
+            notify_customer(
+                customer=order.customer,
+                title="Order Picked Up",
+                message=(
+                    f"Your Order #{order.id} "
+                    "has been picked up "
+                    "for delivery."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        # ==================================================
+        # OUT FOR DELIVERY
+        # ==================================================
+
+        elif (
+            new_status
+            == Delivery.STATUS_OUT_FOR_DELIVERY
+        ):
+
+            delivery.out_for_delivery_at = now
+
+            notify_customer(
+                customer=order.customer,
+                title="Out for Delivery",
+                message=(
+                    f"Your Order #{order.id} "
+                    "is now out for delivery."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        # ==================================================
+        # DELIVERED
+        # ==================================================
+
+        elif (
+            new_status
+            == Delivery.STATUS_DELIVERED
+        ):
+
+            delivery.delivered_at = now
+
+            # ----------------------------------------------
+            # DELIVERY COMPLETED
+            # ----------------------------------------------
+
+            order.status = (
+                Order.STATUS_DELIVERED
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ],
+            )
+
+            notify_customer(
+                customer=order.customer,
+                title="Order Delivered",
+                message=(
+                    f"Your Order #{order.id} "
+                    "has been delivered successfully."
+                ),
+                notification_type=(
+                    Notification.TYPE_DELIVERED
+                ),
+            )
+
+        # ==================================================
+        # SAVE DELIVERY
+        # ==================================================
+
+        delivery.status = new_status
+
+        update_fields = [
+            "status",
+            "updated_at",
+        ]
+
+        if (
+            new_status
+            == Delivery.STATUS_ACCEPTED
+        ):
+
+            update_fields.append(
+                "accepted_at"
+            )
+
+        elif (
+            new_status
+            == Delivery.STATUS_PICKED_UP
+        ):
+
+            update_fields.append(
+                "picked_up_at"
+            )
+
+        elif (
+            new_status
+            == Delivery.STATUS_OUT_FOR_DELIVERY
+        ):
+
+            update_fields.append(
+                "out_for_delivery_at"
+            )
+
+        elif (
+            new_status
+            == Delivery.STATUS_DELIVERED
+        ):
+
+            update_fields.append(
+                "delivered_at"
+            )
+
+        delivery.save(
+            update_fields=update_fields,
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        response_serializer = (
+            DeliveryOrderSerializer(
+                delivery,
+                context={
+                    "request": request,
+                },
+            )
+        )
+
+        return Response(
+            {
+                "message": (
+                    "Delivery status updated "
+                    "successfully."
+                ),
+                "delivery": (
+                    response_serializer.data
+                ),
+            },
             status=status.HTTP_200_OK,
         )

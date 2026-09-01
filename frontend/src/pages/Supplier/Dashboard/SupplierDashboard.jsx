@@ -264,262 +264,189 @@ export default function SupplierDashboard() {
     const statistics =
         dashboard.statistics || {};
 
-    const recentActivity =
-        dashboard.recent_activity || [];
+    const notifications =
+        Array.isArray(dashboard.notifications)
+            ? dashboard.notifications
+            : [];
+
+    const recentOrders =
+        Array.isArray(dashboard.recent_orders)
+            ? dashboard.recent_orders
+            : [];
+
+    const lowStockAlerts =
+        Array.isArray(dashboard.low_stock_alerts)
+            ? dashboard.low_stock_alerts
+            : [];
+
+    const inventorySummary =
+        dashboard.inventory_summary || {};
 
     const recentProducts =
         dashboard.recent_products || [];
 
+    const salesOverview =
+        Array.isArray(dashboard.sales_overview)
+            ? dashboard.sales_overview
+            : [];
 
-    // ==========================================================
-    // RENDER
-    // ==========================================================
+    const formatCurrency = (value) => {
+        const numericValue = Number(value ?? 0);
+
+        if (!Number.isFinite(numericValue)) {
+            return "৳0.00";
+        }
+
+        return `৳${numericValue.toLocaleString("en-BD", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    };
+
+    const formatDate = (value) => {
+        if (!value) {
+            return "Unknown date";
+        }
+
+        return new Date(value).toLocaleString();
+    };
+
+    const statusBadgeClass = (status = "") => {
+        if (status === "Out of Stock") {
+            return "badge bg-danger";
+        }
+
+        if (status === "Low Stock") {
+            return "badge bg-warning text-dark";
+        }
+
+        if (status === "Pending") {
+            return "badge bg-warning text-dark";
+        }
+
+        if (status === "Delivered") {
+            return "badge bg-success";
+        }
+
+        if (status === "Cancelled") {
+            return "badge bg-secondary";
+        }
+
+        return "badge bg-info text-dark";
+    };
+
 
     return (
 
         <div className="container-fluid py-4">
 
-            {/* ==================================================
-                HEADER
-            ================================================== */}
-
             <div className="mb-4">
 
-                <h2 className="fw-bold">
+                <h2 className="fw-bold mb-1">
                     Supplier Dashboard
                 </h2>
 
                 <p className="text-muted mb-0">
-
-                    Welcome back,{" "}
-
-                    {supplier.name || "Supplier"}
-
+                    Welcome back, {supplier.name || "Supplier"}
                 </p>
 
                 {supplier.company && (
-
                     <small className="text-muted">
-
                         {supplier.company}
-
                     </small>
-
                 )}
 
             </div>
-
-
-            {/* ==================================================
-                PRODUCT STATISTICS
-            ================================================== */}
-
-            <h5 className="fw-bold mb-3">
-                Product Overview
-            </h5>
 
 
             <div className="row">
 
                 <StatCard
                     title="Total Products"
-                    value={
-                        statistics.total_products ?? 0
-                    }
+                    value={statistics.total_products ?? 0}
                 />
-
 
                 <StatCard
                     title="Available Products"
-                    value={
-                        statistics.available_products ?? 0
-                    }
+                    value={statistics.available_products ?? 0}
                 />
-
-
-                <StatCard
-                    title="Total Stock"
-                    value={
-                        statistics.total_stock ?? 0
-                    }
-                />
-
 
                 <StatCard
                     title="Low Stock"
-                    value={
-                        statistics.low_stock ?? 0
-                    }
+                    value={statistics.low_stock ?? 0}
                 />
-
 
                 <StatCard
                     title="Out of Stock"
-                    value={
-                        statistics.out_of_stock ?? 0
-                    }
+                    value={statistics.out_of_stock ?? 0}
                 />
-
-            </div>
-
-
-            {/* ==================================================
-                ORDER STATISTICS
-            ================================================== */}
-
-            <h5 className="fw-bold mb-3 mt-3">
-                Order Overview
-            </h5>
-
-
-            <div className="row">
 
                 <StatCard
                     title="Pending Orders"
-                    value={
-                        statistics.pending_orders ?? 0
-                    }
+                    value={statistics.pending_orders ?? 0}
                 />
-
 
                 <StatCard
                     title="Completed Orders"
-                    value={
-                        statistics.completed_orders ?? 0
-                    }
+                    value={statistics.completed_orders ?? 0}
                 />
 
+                <StatCard
+                    title="Total Revenue"
+                    value={formatCurrency(statistics.total_income ?? 0)}
+                />
 
                 <StatCard
-                    title="Cancelled Orders"
-                    value={
-                        statistics.cancelled_orders ?? 0
-                    }
+                    title="Notifications"
+                    value={notifications.length}
                 />
 
             </div>
 
-
-            {/* ==================================================
-                PAYMENT STATISTICS
-            ================================================== */}
-
-            <h5 className="fw-bold mb-3 mt-3">
-                Payment Overview
-            </h5>
-
-
-            <div className="row">
-
-                <StatCard
-                    title="Pending Payments"
-                    value={
-                        statistics.pending_payments ?? 0
-                    }
-                />
-
-
-                <StatCard
-                    title="Completed Payments"
-                    value={
-                        statistics.completed_payments ?? 0
-                    }
-                />
-
-
-                <StatCard
-                    title="Total Income"
-                    value={
-                        `৳${statistics.total_income ?? "0.00"}`
-                    }
-                />
-
-            </div>
-
-
-            {/* ==================================================
-                RECENT CONTENT
-            ================================================== */}
 
             <div className="row mt-3">
 
-
-                {/* ==================================================
-                    RECENT ACTIVITY
-                ================================================== */}
-
-                <div className="col-lg-6 mb-4">
+                <div className="col-lg-7 mb-4">
 
                     <div className="card border-0 shadow-sm h-100">
 
                         <div className="card-header bg-white">
-
-                            <h5 className="mb-0">
-                                Recent Activity
-                            </h5>
-
+                            <h5 className="mb-0">Recent Orders</h5>
                         </div>
 
+                        <div className="card-body p-0">
 
-                        <div className="card-body">
-
-                            {recentActivity.length === 0 ? (
-
-                                <p className="text-muted mb-0">
-                                    No recent activity.
-                                </p>
-
+                            {recentOrders.length === 0 ? (
+                                <div className="p-3 text-muted">No recent orders.</div>
                             ) : (
-
-                                <div className="list-group list-group-flush">
-
-                                    {recentActivity.map(
-                                        (activity) => (
-
-                                            <div
-                                                key={
-                                                    activity.id
-                                                }
-                                                className="list-group-item px-0"
-                                            >
-
-                                                <h6 className="mb-1">
-
-                                                    {
-                                                        activity.title
-                                                    }
-
-                                                </h6>
-
-
-                                                <p className="mb-1 text-muted">
-
-                                                    {
-                                                        activity.description
-                                                    }
-
-                                                </p>
-
-
-                                                <small className="text-muted">
-
-                                                    {
-                                                        activity.date
-                                                            ? new Date(
-                                                                activity.date
-                                                            ).toLocaleString()
-                                                            : "Unknown date"
-                                                    }
-
-                                                </small>
-
-                                            </div>
-
-                                        )
-                                    )}
-
+                                <div className="table-responsive">
+                                    <table className="table align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Order</th>
+                                                <th>Customer</th>
+                                                <th>Status</th>
+                                                <th>Total</th>
+                                                <th>Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {recentOrders.map((order) => (
+                                                <tr key={order.id}>
+                                                    <td>{order.order_number || `#${order.id}`}</td>
+                                                    <td>{order.customer || "Customer"}</td>
+                                                    <td>
+                                                        <span className={statusBadgeClass(order.status)}>
+                                                            {order.status || "Unknown"}
+                                                        </span>
+                                                    </td>
+                                                    <td>{formatCurrency(order.total_amount ?? 0)}</td>
+                                                    <td>{formatDate(order.date)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-
                             )}
 
                         </div>
@@ -528,138 +455,214 @@ export default function SupplierDashboard() {
 
                 </div>
 
-
-                {/* ==================================================
-                    RECENT PRODUCTS
-                ================================================== */}
-
-                <div className="col-lg-6 mb-4">
+                <div className="col-lg-5 mb-4">
 
                     <div className="card border-0 shadow-sm h-100">
 
                         <div className="card-header bg-white">
-
-                            <h5 className="mb-0">
-                                Recent Products
-                            </h5>
-
+                            <h5 className="mb-0">Notifications</h5>
                         </div>
-
 
                         <div className="card-body">
 
-                            {recentProducts.length === 0 ? (
-
-                                <p className="text-muted mb-0">
-                                    No products available.
-                                </p>
-
+                            {notifications.length === 0 ? (
+                                <p className="text-muted mb-0">No notifications.</p>
                             ) : (
-
-                                <div className="table-responsive">
-
-                                    <table className="table align-middle">
-
-                                        <thead>
-
-                                            <tr>
-
-                                                <th>
-                                                    Product
-                                                </th>
-
-                                                <th>
-                                                    Price
-                                                </th>
-
-                                                <th>
-                                                    Stock
-                                                </th>
-
-                                                <th>
-                                                    Status
-                                                </th>
-
-                                            </tr>
-
-                                        </thead>
-
-
-                                        <tbody>
-
-                                            {recentProducts.map(
-                                                (product) => (
-
-                                                    <tr
-                                                        key={
-                                                            product.id
-                                                        }
-                                                    >
-
-                                                        <td>
-                                                            {
-                                                                product.name
-                                                            }
-                                                        </td>
-
-
-                                                        <td>
-                                                            ৳
-                                                            {
-                                                                product.price
-                                                            }
-                                                        </td>
-
-
-                                                        <td>
-
-                                                            {
-                                                                product.current_stock ??
-                                                                product.stock_quantity ??
-                                                                0
-                                                            }
-
-                                                        </td>
-
-
-                                                        <td>
-
-                                                            <span
-                                                                className={
-                                                                    product.inventory_status ===
-                                                                    "Out of Stock"
-
-                                                                        ? "badge bg-danger"
-
-                                                                        : product.inventory_status ===
-                                                                          "Low Stock"
-
-                                                                            ? "badge bg-warning text-dark"
-
-                                                                            : "badge bg-success"
-                                                                }
-                                                            >
-
-                                                                {
-                                                                    product.inventory_status ||
-                                                                    "Unknown"
-                                                                }
-
-                                                            </span>
-
-                                                        </td>
-
-                                                    </tr>
-
-                                                )
-                                            )}
-
-                                        </tbody>
-
-                                    </table>
-
+                                <div className="list-group list-group-flush">
+                                    {notifications.map((notification) => (
+                                        <div key={notification.id || notification.title} className="list-group-item px-0">
+                                            <div className="d-flex justify-content-between align-items-start gap-3">
+                                                <div>
+                                                    <h6 className="mb-1">{notification.title || "Update"}</h6>
+                                                    <p className="mb-1 text-muted">
+                                                        {notification.message || notification.description || "No details available."}
+                                                    </p>
+                                                    <small className="text-muted">
+                                                        {notification.type || "Info"}
+                                                    </small>
+                                                </div>
+                                                <small className="text-muted text-nowrap">{formatDate(notification.date)}</small>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
+                            )}
 
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div className="row mt-1">
+
+                <div className="col-lg-5 mb-4">
+
+                    <div className="card border-0 shadow-sm h-100">
+
+                        <div className="card-header bg-white">
+                            <h5 className="mb-0">Low Stock Alerts</h5>
+                        </div>
+
+                        <div className="card-body">
+
+                            {lowStockAlerts.length === 0 ? (
+                                <p className="text-muted mb-0">All products are well stocked.</p>
+                            ) : (
+                                <div className="list-group list-group-flush">
+                                    {lowStockAlerts.map((alert) => (
+                                        <div key={alert.id} className="list-group-item px-0">
+                                            <div className="d-flex justify-content-between align-items-center gap-3">
+                                                <div>
+                                                    <h6 className="mb-1">{alert.product_name || "Product"}</h6>
+                                                    <small className="text-muted">
+                                                        {alert.stock_quantity ?? 0} in stock · minimum {alert.minimum_stock ?? 0}
+                                                    </small>
+                                                </div>
+                                                <span className={statusBadgeClass(alert.status)}>{alert.status || "Low Stock"}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div className="col-lg-7 mb-4">
+
+                    <div className="card border-0 shadow-sm h-100">
+
+                        <div className="card-header bg-white">
+                            <h5 className="mb-0">Inventory Summary</h5>
+                        </div>
+
+                        <div className="card-body">
+                            <div className="row g-3">
+                                <div className="col-md-6">
+                                    <div className="border rounded p-3 h-100">
+                                        <small className="text-muted">In Stock</small>
+                                        <h4 className="mb-0 mt-1">{inventorySummary.in_stock_items ?? 0}</h4>
+                                    </div>
+                                </div>
+                                <div className="col-md-6">
+                                    <div className="border rounded p-3 h-100">
+                                        <small className="text-muted">Low Stock</small>
+                                        <h4 className="mb-0 mt-1">{inventorySummary.low_stock_items ?? 0}</h4>
+                                    </div>
+                                </div>
+                                <div className="col-md-6">
+                                    <div className="border rounded p-3 h-100">
+                                        <small className="text-muted">Out of Stock</small>
+                                        <h4 className="mb-0 mt-1">{inventorySummary.out_of_stock_items ?? 0}</h4>
+                                    </div>
+                                </div>
+                                <div className="col-md-6">
+                                    <div className="border rounded p-3 h-100">
+                                        <small className="text-muted">Total Stock</small>
+                                        <h4 className="mb-0 mt-1">{inventorySummary.total_stock ?? 0}</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div className="row mt-1">
+
+                <div className="col-lg-7 mb-4">
+
+                    <div className="card border-0 shadow-sm h-100">
+
+                        <div className="card-header bg-white">
+                            <h5 className="mb-0">Recent Products</h5>
+                        </div>
+
+                        <div className="card-body p-0">
+
+                            {recentProducts.length === 0 ? (
+                                <div className="p-3 text-muted">No products available.</div>
+                            ) : (
+                                <div className="table-responsive">
+                                    <table className="table align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Product</th>
+                                                <th>Price</th>
+                                                <th>Stock</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {recentProducts.map((product) => (
+                                                <tr key={product.id}>
+                                                    <td>{product.name}</td>
+                                                    <td>{formatCurrency(product.price ?? 0)}</td>
+                                                    <td>{product.current_stock ?? product.stock_quantity ?? 0}</td>
+                                                    <td>
+                                                        <span className={statusBadgeClass(product.inventory_status)}>
+                                                            {product.inventory_status || "Unknown"}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div className="col-lg-5 mb-4">
+
+                    <div className="card border-0 shadow-sm h-100">
+
+                        <div className="card-header bg-white">
+                            <h5 className="mb-0">Sales Overview</h5>
+                        </div>
+
+                        <div className="card-body">
+
+                            {salesOverview.length === 0 ? (
+                                <p className="text-muted mb-0">No sales data yet.</p>
+                            ) : (
+                                <div>
+                                    {salesOverview.map((entry, index) => {
+                                        const maxAmount = salesOverview.reduce((max, item) => Math.max(max, Number(item.amount ?? 0)), 0) || 1;
+                                        const width = (Number(entry.amount ?? 0) / maxAmount) * 100;
+
+                                        return (
+                                            <div className="mb-3" key={`${entry.label}-${index}`}>
+                                                <div className="d-flex justify-content-between align-items-center mb-1">
+                                                    <small className="text-muted">{entry.label}</small>
+                                                    <strong>{formatCurrency(entry.amount ?? 0)}</strong>
+                                                </div>
+                                                <div className="progress" style={{ height: "8px" }}>
+                                                    <div
+                                                        className="progress-bar bg-success"
+                                                        role="progressbar"
+                                                        style={{ width: `${width}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             )}
 
                         </div>

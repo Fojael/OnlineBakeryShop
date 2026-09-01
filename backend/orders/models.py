@@ -6,6 +6,10 @@ from django.db import models
 from products.models import Product
 
 
+# ==========================================================
+# ORDER
+# ==========================================================
+
 class Order(models.Model):
 
     # ==========================================================
@@ -80,8 +84,6 @@ class Order(models.Model):
 
     # ==========================================================
     # STOCK
-    # Used when payment succeeds to prevent deducting stock twice.
-    # Does NOT affect Payment app.
     # ==========================================================
 
     stock_deducted = models.BooleanField(
@@ -109,10 +111,6 @@ class Order(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
-
-    # ==========================================================
-    # META
-    # ==========================================================
 
     class Meta:
         ordering = ["-created_at"]
@@ -165,11 +163,9 @@ class Order(models.Model):
         ]:
             return False
 
-        # COD
         if self.payment_method == self.PAYMENT_COD:
             return True
 
-        # SSLCommerz
         if self.payment_method == self.PAYMENT_SSLCOMMERZ:
 
             if hasattr(self, "payment"):
@@ -196,21 +192,17 @@ class Order(models.Model):
         )
 
 
-class OrderItem(models.Model):
+# ==========================================================
+# ORDER ITEM
+# ==========================================================
 
-    # ==========================================================
-    # ORDER
-    # ==========================================================
+class OrderItem(models.Model):
 
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
         related_name="items",
     )
-
-    # ==========================================================
-    # PRODUCT
-    # ==========================================================
 
     product = models.ForeignKey(
         Product,
@@ -220,23 +212,37 @@ class OrderItem(models.Model):
 
     # ==========================================================
     # SUPPLIER STATUS
-    #
-    # Each supplier manages only their own item.
-    # This does NOT change Order.status.
     # ==========================================================
 
     STATUS_PENDING = "Pending"
     STATUS_PROCESSING = "Processing"
     STATUS_READY = "Ready"
+
+    # Kept for compatibility with existing data/workflow.
     STATUS_DELIVERED = "Delivered"
     STATUS_CANCELLED = "Cancelled"
 
     STATUS_CHOICES = [
-        (STATUS_PENDING, "Pending"),
-        (STATUS_PROCESSING, "Processing"),
-        (STATUS_READY, "Ready"),
-        (STATUS_DELIVERED, "Delivered"),
-        (STATUS_CANCELLED, "Cancelled"),
+        (
+            STATUS_PENDING,
+            "Pending",
+        ),
+        (
+            STATUS_PROCESSING,
+            "Processing",
+        ),
+        (
+            STATUS_READY,
+            "Ready",
+        ),
+        (
+            STATUS_DELIVERED,
+            "Delivered",
+        ),
+        (
+            STATUS_CANCELLED,
+            "Cancelled",
+        ),
     ]
 
     supplier_status = models.CharField(
@@ -245,48 +251,145 @@ class OrderItem(models.Model):
         default=STATUS_PENDING,
     )
 
-    # ==========================================================
-    # QUANTITY
-    # ==========================================================
-
     quantity = models.PositiveIntegerField(
         default=1,
     )
-
-    # ==========================================================
-    # PRICE
-    # ==========================================================
 
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
     )
-  
-    # ==========================================================
-    # TIMESTAMP
-    # ==========================================================
 
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
-
-    # ==========================================================
-    # SUBTOTAL
-    # ==========================================================
 
     @property
     def subtotal(self):
 
         return self.price * self.quantity
 
-    # ==========================================================
-    # STRING
-    # ==========================================================
-
     def __str__(self):
 
         return (
             f"{self.product.name} × "
-            f"{self.quantity}"
+            f"{self.quantity} "
             f"({self.supplier_status})"
+        )
+
+
+# ==========================================================
+# DELIVERY
+# ==========================================================
+
+class Delivery(models.Model):
+
+    # ==========================================================
+    # DELIVERY STATUS
+    # ==========================================================
+
+    STATUS_ASSIGNED = "Assigned"
+    STATUS_ACCEPTED = "Accepted"
+    STATUS_PICKED_UP = "Picked Up"
+    STATUS_OUT_FOR_DELIVERY = "Out for Delivery"
+    STATUS_DELIVERED = "Delivered"
+    STATUS_CANCELLED = "Cancelled"
+
+    STATUS_CHOICES = [
+        (
+            STATUS_ASSIGNED,
+            "Assigned",
+        ),
+        (
+            STATUS_ACCEPTED,
+            "Accepted",
+        ),
+        (
+            STATUS_PICKED_UP,
+            "Picked Up",
+        ),
+        (
+            STATUS_OUT_FOR_DELIVERY,
+            "Out for Delivery",
+        ),
+        (
+            STATUS_DELIVERED,
+            "Delivered",
+        ),
+        (
+            STATUS_CANCELLED,
+            "Cancelled",
+        ),
+    ]
+
+    # ==========================================================
+    # ORDER
+    # ==========================================================
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="orders_delivery",
+    )
+
+    # ==========================================================
+    # DELIVERY RIDER
+    # ==========================================================
+
+    rider = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="orders_delivery_rides",
+    )
+
+    # ==========================================================
+    # STATUS
+    # ==========================================================
+
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default=STATUS_ASSIGNED,
+    )
+
+    # ==========================================================
+    # TIMESTAMPS
+    # ==========================================================
+
+    assigned_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    accepted_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    picked_up_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    out_for_delivery_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    delivered_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-assigned_at"]
+
+    def __str__(self):
+
+        return (
+            f"Delivery #{self.id} "
+            f"- Order #{self.order.id}"
         )

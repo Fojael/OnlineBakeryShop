@@ -1,6 +1,9 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, Delivery
+
+User = get_user_model()
 
 
 # ==========================================================
@@ -11,32 +14,19 @@ class OrderItemSerializer(
     serializers.ModelSerializer
 ):
 
-    # ======================================================
-    # PRODUCT ID
-    # ======================================================
-
     product_id = serializers.IntegerField(
         source="product.id",
         read_only=True,
     )
-
-    # ======================================================
-    # PRODUCT NAME
-    # ======================================================
 
     product_name = serializers.CharField(
         source="product.name",
         read_only=True,
     )
 
-    # ======================================================
-    # SUBTOTAL
-    # ======================================================
-
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
-
         model = OrderItem
 
         fields = [
@@ -51,15 +41,10 @@ class OrderItemSerializer(
 
         read_only_fields = fields
 
-    # ======================================================
-    # GET SUBTOTAL
-    # ======================================================
-
     def get_subtotal(
         self,
         obj,
     ):
-
         return obj.subtotal
 
 
@@ -71,74 +56,32 @@ class OrderSerializer(
     serializers.ModelSerializer
 ):
 
-    # ======================================================
-    # CUSTOMER NAME
-    # ======================================================
-
     customer_name = serializers.CharField(
         source="customer.username",
         read_only=True,
     )
-
-    # ======================================================
-    # CUSTOMER EMAIL
-    # ======================================================
 
     customer_email = serializers.EmailField(
         source="customer.email",
         read_only=True,
     )
 
-    # ======================================================
-    # ORDER ITEMS
-    # ======================================================
-
     items = OrderItemSerializer(
         many=True,
         read_only=True,
     )
 
-    # ======================================================
-    # ITEM COUNT
-    # ======================================================
-
     item_count = serializers.SerializerMethodField()
 
-    # ======================================================
-    # PAYMENT STATUS
-    # ======================================================
+    payment_status = serializers.SerializerMethodField()
 
-    payment_status = (
-        serializers.SerializerMethodField()
-    )
-
-    # ======================================================
-    # TRANSACTION ID
-    # ======================================================
-
-    transaction_id = (
-        serializers.SerializerMethodField()
-    )
-
-    # ======================================================
-    # PAYMENT FLAG
-    # ======================================================
+    transaction_id = serializers.SerializerMethodField()
 
     is_paid = serializers.ReadOnlyField()
-
-    # ======================================================
-    # CAN CANCEL
-    #
-    # Uses Order.can_cancel property.
-    #
-    # IMPORTANT:
-    # No stock_deducted field is used.
-    # ======================================================
 
     can_cancel = serializers.ReadOnlyField()
 
     class Meta:
-
         model = Order
 
         fields = [
@@ -163,20 +106,11 @@ class OrderSerializer(
 
         read_only_fields = fields
 
-    # ======================================================
-    # ITEM COUNT
-    # ======================================================
-
     def get_item_count(
         self,
         obj,
     ):
-
         return obj.items.count()
-
-    # ======================================================
-    # PAYMENT STATUS
-    # ======================================================
 
     def get_payment_status(
         self,
@@ -184,21 +118,15 @@ class OrderSerializer(
     ):
 
         if hasattr(obj, "payment"):
-
             return obj.payment.status
 
         if (
             obj.payment_method
             == Order.PAYMENT_COD
         ):
-
             return "Cash on Delivery"
 
         return None
-
-    # ======================================================
-    # TRANSACTION ID
-    # ======================================================
 
     def get_transaction_id(
         self,
@@ -206,7 +134,6 @@ class OrderSerializer(
     ):
 
         if hasattr(obj, "payment"):
-
             return obj.payment.transaction_id
 
         return None
@@ -221,17 +148,12 @@ class OrderCreateSerializer(
 ):
 
     class Meta:
-
         model = Order
 
         fields = [
             "shipping_address",
             "payment_method",
         ]
-
-    # ======================================================
-    # SHIPPING ADDRESS
-    # ======================================================
 
     def validate_shipping_address(
         self,
@@ -241,22 +163,16 @@ class OrderCreateSerializer(
         value = value.strip()
 
         if not value:
-
             raise serializers.ValidationError(
                 "Shipping address is required."
             )
 
         if len(value) < 10:
-
             raise serializers.ValidationError(
                 "Please provide a complete shipping address."
             )
 
         return value
-
-    # ======================================================
-    # PAYMENT METHOD
-    # ======================================================
 
     def validate_payment_method(
         self,
@@ -269,12 +185,13 @@ class OrderCreateSerializer(
         ]
 
         if value not in allowed:
-
             raise serializers.ValidationError(
                 "Invalid payment method."
             )
 
         return value
+
+
 # ==========================================================
 # SUPPLIER ORDER ITEM SERIALIZER
 # ==========================================================
@@ -288,12 +205,9 @@ class SupplierOrderItemSerializer(
         read_only=True,
     )
 
-  
-
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
-
         model = OrderItem
 
         fields = [
@@ -303,7 +217,7 @@ class SupplierOrderItemSerializer(
             "quantity",
             "price",
             "subtotal",
-            
+            "supplier_status",
             "created_at",
         ]
 
@@ -313,7 +227,6 @@ class SupplierOrderItemSerializer(
         self,
         obj,
     ):
-
         return obj.subtotal
 
 
@@ -342,7 +255,6 @@ class SupplierOrderSerializer(
     transaction_id = serializers.SerializerMethodField()
 
     class Meta:
-
         model = Order
 
         fields = [
@@ -360,10 +272,6 @@ class SupplierOrderSerializer(
 
         read_only_fields = fields
 
-    # ======================================================
-    # ONLY RETURN THIS SUPPLIER'S ITEMS
-    # ======================================================
-
     def get_items(
         self,
         obj,
@@ -380,10 +288,6 @@ class SupplierOrderSerializer(
             many=True,
         ).data
 
-    # ======================================================
-    # PAYMENT STATUS
-    # ======================================================
-
     def get_payment_status(
         self,
         obj,
@@ -392,14 +296,13 @@ class SupplierOrderSerializer(
         if hasattr(obj, "payment"):
             return obj.payment.status
 
-        if obj.payment_method == Order.PAYMENT_COD:
+        if (
+            obj.payment_method
+            == Order.PAYMENT_COD
+        ):
             return "Cash on Delivery"
 
         return None
-
-    # ======================================================
-    # TRANSACTION ID
-    # ======================================================
 
     def get_transaction_id(
         self,
@@ -410,9 +313,16 @@ class SupplierOrderSerializer(
             return obj.payment.transaction_id
 
         return None
-    
+
+
 # ==========================================================
 # SUPPLIER ORDER ITEM STATUS SERIALIZER
+#
+# Supplier workflow:
+#
+# Pending → Processing → Ready
+#
+# Supplier does NOT use Delivered.
 # ==========================================================
 
 class SupplierOrderItemStatusSerializer(
@@ -435,3 +345,250 @@ class SupplierOrderItemStatusSerializer(
             ),
         ],
     )
+
+
+# ==========================================================
+# DELIVERY ORDER ITEM SERIALIZER
+# ==========================================================
+
+class DeliveryOrderItemSerializer(
+    serializers.ModelSerializer
+):
+
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True,
+    )
+
+    supplier_name = serializers.CharField(
+        source="product.supplier.user.username",
+        read_only=True,
+    )
+
+    subtotal = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderItem
+
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "supplier_name",
+            "quantity",
+            "price",
+            "subtotal",
+            "supplier_status",
+        ]
+
+        read_only_fields = fields
+
+    def get_subtotal(
+        self,
+        obj,
+    ):
+        return obj.subtotal
+
+
+# ==========================================================
+# DELIVERY ORDER SERIALIZER
+# ==========================================================
+
+class DeliveryOrderSerializer(
+    serializers.ModelSerializer
+):
+
+    customer_name = serializers.CharField(
+        source="customer.username",
+        read_only=True,
+    )
+
+    customer_email = serializers.EmailField(
+        source="customer.email",
+        read_only=True,
+    )
+
+    customer_phone = serializers.CharField(
+        source="customer.phone",
+        read_only=True,
+        allow_null=True,
+    )
+
+    items = DeliveryOrderItemSerializer(
+        source="items",
+        many=True,
+        read_only=True,
+    )
+
+    delivery_status = serializers.CharField(
+        source="delivery.status",
+        read_only=True,
+    )
+
+    delivery_id = serializers.IntegerField(
+        source="delivery.id",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Order
+
+        fields = [
+            "id",
+            "customer_name",
+            "customer_email",
+            "customer_phone",
+            "shipping_address",
+            "payment_method",
+            "payment_status",
+            "status",
+            "subtotal",
+            "delivery_charge",
+            "total_amount",
+            "delivery_id",
+            "delivery_status",
+            "items",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = fields
+
+    payment_status = serializers.SerializerMethodField()
+
+    def get_payment_status(
+        self,
+        obj,
+    ):
+
+        if hasattr(obj, "payment"):
+            return obj.payment.status
+
+        if (
+            obj.payment_method
+            == Order.PAYMENT_COD
+        ):
+            return "Cash on Delivery"
+
+        return None
+
+
+# ==========================================================
+# DELIVERY STATUS SERIALIZER
+# ==========================================================
+
+class DeliveryStatusSerializer(
+    serializers.Serializer,
+):
+
+    status = serializers.CharField()
+
+    def validate_status(
+        self,
+        value,
+    ):
+
+        value = str(value).strip()
+
+        allowed = [
+            Delivery.STATUS_ACCEPTED,
+            Delivery.STATUS_PICKED_UP,
+            Delivery.STATUS_OUT_FOR_DELIVERY,
+            Delivery.STATUS_DELIVERED,
+        ]
+
+        if value not in allowed:
+
+            raise serializers.ValidationError(
+                {
+                    "detail": "Invalid delivery status.",
+                    "allowed_values": allowed,
+                }
+            )
+
+        return value
+
+
+# ==========================================================
+# DELIVERY RIDER CREATE SERIALIZER
+# ==========================================================
+
+class DeliveryRiderCreateSerializer(
+    serializers.Serializer,
+):
+
+    email = serializers.EmailField()
+    username = serializers.CharField(
+        min_length=3,
+        max_length=150,
+    )
+    password = serializers.CharField(
+        min_length=8,
+        write_only=True,
+    )
+    first_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=30,
+    )
+    last_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=30,
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=20,
+    )
+
+    def validate_email(
+        self,
+        value,
+    ):
+        return value.strip().lower()
+
+    def validate_username(
+        self,
+        value,
+    ):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Username is required."
+            )
+
+        if User.objects.filter(
+            username=value
+        ).exists():
+            raise serializers.ValidationError(
+                "This username is already in use."
+            )
+
+        return value
+
+    def validate_password(
+        self,
+        value,
+    ):
+        stripped = value.strip()
+        if len(stripped) < 8:
+            raise serializers.ValidationError(
+                "Password must be at least 8 characters long."
+            )
+        return stripped
+
+    def validate_phone(
+        self,
+        value,
+    ):
+        if value is None:
+            return ""
+
+        value = str(value).strip()
+        if value and len(value) < 7:
+            raise serializers.ValidationError(
+                "Phone number is too short."
+            )
+        return value

@@ -9,12 +9,22 @@ class Notification(models.Model):
     # ==========================================================
 
     TYPE_NEW_ORDER = "New Order"
+    TYPE_LOW_STOCK_ALERT = "Low Stock Alert"
+    TYPE_PRODUCT_APPROVED = "Product Approved"
+    TYPE_PRODUCT_REJECTED = "Product Rejected"
+    TYPE_ADMIN_MESSAGE = "Admin Message"
+    TYPE_PAYMENT_UPDATE = "Payment Update"
     TYPE_CANCELLED = "Cancelled"
     TYPE_DELIVERED = "Delivered"
     TYPE_INFO = "Information"
 
     TYPE_CHOICES = [
         (TYPE_NEW_ORDER, "New Order"),
+        (TYPE_LOW_STOCK_ALERT, "Low Stock Alert"),
+        (TYPE_PRODUCT_APPROVED, "Product Approved"),
+        (TYPE_PRODUCT_REJECTED, "Product Rejected"),
+        (TYPE_ADMIN_MESSAGE, "Admin Message"),
+        (TYPE_PAYMENT_UPDATE, "Payment Update"),
         (TYPE_CANCELLED, "Cancelled"),
         (TYPE_DELIVERED, "Delivered"),
         (TYPE_INFO, "Information"),

@@ -22,6 +22,10 @@ const EditSupplier = () => {
         phone: "",
         email: "",
         address: "",
+        business_license: "",
+        tax_number: "",
+        website: "",
+        notes: "",
     });
 
     useEffect(() => {
@@ -35,6 +39,10 @@ const EditSupplier = () => {
                     phone: response.data.phone || "",
                     email: response.data.email || "",
                     address: response.data.address || "",
+                    business_license: response.data.business_license || "",
+                    tax_number: response.data.tax_number || "",
+                    website: response.data.website || "",
+                    notes: response.data.notes || "",
                 });
             } catch (error) {
                 console.error(error);
@@ -84,28 +92,35 @@ const EditSupplier = () => {
             setSaving(true);
 
             const payload = {
-                              ...formData,
-                            email: formData.email.trim() || null,
-                            };
+                name: formData.name.trim(),
+                company: formData.company.trim(),
+                phone: formData.phone.trim(),
+                email: formData.email ? formData.email.trim() : "",
+                address: formData.address.trim(),
+                business_license: formData.business_license.trim(),
+                tax_number: formData.tax_number.trim(),
+                website: formData.website.trim(),
+                notes: formData.notes.trim(),
+            };
 
-await updateSupplier(id, payload);
+            await updateSupplier(id, payload);
 
             toast.success("Supplier updated successfully.");
 
             navigate("/admin/suppliers");
         } catch (error) {
-    console.error(error);
+            console.error(error);
 
-    if (error.response?.data?.email) {
-        toast.error(error.response.data.email[0]);
-    } else if (error.response?.data?.phone) {
-        toast.error(error.response.data.phone[0]);
-    } else if (error.response?.data?.name) {
-        toast.error(error.response.data.name[0]);
-    } else {
-        toast.error("Failed to update supplier.");
-    }
-} finally {
+            if (error.response?.data?.email) {
+                toast.error(error.response.data.email[0]);
+            } else if (error.response?.data?.phone) {
+                toast.error(error.response.data.phone[0]);
+            } else if (error.response?.data?.name) {
+                toast.error(error.response.data.name[0]);
+            } else {
+                toast.error("Failed to update supplier.");
+            }
+        } finally {
             setSaving(false);
         }
     };
@@ -149,73 +164,67 @@ await updateSupplier(id, payload);
 
                                 <form onSubmit={handleSubmit}>
 
-                                    {/* Supplier Name */}
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Supplier Name *
+                                            </label>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Supplier Name *
-                                        </label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                name="name"
+                                                value={formData.name}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            className="form-control"
-                                            name="name"
-                                            value={formData.name}
-                                            onChange={handleChange}
-                                        />
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Company
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                name="company"
+                                                value={formData.company}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Company */}
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Phone *
+                                            </label>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Company
-                                        </label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                name="phone"
+                                                value={formData.phone}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            className="form-control"
-                                            name="company"
-                                            value={formData.company}
-                                            onChange={handleChange}
-                                        />
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Email
+                                            </label>
+
+                                            <input
+                                                type="email"
+                                                className="form-control"
+                                                name="email"
+                                                value={formData.email}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Phone */}
-
                                     <div className="mb-3">
-                                        <label className="form-label">
-                                            Phone *
-                                        </label>
-
-                                        <input
-                                            type="text"
-                                            className="form-control"
-                                            name="phone"
-                                            value={formData.phone}
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-
-                                    {/* Email */}
-
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Email
-                                        </label>
-
-                                        <input
-                                            type="email"
-                                            className="form-control"
-                                            name="email"
-                                            value={formData.email}
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-
-                                    {/* Address */}
-
-                                    <div className="mb-4">
                                         <label className="form-label">
                                             Address
                                         </label>
@@ -225,6 +234,64 @@ await updateSupplier(id, payload);
                                             className="form-control"
                                             name="address"
                                             value={formData.address}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Business License
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                name="business_license"
+                                                value={formData.business_license}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Tax Number
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                name="tax_number"
+                                                value={formData.tax_number}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label">
+                                            Website
+                                        </label>
+
+                                        <input
+                                            type="url"
+                                            className="form-control"
+                                            name="website"
+                                            value={formData.website}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+
+                                    <div className="mb-4">
+                                        <label className="form-label">
+                                            Notes
+                                        </label>
+
+                                        <textarea
+                                            rows="3"
+                                            className="form-control"
+                                            name="notes"
+                                            value={formData.notes}
                                             onChange={handleChange}
                                         />
                                     </div>

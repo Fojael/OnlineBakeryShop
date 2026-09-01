@@ -139,3 +139,47 @@ export const updateAdminOrderStatus = async (
     );
 
 };
+
+
+// ============================================================
+// SUPPLIER - GET ALL OWN ORDERS
+// ============================================================
+
+export const getSupplierOrders = async () => {
+
+    return await api.get(
+        "/orders/supplier/"
+    );
+};
+
+
+// ============================================================
+// SUPPLIER - GET SINGLE ORDER
+// ============================================================
+
+export const getSupplierOrder = async (
+    orderId
+) => {
+
+    return await api.get(
+        `/orders/supplier/${orderId}/`
+    );
+};
+
+
+// ============================================================
+// SUPPLIER - UPDATE ORDER ITEM STATUS
+// ============================================================
+
+export const updateSupplierOrderItemStatus = async (
+    itemId,
+    supplierStatus
+) => {
+
+    return await api.patch(
+        `/orders/supplier/items/${itemId}/update/`,
+        {
+            supplier_status: supplierStatus,
+        }
+    );
+};

@@ -119,12 +119,7 @@ class IsDeliveryRider(
             request,
             view,
         ):
+
             return False
 
-        user = request.user
-
-        # Admin controls whether the rider can log in.
-        if not user.is_active:
-            return False
-
-        return True
+        return request.user.is_active

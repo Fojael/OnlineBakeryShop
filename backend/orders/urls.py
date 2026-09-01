@@ -1,19 +1,31 @@
 from django.urls import path
 
 from .views import (
-    OrderListCreateView,
-    OrderDetailView,
-    CancelOrderView,
+    # ADMIN
     AdminOrderListView,
     AdminOrderDetailView,
     AdminOrderUpdateView,
-    
+    AdminCreateDeliveryRiderView,
+    AdminAssignDeliveryView,
+
+    # SUPPLIER
     SupplierOrderListView,
     SupplierOrderDetailView,
     SupplierOrderItemStatusUpdateView,
     SupplierDashboardView,
     SupplierSalesAnalyticsView,
     SupplierProductPerformanceView,
+
+    # CUSTOMER
+    OrderListCreateView,
+    OrderDetailView,
+    CancelOrderView,
+
+    # DELIVERY
+    DeliveryDashboardView,
+    DeliveryListView,
+    DeliveryDetailView,
+    DeliveryStatusUpdateView,
 )
 
 
@@ -45,6 +57,22 @@ urlpatterns = [
     ),
 
     # ======================================================
+    # ADMIN - DELIVERY RIDERS
+    # ======================================================
+
+    path(
+        "admin/delivery-riders/create/",
+        AdminCreateDeliveryRiderView.as_view(),
+        name="admin-create-delivery-rider",
+    ),
+
+    path(
+        "admin/<int:order_id>/assign-delivery/",
+        AdminAssignDeliveryView.as_view(),
+        name="admin-assign-delivery",
+    ),
+
+    # ======================================================
     # SUPPLIER
     # ======================================================
 
@@ -59,30 +87,59 @@ urlpatterns = [
         SupplierOrderDetailView.as_view(),
         name="supplier-order-detail",
     ),
-    
+
     path(
-    "supplier/items/<int:item_id>/update/",
-    SupplierOrderItemStatusUpdateView.as_view(),
-    name="supplier-order-item-update",
+        "supplier/items/<int:item_id>/update/",
+        SupplierOrderItemStatusUpdateView.as_view(),
+        name="supplier-order-item-update",
     ),
-    
+
     path(
-    "supplier/dashboard/",
-    SupplierDashboardView.as_view(),
-    name="supplier-dashboard",
+        "supplier/dashboard/",
+        SupplierDashboardView.as_view(),
+        name="supplier-dashboard",
     ),
-    
+
     path(
-    "supplier/analytics/",
-    SupplierSalesAnalyticsView.as_view(),
-    name="supplier-sales-analytics",
+        "supplier/analytics/",
+        SupplierSalesAnalyticsView.as_view(),
+        name="supplier-sales-analytics",
     ),
-    
+
     path(
-    "supplier/products/performance/",
-    SupplierProductPerformanceView.as_view(),
-    name="supplier-product-performance",
+        "supplier/products/performance/",
+        SupplierProductPerformanceView.as_view(),
+        name="supplier-product-performance",
     ),
+
+    # ======================================================
+    # DELIVERY RIDER
+    # ======================================================
+
+    path(
+        "delivery/dashboard/",
+        DeliveryDashboardView.as_view(),
+        name="delivery-dashboard",
+    ),
+
+    path(
+        "delivery/",
+        DeliveryListView.as_view(),
+        name="delivery-list",
+    ),
+
+    path(
+        "delivery/<int:delivery_id>/",
+        DeliveryDetailView.as_view(),
+        name="delivery-detail",
+    ),
+
+    path(
+        "delivery/<int:delivery_id>/status/",
+        DeliveryStatusUpdateView.as_view(),
+        name="delivery-status-update",
+    ),
+
     # ======================================================
     # CUSTOMER
     # ======================================================
@@ -104,5 +161,4 @@ urlpatterns = [
         CancelOrderView.as_view(),
         name="cancel-order",
     ),
-
 ]

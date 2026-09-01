@@ -20,9 +20,14 @@ class InventorySerializer(serializers.ModelSerializer):
 
     stock_quantity = serializers.IntegerField(
         source="product.stock_quantity",
+        required=False,
     )
 
-    current_stock = serializers.SerializerMethodField()
+    current_stock = serializers.IntegerField(
+        write_only=True,
+        required=False,
+        min_value=0,
+    )
 
     remaining_stock = serializers.SerializerMethodField()
 
@@ -114,15 +119,15 @@ class InventorySerializer(serializers.ModelSerializer):
         validated_data,
     ):
 
-        product_data = validated_data.pop(
-            "product",
-            {},
-        )
-
-        stock = product_data.get(
-            "stock_quantity",
+        stock = validated_data.pop(
+            "current_stock",
             instance.product.stock_quantity,
         )
+
+        if "stock_quantity" in validated_data:
+            stock = validated_data.pop(
+                "stock_quantity",
+            )
 
         instance.minimum_stock = validated_data.get(
             "minimum_stock",

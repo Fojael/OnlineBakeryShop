@@ -241,16 +241,22 @@ const Login = () => {
             // DELIVERY RIDER
             // ==========================================
 
-            if (
-                userRole === "DELIVERY_RIDER" ||
-                userRole === "DELIVERY RIDER"
-            ) {
-                navigate(
-                    "/",
-                    { replace: true }
-                );
-                return;
-            }
+            // ==========================================
+// DELIVERY RIDER
+// ==========================================
+
+if (
+    userRole === "DELIVERY" ||
+    userRole === "DELIVERY_RIDER" ||
+    userRole === "DELIVERY RIDER"
+) {
+    navigate(
+        "/delivery/dashboard",
+        { replace: true }
+    );
+
+    return;
+}
 
             // ==========================================
             // IF ROLE IS UNKNOWN

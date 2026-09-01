@@ -146,12 +146,32 @@ class SupplierDashboardView(
             },
 
 
+            "notifications":
+                service.get_notifications(),
+
+
             "recent_activity":
                 service.get_recent_activity(),
 
 
             "recent_products":
                 service.get_recent_products(),
+
+
+            "recent_orders":
+                service.get_recent_orders(),
+
+
+            "low_stock_alerts":
+                service.get_low_stock_alerts(),
+
+
+            "inventory_summary":
+                service.get_inventory_summary(),
+
+
+            "sales_overview":
+                service.get_sales_overview(),
 
         }
 

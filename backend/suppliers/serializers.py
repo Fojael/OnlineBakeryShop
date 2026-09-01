@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 
 from rest_framework import serializers
 
@@ -63,7 +64,11 @@ class SupplierProductSerializer(
 
             "category_name",
 
+            "description",
+
             "price",
+
+            "image",
 
             "stock_quantity",
 
@@ -212,7 +217,11 @@ class SupplierSerializer(
 
         read_only_fields = (
 
+            "user",
+
             "approved_at",
+
+            "approved_by",
 
             "created_at",
 
@@ -222,10 +231,10 @@ class SupplierSerializer(
 
 
 # ==========================================================
-# SUPPLIER REGISTRATION
+# SUPPLIER CREATE (ADMIN ONLY)
 # ==========================================================
 
-class SupplierRegisterSerializer(
+class SupplierCreateSerializer(
     serializers.ModelSerializer
 ):
 
@@ -233,13 +242,7 @@ class SupplierRegisterSerializer(
 
     password = serializers.CharField(
         write_only=True,
-        validators=[
-            validate_password,
-        ],
-    )
-
-    confirm_password = serializers.CharField(
-        write_only=True,
+        validators=[validate_password],
     )
 
     class Meta:
@@ -249,26 +252,18 @@ class SupplierRegisterSerializer(
         fields = (
 
             "username",
-
             "password",
 
-            "confirm_password",
-
             "name",
-
             "company",
-
             "email",
-
             "phone",
-
             "address",
 
             "business_license",
-
             "tax_number",
-
             "website",
+            "notes",
 
         )
 
@@ -302,25 +297,7 @@ class SupplierRegisterSerializer(
 
         return value
 
-    def validate(
-        self,
-        attrs,
-    ):
-
-        if (
-            attrs["password"]
-            != attrs["confirm_password"]
-        ):
-
-            raise serializers.ValidationError(
-                {
-                    "confirm_password":
-                        "Passwords do not match."
-                }
-            )
-
-        return attrs
-
+    @transaction.atomic
     def create(
         self,
         validated_data,
@@ -334,43 +311,30 @@ class SupplierRegisterSerializer(
             "password"
         )
 
-        validated_data.pop(
-            "confirm_password"
-        )
-
         email = validated_data.get(
             "email"
         )
 
         user = User.objects.create_user(
-
             username=username,
-
             email=email,
-
             password=password,
-
-            role="SUPPLIER",
-
+            role=User.ROLE_SUPPLIER,
             is_active=False,
-
         )
 
         supplier = Supplier.objects.create(
-
             user=user,
-
-            is_active=True,
-
+            is_active=False,
             is_approved=False,
-
             **validated_data,
-
         )
 
         return supplier
 
 
+# Backward compatibility alias
+CreateSupplierSerializer = SupplierCreateSerializer
 # ==========================================================
 # SUPPLIER PROFILE
 # ==========================================================
@@ -386,6 +350,15 @@ class SupplierProfileSerializer(
 
     role = serializers.CharField(
         source="user.role",
+        read_only=True,
+    )
+
+    account_status = serializers.SerializerMethodField()
+
+    approval_status = serializers.SerializerMethodField()
+
+    created_date = serializers.DateTimeField(
+        source="created_at",
         read_only=True,
     )
 
@@ -417,23 +390,60 @@ class SupplierProfileSerializer(
 
             "website",
 
-            "is_active",
+            "account_status",
 
-            "is_approved",
+            "approval_status",
 
-            "created_at",
+            "created_date",
 
         )
 
         read_only_fields = (
 
+            "id",
+
+            "username",
+
+            "role",
+
+            "email",
+
             "is_active",
 
             "is_approved",
 
-            "created_at",
+            "account_status",
+
+            "approval_status",
+
+            "created_date",
 
         )
+
+    def get_account_status(self, obj):
+        return "Active" if obj.is_active else "Inactive"
+
+    def get_approval_status(self, obj):
+        return "Approved" if obj.is_approved else "Pending"
+
+    def update(self, instance, validated_data):
+        allowed_fields = {
+            "name",
+            "company",
+            "phone",
+            "address",
+            "website",
+            "business_license",
+            "tax_number",
+        }
+
+        for field_name, value in validated_data.items():
+            if field_name in allowed_fields:
+                setattr(instance, field_name, value)
+
+        instance.save(update_fields=list(validated_data.keys()))
+
+        return instance
 
 
 # ==========================================================

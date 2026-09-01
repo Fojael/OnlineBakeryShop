@@ -1,7 +1,6 @@
 from django.urls import path
 
 from .views import (
-    SupplierRegisterView,
     SupplierListCreateView,
     SupplierRetrieveUpdateDestroyView,
     SupplierActivateView,
@@ -20,17 +19,6 @@ from .product_views import (
 
 
 urlpatterns = [
-
-    # ==========================================================
-    # SUPPLIER REGISTRATION
-    # ==========================================================
-
-    path(
-        "register/",
-        SupplierRegisterView.as_view(),
-        name="supplier-register",
-    ),
-
 
     # ==========================================================
     # SUPPLIER PROFILE

@@ -1,3 +1,8 @@
+from decimal import Decimal
+
+from django.db import models
+from django.db.models import Sum
+
 from rest_framework import generics, status
 from rest_framework.permissions import (
     AllowAny,
@@ -7,6 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from orders.models import Order
+from products.models import Product
+from suppliers.models import Supplier
 
 from .models import User
 from .permissions import IsAdmin
@@ -63,6 +72,25 @@ class LoginView(
         user = serializer.validated_data[
             "user"
         ]
+
+        if user.role == User.ROLE_SUPPLIER:
+            try:
+                supplier = user.supplier
+            except Supplier.DoesNotExist:
+                return Response(
+                    {
+                        "detail": "Supplier profile not found."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if not supplier.can_login:
+                return Response(
+                    {
+                        "detail": "Your supplier account has not been approved yet."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # ==================================================
         # CREATE JWT TOKENS
@@ -326,22 +354,51 @@ class AdminDashboardView(
         request,
     ):
 
+        total_sales = (
+            Order.objects.aggregate(
+                total=Sum("total_amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        total_sales = Decimal(str(total_sales)).quantize(
+            Decimal("0.01")
+        )
+
+        low_stock_products = (
+            Product.objects.filter(
+                stock_quantity__lte=models.F("inventory__minimum_stock")
+            ).count()
+        )
+
         return Response(
-
             {
-                "message":
-                    "Welcome Admin",
-
+                "message": "Welcome Admin",
                 "admin": {
-
-                    "id":
-                        request.user.id,
-
-                    "username":
-                        request.user.username,
-
-                    "email":
-                        request.user.email,
-                }
-            }
+                    "id": request.user.id,
+                    "username": request.user.username,
+                    "email": request.user.email,
+                },
+                "stats": {
+                    "customers": User.objects.filter(
+                        role=User.ROLE_CUSTOMER,
+                        is_active=True,
+                    ).count(),
+                    "suppliers": Supplier.objects.count(),
+                    "products": Product.objects.count(),
+                    "orders": Order.objects.count(),
+                    "sales": str(total_sales),
+                    "pending_orders": Order.objects.filter(
+                        status=Order.STATUS_PENDING,
+                    ).count(),
+                    "processing_orders": Order.objects.filter(
+                        status=Order.STATUS_PROCESSING,
+                    ).count(),
+                    "delivered_orders": Order.objects.filter(
+                        status=Order.STATUS_DELIVERED,
+                    ).count(),
+                    "low_stock_products": low_stock_products,
+                },
+            },
+            status=status.HTTP_200_OK,
         )

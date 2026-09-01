@@ -3,6 +3,8 @@ from django.contrib.auth.password_validation import validate_password
 
 from rest_framework import serializers
 
+from suppliers.models import Supplier
+
 from .models import User
 
 
@@ -135,6 +137,24 @@ class LoginSerializer(
             raise serializers.ValidationError(
                 "This account is inactive."
             )
+
+        # ==================================================
+        # SUPPLIER APPROVAL CHECK
+        # ==================================================
+
+        if user.role == User.ROLE_SUPPLIER:
+
+            try:
+                supplier = user.supplier
+            except Supplier.DoesNotExist:
+                raise serializers.ValidationError(
+                    "Supplier profile not found."
+                )
+
+            if not supplier.can_login:
+                raise serializers.ValidationError(
+                    "Your supplier account has not been approved yet."
+                )
 
         attrs["user"] = user
 

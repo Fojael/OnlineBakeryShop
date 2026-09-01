@@ -1,3 +1,14 @@
-from django.test import TestCase
+from django.test import SimpleTestCase
 
-# Create your tests here.
+from delivery.serializers import (
+    DeliveryOrderSerializer,
+    DeliveryRiderCreateSerializer,
+    DeliveryStatusSerializer,
+)
+
+
+class DeliverySerializerImportTests(SimpleTestCase):
+    def test_delivery_serializers_are_exposed_by_delivery_app(self):
+        self.assertIsNotNone(DeliveryOrderSerializer)
+        self.assertIsNotNone(DeliveryRiderCreateSerializer)
+        self.assertIsNotNone(DeliveryStatusSerializer)

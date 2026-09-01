@@ -1,102 +1,19 @@
 from django.db import transaction
+from django.utils import timezone
 
 from rest_framework import generics, status
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsAdmin, IsSupplier
 
 from .models import Supplier
 from .serializers import (
-    SupplierRegisterSerializer,
+    SupplierCreateSerializer,
     SupplierSerializer,
     SupplierProfileSerializer,
 )
-
-
-# ==========================================================
-# SUPPLIER REGISTRATION
-# ==========================================================
-
-class SupplierRegisterView(
-    generics.CreateAPIView
-):
-    """
-    Public supplier registration.
-
-    Workflow:
-
-        Register
-            ↓
-        Create User
-            ↓
-        role = SUPPLIER
-            ↓
-        User.is_active = False
-            ↓
-        Supplier.is_approved = False
-            ↓
-        Admin approval
-            ↓
-        Supplier can login
-    """
-
-    serializer_class = SupplierRegisterSerializer
-
-    permission_classes = [
-        AllowAny,
-    ]
-
-    queryset = Supplier.objects.none()
-
-    @transaction.atomic
-    def create(
-        self,
-        request,
-        *args,
-        **kwargs,
-    ):
-
-        serializer = self.get_serializer(
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        supplier = serializer.save()
-
-        return Response(
-            {
-                "success": True,
-
-                "message": (
-                    "Supplier registration submitted successfully. "
-                    "Your account is awaiting administrator approval."
-                ),
-
-                "supplier": {
-                    "id": supplier.id,
-
-                    "name": supplier.name,
-
-                    "company": supplier.company,
-
-                    "email": supplier.email,
-
-                    "phone": supplier.phone,
-
-                    "is_active": supplier.is_active,
-
-                    "is_approved": supplier.is_approved,
-
-                    "created_at": supplier.created_at,
-                },
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
 
 # ==========================================================
@@ -115,8 +32,6 @@ class SupplierListCreateView(
     POST:
         Create a supplier manually from admin/API.
     """
-
-    serializer_class = SupplierSerializer
 
     permission_classes = [
         IsAuthenticated,
@@ -142,6 +57,13 @@ class SupplierListCreateView(
         return queryset.order_by(
             "-created_at"
         )
+
+    def get_serializer_class(self):
+
+        if self.request.method == "POST":
+            return SupplierCreateSerializer
+
+        return SupplierSerializer
 
 
 # ==========================================================
@@ -242,10 +164,16 @@ class SupplierActivateView(
         supplier = self.get_object()
 
         supplier.is_active = True
+        supplier.is_approved = True
+        supplier.approved_at = timezone.now()
+        supplier.approved_by = request.user
 
         supplier.save(
             update_fields=[
                 "is_active",
+                "is_approved",
+                "approved_at",
+                "approved_by",
                 "updated_at",
             ]
         )
@@ -319,10 +247,16 @@ class SupplierDeactivateView(
         supplier = self.get_object()
 
         supplier.is_active = False
+        supplier.is_approved = False
+        supplier.approved_at = None
+        supplier.approved_by = None
 
         supplier.save(
             update_fields=[
                 "is_active",
+                "is_approved",
+                "approved_at",
+                "approved_by",
                 "updated_at",
             ]
         )

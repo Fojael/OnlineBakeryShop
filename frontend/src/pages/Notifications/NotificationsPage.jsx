@@ -168,11 +168,17 @@ const NotificationsPage = () => {
                                 "
                             >
 
-                                <h5>
-                                    {
-                                        notification.title
-                                    }
-                                </h5>
+                                <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
+                                    <h5 className="mb-0">
+                                        {
+                                            notification.title
+                                        }
+                                    </h5>
+
+                                    <span className="badge bg-light text-dark border">
+                                        {notification.notification_type || notification.type || "Information"}
+                                    </span>
+                                </div>
 
 
                                 <p>

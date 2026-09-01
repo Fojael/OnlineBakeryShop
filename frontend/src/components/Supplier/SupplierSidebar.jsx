@@ -7,6 +7,7 @@ import {
     FaTachometerAlt,
     FaUser,
     FaBoxOpen,
+    FaBoxes,
     FaShoppingCart,
     FaMoneyBillWave,
     FaBell,
@@ -125,6 +126,26 @@ const SupplierSidebar = ({
 
                     <span>
                         My Supplies
+                    </span>
+
+                </NavLink>
+
+
+                <NavLink
+                    to="/supplier/inventory"
+                    className={({ isActive }) =>
+                        `supplier-nav-link ${
+                            isActive
+                                ? "active"
+                                : ""
+                        }`
+                    }
+                >
+
+                    <FaBoxes />
+
+                    <span>
+                        Inventory
                     </span>
 
                 </NavLink>

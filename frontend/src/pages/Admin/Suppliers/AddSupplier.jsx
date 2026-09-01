@@ -11,11 +11,17 @@ const AddSupplier = () => {
     const [saving, setSaving] = useState(false);
 
     const [formData, setFormData] = useState({
+        username: "",
+        password: "",
         name: "",
         company: "",
-        phone: "",
         email: "",
+        phone: "",
         address: "",
+        business_license: "",
+        tax_number: "",
+        website: "",
+        notes: "",
     });
 
     const handleChange = (e) => {
@@ -33,6 +39,21 @@ const AddSupplier = () => {
         e.preventDefault();
 
         // Validation
+        if (!formData.username.trim()) {
+            toast.warning("Username is required.");
+            return;
+        }
+
+        if (!formData.password.trim()) {
+            toast.warning("Password is required.");
+            return;
+        }
+
+        if (formData.password.length < 8) {
+            toast.warning("Password must be at least 8 characters long.");
+            return;
+        }
+
         if (!formData.name.trim()) {
             toast.warning("Supplier Name is required.");
             return;
@@ -54,29 +75,43 @@ const AddSupplier = () => {
         try {
             setSaving(true);
 
-           const payload = {
-    ...formData,
-    email: formData.email.trim() || null,
-};
+            const payload = {
+                ...formData,
+                username: formData.username.trim(),
+                password: formData.password,
+                name: formData.name.trim(),
+                company: formData.company.trim(),
+                email: formData.email ? formData.email.trim() : "",
+                phone: formData.phone.trim(),
+                address: formData.address.trim(),
+                business_license: formData.business_license.trim(),
+                tax_number: formData.tax_number.trim(),
+                website: formData.website.trim(),
+                notes: formData.notes.trim(),
+            };
 
-await createSupplier(payload);
+            await createSupplier(payload);
 
             toast.success("Supplier created successfully.");
 
             navigate("/admin/suppliers");
         } catch (error) {
-    console.error(error);
+            console.error(error);
 
-    if (error.response?.data?.email) {
-        toast.error(error.response.data.email[0]);
-    } else if (error.response?.data?.phone) {
-        toast.error(error.response.data.phone[0]);
-    } else if (error.response?.data?.name) {
-        toast.error(error.response.data.name[0]);
-    } else {
-        toast.error("Failed to create supplier.");
-    }
-}finally {
+            if (error.response?.data?.username) {
+                toast.error(error.response.data.username[0]);
+            } else if (error.response?.data?.email) {
+                toast.error(error.response.data.email[0]);
+            } else if (error.response?.data?.phone) {
+                toast.error(error.response.data.phone[0]);
+            } else if (error.response?.data?.password) {
+                toast.error(error.response.data.password[0]);
+            } else if (error.response?.data?.detail) {
+                toast.error(error.response.data.detail);
+            } else {
+                toast.error("Failed to create supplier.");
+            }
+        } finally {
             setSaving(false);
         }
     };
@@ -101,73 +136,97 @@ await createSupplier(payload);
 
                                 <form onSubmit={handleSubmit}>
 
-                                    {/* Supplier Name */}
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Username *
+                                            </label>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Supplier Name *
-                                        </label>
+                                            <input
+                                                type="text"
+                                                name="username"
+                                                className="form-control"
+                                                value={formData.username}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            name="name"
-                                            className="form-control"
-                                            value={formData.name}
-                                            onChange={handleChange}
-                                        />
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Password *
+                                            </label>
+
+                                            <input
+                                                type="password"
+                                                name="password"
+                                                className="form-control"
+                                                value={formData.password}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Company */}
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Supplier Name *
+                                            </label>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Company
-                                        </label>
+                                            <input
+                                                type="text"
+                                                name="name"
+                                                className="form-control"
+                                                value={formData.name}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            name="company"
-                                            className="form-control"
-                                            value={formData.company}
-                                            onChange={handleChange}
-                                        />
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Company
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                name="company"
+                                                className="form-control"
+                                                value={formData.company}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Phone */}
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Phone *
+                                            </label>
 
-                                    <div className="mb-3">
-                                        <label className="form-label">
-                                            Phone *
-                                        </label>
+                                            <input
+                                                type="text"
+                                                name="phone"
+                                                className="form-control"
+                                                value={formData.phone}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            name="phone"
-                                            className="form-control"
-                                            value={formData.phone}
-                                            onChange={handleChange}
-                                        />
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Email
+                                            </label>
+
+                                            <input
+                                                type="email"
+                                                name="email"
+                                                className="form-control"
+                                                value={formData.email}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Email */}
-
                                     <div className="mb-3">
-                                        <label className="form-label">
-                                            Email
-                                        </label>
-
-                                        <input
-                                            type="email"
-                                            name="email"
-                                            className="form-control"
-                                            value={formData.email}
-                                            onChange={handleChange}
-                                        />
-                                    </div>
-
-                                    {/* Address */}
-
-                                    <div className="mb-4">
                                         <label className="form-label">
                                             Address
                                         </label>
@@ -177,6 +236,64 @@ await createSupplier(payload);
                                             rows="3"
                                             className="form-control"
                                             value={formData.address}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+
+                                    <div className="row">
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Business License
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                name="business_license"
+                                                className="form-control"
+                                                value={formData.business_license}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+
+                                        <div className="col-md-6 mb-3">
+                                            <label className="form-label">
+                                                Tax Number
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                name="tax_number"
+                                                className="form-control"
+                                                value={formData.tax_number}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label">
+                                            Website
+                                        </label>
+
+                                        <input
+                                            type="url"
+                                            name="website"
+                                            className="form-control"
+                                            value={formData.website}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+
+                                    <div className="mb-4">
+                                        <label className="form-label">
+                                            Notes
+                                        </label>
+
+                                        <textarea
+                                            name="notes"
+                                            rows="3"
+                                            className="form-control"
+                                            value={formData.notes}
                                             onChange={handleChange}
                                         />
                                     </div>

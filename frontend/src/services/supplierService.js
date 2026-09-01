@@ -41,6 +41,67 @@ export const updateSupplierProfile = async (data) => {
 
 
 // ==========================================================
+// SUPPLIER PRODUCTS
+// ==========================================================
+
+export const getSupplierProducts = async () => {
+    const response = await api.get(
+        "suppliers/products/"
+    );
+
+    return response.data;
+};
+
+
+export const getSupplierProduct = async (id) => {
+    const response = await api.get(
+        `suppliers/products/${id}/`
+    );
+
+    return response.data;
+};
+
+
+export const createSupplierProduct = async (data) => {
+    const response = await api.post(
+        "suppliers/products/",
+        data,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        }
+    );
+
+    return response.data;
+};
+
+
+export const updateSupplierProduct = async (id, data) => {
+    const response = await api.patch(
+        `suppliers/products/${id}/`,
+        data,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        }
+    );
+
+    return response.data;
+};
+
+
+export const deleteSupplierProduct = async (id) => {
+    const response = await api.delete(
+        `suppliers/products/${id}/`
+    );
+
+    return response.data;
+};
+
+
+// ==========================================================
 // ADMIN - GET ALL SUPPLIERS
 // ==========================================================
 
@@ -104,6 +165,32 @@ export const updateSupplier = async (
 export const deleteSupplier = async (id) => {
     const response = await api.delete(
         `suppliers/${id}/`
+    );
+
+    return response;
+};
+
+
+// ==========================================================
+// ADMIN - ACTIVATE SUPPLIER
+// ==========================================================
+
+export const activateSupplier = async (id) => {
+    const response = await api.post(
+        `suppliers/${id}/activate/`
+    );
+
+    return response;
+};
+
+
+// ==========================================================
+// ADMIN - DEACTIVATE SUPPLIER
+// ==========================================================
+
+export const deactivateSupplier = async (id) => {
+    const response = await api.post(
+        `suppliers/${id}/deactivate/`
     );
 
     return response;

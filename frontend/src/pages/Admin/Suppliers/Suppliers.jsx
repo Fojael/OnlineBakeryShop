@@ -7,6 +7,8 @@ import DashboardLayout from "../../../layouts/DashboardLayout";
 import {
     getSuppliers,
     deleteSupplier,
+    activateSupplier,
+    deactivateSupplier,
 } from "../../../services/supplierService";
 
 const Suppliers = () => {
@@ -39,7 +41,7 @@ const Suppliers = () => {
 
     const handleDelete = async (id) => {
         const confirmDelete = window.confirm(
-            "Are you sure you want to delete this supplier?"
+            "Delete Supplier?\n\nThis action cannot be undone."
         );
 
         if (!confirmDelete) return;
@@ -49,10 +51,32 @@ const Suppliers = () => {
 
             toast.success("Supplier deleted successfully.");
 
-            fetchSuppliers();
+            void fetchSuppliers();
         } catch (error) {
             console.log(error);
             toast.error("Failed to delete supplier.");
+        }
+    };
+
+    const handleActivate = async (id) => {
+        try {
+            await activateSupplier(id);
+            toast.success("Supplier activated successfully.");
+            void fetchSuppliers();
+        } catch (error) {
+            console.log(error);
+            toast.error("Failed to activate supplier.");
+        }
+    };
+
+    const handleDeactivate = async (id) => {
+        try {
+            await deactivateSupplier(id);
+            toast.success("Supplier deactivated successfully.");
+            void fetchSuppliers();
+        } catch (error) {
+            console.log(error);
+            toast.error("Failed to deactivate supplier.");
         }
     };
 
@@ -140,13 +164,14 @@ const Suppliers = () => {
 
                         <tr>
                             <th>ID</th>
-                            <th>Supplier Name</th>
+                            <th>Name</th>
                             <th>Company</th>
-                            <th>Phone</th>
                             <th>Email</th>
-                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>Status</th>
+                            <th>Approval</th>
                             <th>Created</th>
-                            <th width="170">
+                            <th width="220">
                                 Actions
                             </th>
                         </tr>
@@ -165,13 +190,27 @@ const Suppliers = () => {
 
                                     <td>{supplier.name}</td>
 
-                                    <td>{supplier.company}</td>
+                                    <td>{supplier.company || "-"}</td>
 
-                                    <td>{supplier.phone}</td>
+                                    <td>{supplier.email || "-"}</td>
 
-                                    <td>{supplier.email}</td>
+                                    <td>{supplier.phone || "-"}</td>
 
-                                    <td>{supplier.address}</td>
+                                    <td>
+                                        <span
+                                            className={`badge ${supplier.is_active ? "bg-success" : "bg-secondary"}`}
+                                        >
+                                            {supplier.is_active ? "Active" : "Inactive"}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <span
+                                            className={`badge ${supplier.is_approved ? "bg-info" : "bg-warning text-dark"}`}
+                                        >
+                                            {supplier.is_approved ? "Approved" : "Pending"}
+                                        </span>
+                                    </td>
 
                                     <td>
                                         {new Date(
@@ -180,25 +219,49 @@ const Suppliers = () => {
                                     </td>
 
                                     <td>
+                                        <div className="d-flex flex-wrap gap-2">
+                                            <Link
+                                                to={`/admin/suppliers/edit/${supplier.id}`}
+                                                className="btn btn-outline-primary btn-sm"
+                                            >
+                                                Edit
+                                            </Link>
 
-                                        <Link
-                                            to={`/admin/suppliers/edit/${supplier.id}`}
-                                            className="btn btn-warning btn-sm me-2"
-                                        >
-                                            Edit
-                                        </Link>
+                                            {supplier.is_active ? (
+                                                <button
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() =>
+                                                        handleDeactivate(
+                                                            supplier.id
+                                                        )
+                                                    }
+                                                >
+                                                    Deactivate
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-outline-success btn-sm"
+                                                    onClick={() =>
+                                                        handleActivate(
+                                                            supplier.id
+                                                        )
+                                                    }
+                                                >
+                                                    Activate
+                                                </button>
+                                            )}
 
-                                        <button
-                                            className="btn btn-danger btn-sm"
-                                            onClick={() =>
-                                                handleDelete(
-                                                    supplier.id
-                                                )
-                                            }
-                                        >
-                                            Delete
-                                        </button>
-
+                                            <button
+                                                className="btn btn-outline-danger btn-sm"
+                                                onClick={() =>
+                                                    handleDelete(
+                                                        supplier.id
+                                                    )
+                                                }
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
                                     </td>
 
                                 </tr>
@@ -210,7 +273,7 @@ const Suppliers = () => {
                             <tr>
 
                                 <td
-                                    colSpan="8"
+                                    colSpan="9"
                                     className="text-center py-4"
                                 >
                                     No suppliers found.
