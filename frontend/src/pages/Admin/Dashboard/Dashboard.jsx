@@ -7,6 +7,7 @@ const Dashboard = () => {
     const [stats, setStats] = useState({
         customers: 0,
         suppliers: 0,
+        delivery_riders: 0,
         products: 0,
         orders: 0,
         sales: "0.00",
@@ -45,6 +46,7 @@ const Dashboard = () => {
     const cards = [
         { label: "Customers", value: stats.customers },
         { label: "Suppliers", value: stats.suppliers },
+        { label: "Delivery Men", value: stats.delivery_riders },
         { label: "Products", value: stats.products },
         { label: "Orders", value: stats.orders },
         { label: "Sales", value: `৳${stats.sales}` },

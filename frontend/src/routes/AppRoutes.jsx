@@ -145,6 +145,13 @@ import EditSupplier
     from "../pages/Admin/Suppliers/EditSupplier";
 
 // ============================================================
+// ADMIN DELIVERY RIDER PAGES
+// ============================================================
+
+import DeliveryRiders
+    from "../pages/Admin/DeliveryRiders/DeliveryRiders";
+
+// ============================================================
 // ADMIN ORDER PAGES
 // ============================================================
 
@@ -537,6 +544,19 @@ const AppRoutes = () => {
                 element={
                     <ProtectedAdminRoute>
                         <EditSupplier />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            {/* ==================================================
+                ADMIN DELIVERY RIDERS
+            ================================================== */}
+
+            <Route
+                path="/admin/delivery-riders"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryRiders />
                     </ProtectedAdminRoute>
                 }
             />

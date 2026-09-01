@@ -5,6 +5,7 @@ from .views import (
     AdminOrderListView,
     AdminOrderDetailView,
     AdminOrderUpdateView,
+    AdminDeliveryRiderListView,
     AdminCreateDeliveryRiderView,
     AdminAssignDeliveryView,
 
@@ -59,6 +60,12 @@ urlpatterns = [
     # ======================================================
     # ADMIN - DELIVERY RIDERS
     # ======================================================
+
+    path(
+        "admin/delivery-riders/",
+        AdminDeliveryRiderListView.as_view(),
+        name="admin-delivery-riders-list",
+    ),
 
     path(
         "admin/delivery-riders/create/",

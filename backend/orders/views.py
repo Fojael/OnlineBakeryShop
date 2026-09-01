@@ -2366,6 +2366,57 @@ class SupplierProductPerformanceView(APIView):
         )
         
 # ==========================================================
+# ADMIN - DELIVERY RIDERS LIST
+# ==========================================================
+
+class AdminDeliveryRiderListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request):
+
+        if not (
+            request.user.is_staff
+            or getattr(request.user, "role", None) == User.ROLE_ADMIN
+        ):
+            return Response(
+                {
+                    "detail": "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        riders = User.objects.filter(
+            role=User.ROLE_DELIVERY,
+        ).order_by("-date_joined")
+
+        results = [
+            {
+                "id": rider.id,
+                "username": rider.username,
+                "email": rider.email,
+                "first_name": rider.first_name,
+                "last_name": rider.last_name,
+                "phone": rider.phone,
+                "role": rider.role,
+                "is_active": rider.is_active,
+                "date_joined": rider.date_joined,
+            }
+            for rider in riders
+        ]
+
+        return Response(
+            {
+                "count": len(results),
+                "results": results,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
 # ADMIN - CREATE DELIVERY RIDER
 # ==========================================================
 
@@ -2385,7 +2436,10 @@ class AdminCreateDeliveryRiderView(APIView):
         # ADMIN PERMISSION
         # ==================================================
 
-        if not request.user.is_staff:
+        if not (
+            request.user.is_staff
+            or getattr(request.user, "role", None) == User.ROLE_ADMIN
+        ):
 
             return Response(
                 {
@@ -2533,7 +2587,10 @@ class AdminAssignDeliveryView(APIView):
         # ADMIN PERMISSION
         # ==================================================
 
-        if not request.user.is_staff:
+        if not (
+            request.user.is_staff
+            or getattr(request.user, "role", None) == User.ROLE_ADMIN
+        ):
 
             return Response(
                 {

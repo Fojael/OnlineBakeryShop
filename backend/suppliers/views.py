@@ -149,9 +149,22 @@ class SupplierActivateView(
     )
 
     http_method_names = [
+        "get",
         "patch",
         "post",
     ]
+
+    def post(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+        return self.update(
+            request,
+            *args,
+            **kwargs,
+        )
 
     @transaction.atomic
     def update(
@@ -232,9 +245,22 @@ class SupplierDeactivateView(
     )
 
     http_method_names = [
+        "get",
         "patch",
         "post",
     ]
+
+    def post(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+        return self.update(
+            request,
+            *args,
+            **kwargs,
+        )
 
     @transaction.atomic
     def update(

@@ -73,3 +73,57 @@ class SupplierProfileTests(TestCase):
         self.assertEqual(self.user.role, User.ROLE_SUPPLIER)
         self.assertTrue(self.supplier.is_active)
         self.assertTrue(self.supplier.is_approved)
+
+    def test_admin_can_activate_supplier_via_post(self):
+        admin = User.objects.create_user(
+            username="admin_user",
+            email="admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post(
+            reverse("supplier-activate", args=[self.supplier.id]),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.supplier.refresh_from_db()
+        self.user.refresh_from_db()
+
+        self.assertTrue(self.supplier.is_active)
+        self.assertTrue(self.supplier.is_approved)
+        self.assertTrue(self.user.is_active)
+
+    def test_admin_can_deactivate_supplier_via_post(self):
+        admin = User.objects.create_user(
+            username="admin_user_2",
+            email="admin2@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+
+        self.supplier.is_active = True
+        self.supplier.is_approved = True
+        self.supplier.save(update_fields=["is_active", "is_approved"])
+        self.user.is_active = True
+        self.user.save(update_fields=["is_active"])
+
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post(
+            reverse("supplier-deactivate", args=[self.supplier.id]),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.supplier.refresh_from_db()
+        self.user.refresh_from_db()
+
+        self.assertFalse(self.supplier.is_active)
+        self.assertFalse(self.supplier.is_approved)
+        self.assertFalse(self.user.is_active)

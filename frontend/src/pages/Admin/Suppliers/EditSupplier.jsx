@@ -67,6 +67,46 @@ const EditSupplier = () => {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     };
 
+    const extractErrorMessage = (data) => {
+        if (!data) {
+            return "Failed to update supplier.";
+        }
+
+        if (typeof data === "string") {
+            return data;
+        }
+
+        if (Array.isArray(data)) {
+            return data[0] || "Failed to update supplier.";
+        }
+
+        const priorityKeys = [
+            "email",
+            "phone",
+            "name",
+            "company",
+            "website",
+            "non_field_errors",
+            "detail",
+        ];
+
+        for (const key of priorityKeys) {
+            if (data[key]) {
+                return extractErrorMessage(data[key]);
+            }
+        }
+
+        for (const value of Object.values(data)) {
+            const message = extractErrorMessage(value);
+
+            if (message !== "Failed to update supplier.") {
+                return message;
+            }
+        }
+
+        return "Failed to update supplier.";
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -110,16 +150,7 @@ const EditSupplier = () => {
             navigate("/admin/suppliers");
         } catch (error) {
             console.error(error);
-
-            if (error.response?.data?.email) {
-                toast.error(error.response.data.email[0]);
-            } else if (error.response?.data?.phone) {
-                toast.error(error.response.data.phone[0]);
-            } else if (error.response?.data?.name) {
-                toast.error(error.response.data.name[0]);
-            } else {
-                toast.error("Failed to update supplier.");
-            }
+            toast.error(extractErrorMessage(error.response?.data));
         } finally {
             setSaving(false);
         }
