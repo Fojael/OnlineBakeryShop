@@ -127,16 +127,25 @@ export const getAdminOrder = async (
 // ADMIN - UPDATE ORDER STATUS
 // ============================================================
 
-export const updateAdminOrderStatus = async (
-    orderId,
-    status
-) => {
-
-    return await api.patch(
+export const updateAdminOrderStatus = async (orderId, status) => {
+    return await api.post(
         `/orders/admin/${orderId}/update/`,
         {
             status: status,
         }
+    );
+};
+
+// ============================================================
+// ADMIN - ACCEPT ORDER
+// ============================================================
+
+export const acceptAdminOrder = async (
+    orderId
+) => {
+
+    return await api.post(
+        `/orders/admin/${orderId}/accept/`
     );
 
 };
@@ -252,3 +261,4 @@ export const updateSupplierOrderItemStatus = async (
         }
     );
 };
+

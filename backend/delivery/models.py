@@ -149,3 +149,4 @@ class Delivery(models.Model):
             f"Delivery #{self.id} "
             f"- Order #{self.order.id}"
         )
+        

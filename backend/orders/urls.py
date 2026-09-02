@@ -6,6 +6,7 @@ from .views import (
     AdminOrderListView,
     AdminOrderDetailView,
     AdminOrderUpdateView,
+    AdminAcceptOrderView,
     AdminDeliveryRiderListView,
     AdminCreateDeliveryRiderView,
     AdminUpdateDeliveryRiderView,
@@ -61,6 +62,11 @@ urlpatterns = [
         "admin/<int:order_id>/update/",
         AdminOrderUpdateView.as_view(),
         name="admin-order-update",
+    ),
+    path(
+        "admin/<int:order_id>/accept/",
+        AdminAcceptOrderView.as_view(),
+        name="admin-order-accept",
     ),
 
     # ======================================================

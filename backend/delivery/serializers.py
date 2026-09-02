@@ -56,77 +56,159 @@ class DeliveryOrderSerializer(
     serializers.ModelSerializer
 ):
 
+    # ======================================================
+    # ORDER INFORMATION
+    # ======================================================
+
+    order_id = serializers.IntegerField(
+        source="order.id",
+        read_only=True,
+    )
+
     customer_name = serializers.CharField(
-        source="customer.username",
+        source="order.customer.username",
         read_only=True,
     )
 
     customer_email = serializers.EmailField(
-        source="customer.email",
+        source="order.customer.email",
         read_only=True,
     )
 
     customer_phone = serializers.CharField(
-        source="customer.phone",
+        source="order.customer.phone",
         read_only=True,
         allow_null=True,
     )
 
-    items = DeliveryOrderItemSerializer(
-        source="items",
-        many=True,
+    shipping_address = serializers.CharField(
+        source="order.shipping_address",
         read_only=True,
     )
 
+    payment_method = serializers.CharField(
+        source="order.payment_method",
+        read_only=True,
+    )
+
+    order_status = serializers.CharField(
+        source="order.status",
+        read_only=True,
+    )
+
+    subtotal = serializers.DecimalField(
+        source="order.subtotal",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    delivery_charge = serializers.DecimalField(
+        source="order.delivery_charge",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    total_amount = serializers.DecimalField(
+        source="order.total_amount",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    # ======================================================
+    # DELIVERY INFORMATION
+    # ======================================================
+
     delivery_status = serializers.CharField(
-        source="delivery.status",
+        source="status",
         read_only=True,
     )
 
     delivery_id = serializers.IntegerField(
-        source="delivery.id",
+        source="id",
         read_only=True,
     )
 
+    # ======================================================
+    # ITEMS
+    # ======================================================
+
+    items = DeliveryOrderItemSerializer(
+        source="order.items",
+        many=True,
+        read_only=True,
+    )
+
+    # ======================================================
+    # PAYMENT
+    # ======================================================
+
     payment_status = serializers.SerializerMethodField()
 
+    # ======================================================
+    # META
+    # ======================================================
+
     class Meta:
-        model = Order
+
+        model = Delivery
 
         fields = [
             "id",
+            "order_id",
+
             "customer_name",
             "customer_email",
             "customer_phone",
+
             "shipping_address",
             "payment_method",
             "payment_status",
-            "status",
+
+            "order_status",
+
             "subtotal",
             "delivery_charge",
             "total_amount",
+
             "delivery_id",
             "delivery_status",
+
             "items",
+
+            "assigned_at",
+            "accepted_at",
+            "picked_up_at",
+            "out_for_delivery_at",
+            "delivered_at",
+
             "created_at",
             "updated_at",
         ]
 
         read_only_fields = fields
 
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
     def get_payment_status(
         self,
         obj,
     ):
 
-        if hasattr(obj, "payment"):
-            return obj.payment.status
+        if hasattr(obj.order, "payment"):
+            return obj.order.payment.status
 
-        if obj.payment_method == Order.PAYMENT_COD:
+        if (
+            obj.order.payment_method
+            == Order.PAYMENT_COD
+        ):
             return "Cash on Delivery"
 
         return None
-
 
 # ==========================================================
 # DELIVERY SERIALIZER

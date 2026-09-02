@@ -1340,8 +1340,565 @@ class AdminOrderDetailView(APIView):
             status=status.HTTP_200_OK,
         )
 
+# ==========================================================
+# ADMIN - UPDATE ORDER STATUS
+# ==========================================================
+
+class AdminOrderUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        order_id,
+    ):
+
+        # ==================================================
+        # ADMIN PERMISSION
+        # ==================================================
+
+        if not is_admin_user(request.user):
+            return Response(
+                {
+                    "detail": "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ==================================================
+        # GET ORDER
+        # ==================================================
+
+        order = get_object_or_404(
+            Order.objects.select_for_update(),
+            id=order_id,
+        )
+
+        new_status = str(
+            request.data.get("status", "")
+        ).strip()
+
+        # ==================================================
+        # VALID STATUSES
+        # ==================================================
+
+        allowed_statuses = [
+            Order.STATUS_PENDING,
+            Order.STATUS_ACCEPTED,
+            Order.STATUS_PROCESSING,
+            Order.STATUS_CANCELLED,
+        ]
+
+        if new_status not in allowed_statuses:
+            return Response(
+                {
+                    "detail": "Invalid order status.",
+                    "allowed_values": allowed_statuses,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_status = order.status
+
+        # ==================================================
+        # STATUS TRANSITIONS
+        # ==================================================
+
+        allowed_transitions = {
+            Order.STATUS_PENDING: [
+                Order.STATUS_ACCEPTED,
+                Order.STATUS_CANCELLED,
+            ],
+            Order.STATUS_ACCEPTED: [
+                Order.STATUS_PROCESSING,
+                Order.STATUS_CANCELLED,
+            ],
+            Order.STATUS_PROCESSING: [
+                Order.STATUS_CANCELLED,
+            ],
+            Order.STATUS_DELIVERED: [],
+            Order.STATUS_CANCELLED: [],
+        }
+
+        allowed_next_statuses = allowed_transitions.get(
+            old_status,
+            [],
+        )
+
+        if new_status not in allowed_next_statuses:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot change order status "
+                        f"from '{old_status}' to "
+                        f"'{new_status}'."
+                    ),
+                    "allowed_next_statuses": (
+                        allowed_next_statuses
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # UPDATE STATUS
+        # ==================================================
+
+        order.status = new_status
+
+        order.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ],
+        )
+
+        # ==================================================
+        # NOTIFY CUSTOMER
+        # ==================================================
+
+        notify_customer(
+            customer=order.customer,
+            title="Order Status Updated",
+            message=(
+                f"Your Order #{order.id} "
+                f"status has been changed to "
+                f"{new_status}."
+            ),
+            notification_type=Notification.TYPE_INFO,
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            {
+                "message": "Order status updated successfully.",
+                "order": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+# ==========================================================
+# ADMIN - ACCEPT ORDER
+# ==========================================================
+
+class AdminAcceptOrderView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        order_id,
+    ):
+
+        # ==================================================
+        # ADMIN PERMISSION
+        # ==================================================
+
+        if not is_admin_user(request.user):
+            return Response(
+                {
+                    "detail": "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ==================================================
+        # GET ORDER
+        # ==================================================
+
+        order = get_object_or_404(
+            Order.objects.select_for_update(),
+            id=order_id,
+        )
+
+        # ==================================================
+        # ONLY PENDING ORDERS CAN BE ACCEPTED
+        # ==================================================
+
+        if order.status != Order.STATUS_PENDING:
+            return Response(
+                {
+                    "detail": (
+                        f"Only Pending orders can "
+                        f"be accepted. Current status: "
+                        f"{order.status}."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # ACCEPT ORDER
+        # ==================================================
+
+        order.status = Order.STATUS_ACCEPTED
+
+        order.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ],
+        )
+
+        # ==================================================
+        # NOTIFY CUSTOMER
+        # ==================================================
+
+        notify_customer(
+            customer=order.customer,
+            title="Order Accepted",
+            message=(
+                f"Your Order #{order.id} "
+                "has been accepted by the bakery."
+            ),
+            notification_type=Notification.TYPE_INFO,
+        )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            {
+                "message": "Order accepted successfully.",
+                "order": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+# ==========================================================
+# SUPPLIER - ORDER LIST
+# ==========================================================
+
+class SupplierOrderListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(self, request):
+
+        # ==================================================
+        # GET SUPPLIER
+        # ==================================================
+
+        try:
+            supplier = request.user.supplier
+
+        except Supplier.DoesNotExist:
+            return Response(
+                {
+                    "detail": "Supplier profile not found.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ==================================================
+        # GET ORDERS CONTAINING SUPPLIER PRODUCTS
+        # ==================================================
+
+        orders = (
+            Order.objects
+            .filter(
+                items__product__supplier=supplier,
+            )
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            )
+            .distinct()
+            .order_by(
+                "-created_at",
+            )
+        )
+
+        serializer = SupplierOrderSerializer(
+            orders,
+            many=True,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
 
 
+# ==========================================================
+# SUPPLIER - ORDER DETAIL
+# ==========================================================
+
+class SupplierOrderDetailView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    def get(
+        self,
+        request,
+        order_id,
+    ):
+
+        # ==================================================
+        # GET SUPPLIER
+        # ==================================================
+
+        try:
+            supplier = request.user.supplier
+
+        except Supplier.DoesNotExist:
+            return Response(
+                {
+                    "detail": "Supplier profile not found.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ==================================================
+        # GET ORDER
+        # ==================================================
+
+        order = get_object_or_404(
+            Order.objects
+            .select_related(
+                "customer",
+                "payment",
+            )
+            .prefetch_related(
+                "items__product",
+            )
+            .filter(
+                id=order_id,
+                items__product__supplier=supplier,
+            )
+            .distinct(),
+            id=order_id,
+        )
+
+        serializer = SupplierOrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
+# SUPPLIER - UPDATE ORDER ITEM STATUS
+# ==========================================================
+
+class SupplierOrderItemStatusUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    @transaction.atomic
+    def patch(
+        self,
+        request,
+        item_id,
+    ):
+
+        # ==================================================
+        # GET SUPPLIER
+        # ==================================================
+
+        try:
+            supplier = request.user.supplier
+
+        except Supplier.DoesNotExist:
+            return Response(
+                {
+                    "detail": "Supplier profile not found.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ==================================================
+        # GET ORDER ITEM
+        # ==================================================
+
+        item = get_object_or_404(
+            OrderItem.objects
+            .select_related(
+                "order",
+                "order__customer",
+                "product",
+            )
+            .select_for_update(),
+            id=item_id,
+            product__supplier=supplier,
+        )
+
+        # ==================================================
+        # VALIDATE STATUS
+        # ==================================================
+
+        serializer = SupplierOrderItemStatusSerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        new_status = serializer.validated_data[
+            "supplier_status"
+        ]
+
+        old_status = item.supplier_status
+
+        # ==================================================
+        # ALLOWED TRANSITIONS
+        # ==================================================
+
+        allowed_transitions = {
+            OrderItem.STATUS_PENDING: [
+                OrderItem.STATUS_PROCESSING,
+            ],
+
+            OrderItem.STATUS_PROCESSING: [
+                OrderItem.STATUS_READY,
+            ],
+
+            OrderItem.STATUS_READY: [],
+
+            OrderItem.STATUS_DELIVERED: [],
+
+            OrderItem.STATUS_CANCELLED: [],
+        }
+
+        allowed_next_statuses = (
+            allowed_transitions.get(
+                old_status,
+                [],
+            )
+        )
+
+        if new_status not in allowed_next_statuses:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot change supplier item "
+                        f"status from '{old_status}' "
+                        f"to '{new_status}'."
+                    ),
+                    "allowed_next_statuses": (
+                        allowed_next_statuses
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ==================================================
+        # UPDATE STATUS
+        # ==================================================
+
+        item.supplier_status = new_status
+
+        item.save(
+            update_fields=[
+                "supplier_status",
+                "updated_at",
+            ],
+        )
+
+        # ==================================================
+        # NOTIFY CUSTOMER
+        # ==================================================
+
+        order = item.order
+
+        if new_status == OrderItem.STATUS_PROCESSING:
+
+            notify_customer(
+                customer=order.customer,
+                title="Order Processing",
+                message=(
+                    f"Your Order #{order.id} "
+                    "is now being prepared."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        elif new_status == OrderItem.STATUS_READY:
+
+            notify_customer(
+                customer=order.customer,
+                title="Order Item Ready",
+                message=(
+                    f"An item from Order #{order.id} "
+                    "is ready for delivery."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        return Response(
+            {
+                "message": (
+                    "Supplier order item status "
+                    "updated successfully."
+                ),
+                "item": {
+                    "id": item.id,
+                    "order_id": item.order_id,
+                    "product_id": item.product_id,
+                    "product": item.product.name,
+                    "quantity": item.quantity,
+                    "supplier_status": item.supplier_status,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+        
 
 # ==========================================================
 # SUPPLIER DASHBOARD
@@ -2879,3 +3436,4 @@ class DeliveryStatusUpdateView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
