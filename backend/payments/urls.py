@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    AdminPaymentListView,
+    AdminPaymentStatusUpdateView,
     CreatePaymentView,
     PaymentStatusView,
     RetryPaymentView,
@@ -10,8 +12,25 @@ from .views import (
     SSLCommerzIPNView,
 )
 
+app_name = "payments"
 
 urlpatterns = [
+
+    # ======================================================
+    # ADMIN MANAGEMENT
+    # ======================================================
+
+    path(
+        "admin/",
+        AdminPaymentListView.as_view(),
+        name="admin-payment-list",
+    ),
+
+    path(
+        "admin/<int:payment_id>/status/",
+        AdminPaymentStatusUpdateView.as_view(),
+        name="admin-payment-status-update",
+    ),
 
     # ======================================================
     # PAYMENT

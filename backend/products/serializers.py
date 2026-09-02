@@ -36,6 +36,13 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_low_stock_threshold(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Low stock threshold cannot be negative."
+            )
+        return value
+
     # ==========================================================
     # NAME VALIDATION
     # ==========================================================
@@ -124,6 +131,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "price",
             "image",
             "stock_quantity",
+            "low_stock_threshold",
+            "stock_status",
             "is_available",
             "featured",
             "created_at",

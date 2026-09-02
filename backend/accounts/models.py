@@ -30,12 +30,14 @@ class User(AbstractUser):
     ROLE_ADMIN = "ADMIN"
     ROLE_SUPPLIER = "SUPPLIER"
     ROLE_DELIVERY = "DELIVERY"
+    ROLE_DELIVERY_RIDER = "DELIVERY_RIDER"
 
     ROLE_CHOICES = [
         (ROLE_CUSTOMER, "Customer"),
         (ROLE_ADMIN, "Admin"),
         (ROLE_SUPPLIER, "Supplier"),
-        (ROLE_DELIVERY, "Delivery Rider"),
+        (ROLE_DELIVERY_RIDER, "Delivery Rider"),
+        (ROLE_DELIVERY, "Legacy Delivery Rider"),
     ]
 
     role = models.CharField(

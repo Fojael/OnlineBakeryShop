@@ -48,6 +48,20 @@ urlpatterns = [
     ),
 
     path(
+        "api/reports/",
+        include(
+            "reports.urls"
+        ),
+    ),
+
+    path(
+        "api/ai-prediction/",
+        include(
+            "ai_prediction.urls"
+        ),
+    ),
+
+    path(
         "api/suppliers/",
         include(
             "suppliers.urls"
@@ -83,15 +97,22 @@ urlpatterns = [
     ),
     
     path(
-    "api/delivery/",
-    include(
-        "delivery.urls"
+        "api/deliveries/",
+        include(
+            "deliveries.urls"
+        ),
     ),
-    ),
-    
+
     path(
-    "api/notifications/",
-    include("notifications.urls"),
+        "api/delivery/",
+        include(
+            "delivery.urls"
+        ),
+    ),
+
+    path(
+        "api/notifications/",
+        include("notifications.urls"),
     ),
     path(
         "api/auth/refresh/",

@@ -278,6 +278,99 @@ class OrderItem(models.Model):
         )
 
 
+class OrderAddress(models.Model):
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="shipping_details",
+    )
+    full_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    email = models.EmailField()
+    division = models.CharField(max_length=100)
+    district = models.CharField(max_length=100)
+    city = models.CharField(max_length=100)
+    area = models.CharField(max_length=150)
+    street_address = models.CharField(max_length=255)
+    postal_code = models.CharField(max_length=20)
+    delivery_note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Order {self.order_id} address for {self.full_name}"
+
+
+class Refund(models.Model):
+
+    STATUS_PENDING = "PENDING"
+    STATUS_APPROVED = "APPROVED"
+    STATUS_REJECTED = "REJECTED"
+    STATUS_COMPLETED = "COMPLETED"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+        (STATUS_COMPLETED, "Completed"),
+    ]
+
+    REASON_WRONG_PRODUCT = "Wrong Product"
+    REASON_DAMAGED_PRODUCT = "Damaged Product"
+    REASON_EXPIRED_PRODUCT = "Expired Product"
+    REASON_MISSING_ITEM = "Missing Item"
+    REASON_POOR_QUALITY = "Poor Quality"
+    REASON_OTHER = "Other"
+
+    REASON_CHOICES = [
+        (REASON_WRONG_PRODUCT, "Wrong Product"),
+        (REASON_DAMAGED_PRODUCT, "Damaged Product"),
+        (REASON_EXPIRED_PRODUCT, "Expired Product"),
+        (REASON_MISSING_ITEM, "Missing Item"),
+        (REASON_POOR_QUALITY, "Poor Quality"),
+        (REASON_OTHER, "Other"),
+    ]
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="refunds",
+    )
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="refunds",
+    )
+    reason = models.CharField(max_length=50, choices=REASON_CHOICES)
+    description = models.TextField(blank=True, default="")
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="processed_refunds",
+        null=True,
+        blank=True,
+    )
+    admin_notes = models.TextField(blank=True, default="")
+
+    @property
+    def can_customer_request(self):
+        return self.order.status in {Order.STATUS_CANCELLED, Order.STATUS_DELIVERED}
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"Refund #{self.id} - Order #{self.order_id}"
+
+
 # ==========================================================
 # DELIVERY
 # ==========================================================

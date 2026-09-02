@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Order, OrderItem, Delivery
+from .models import Order, OrderItem, Delivery, OrderAddress, Refund
 
 User = get_user_model()
 
@@ -143,9 +143,74 @@ class OrderSerializer(
 # ORDER CREATE SERIALIZER
 # ==========================================================
 
+class OrderAddressSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = OrderAddress
+        fields = [
+            "full_name",
+            "phone",
+            "email",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+            "postal_code",
+            "delivery_note",
+        ]
+
+
 class OrderCreateSerializer(
     serializers.ModelSerializer
 ):
+
+    shipping_address = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    full_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+    )
+    division = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    district = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    city = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    area = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    street_address = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    postal_code = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    delivery_note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
 
     class Meta:
         model = Order
@@ -153,14 +218,100 @@ class OrderCreateSerializer(
         fields = [
             "shipping_address",
             "payment_method",
+            "full_name",
+            "phone",
+            "email",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+            "postal_code",
+            "delivery_note",
         ]
+
+    def _normalize_optional_text(self, value):
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def validate(self, attrs):
+        shipping_address = self._normalize_optional_text(
+            attrs.get("shipping_address")
+        )
+
+        structured_fields = {
+            "full_name": self._normalize_optional_text(attrs.get("full_name")),
+            "phone": self._normalize_optional_text(attrs.get("phone")),
+            "email": self._normalize_optional_text(attrs.get("email")),
+            "division": self._normalize_optional_text(attrs.get("division")),
+            "district": self._normalize_optional_text(attrs.get("district")),
+            "city": self._normalize_optional_text(attrs.get("city")),
+            "area": self._normalize_optional_text(attrs.get("area")),
+            "street_address": self._normalize_optional_text(attrs.get("street_address")),
+            "postal_code": self._normalize_optional_text(attrs.get("postal_code")),
+            "delivery_note": self._normalize_optional_text(attrs.get("delivery_note")),
+        }
+
+        has_structured_address = any(
+            value for value in structured_fields.values()
+        )
+
+        if shipping_address:
+            if len(shipping_address) < 10:
+                raise serializers.ValidationError(
+                    {"shipping_address": "Please provide a complete shipping address."}
+                )
+        elif has_structured_address:
+            missing = []
+            for field_name in [
+                "full_name",
+                "phone",
+                "email",
+                "division",
+                "district",
+                "city",
+                "area",
+                "street_address",
+                "postal_code",
+            ]:
+                if not structured_fields[field_name]:
+                    missing.append(field_name)
+
+            if missing:
+                raise serializers.ValidationError(
+                    {field: "This field is required." for field in missing}
+                )
+
+            shipping_address = (
+                f"{structured_fields['full_name']}, "
+                f"{structured_fields['street_address']}, "
+                f"{structured_fields['area']}, "
+                f"{structured_fields['city']}, "
+                f"{structured_fields['district']}, "
+                f"{structured_fields['division']}, "
+                f"{structured_fields['postal_code']}. "
+                f"Phone: {structured_fields['phone']}. "
+                f"Email: {structured_fields['email']}"
+            )
+
+        else:
+            raise serializers.ValidationError(
+                {"shipping_address": "Shipping address is required."}
+            )
+
+        attrs["shipping_address"] = shipping_address
+
+        for key, value in structured_fields.items():
+            attrs[key] = value
+
+        return attrs
 
     def validate_shipping_address(
         self,
         value,
     ):
-
-        value = value.strip()
+        value = str(value or "").strip()
 
         if not value:
             raise serializers.ValidationError(

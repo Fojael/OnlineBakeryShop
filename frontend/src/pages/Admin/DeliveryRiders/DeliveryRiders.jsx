@@ -9,6 +9,15 @@ const DeliveryRiders = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [updatingId, setUpdatingId] = useState(null);
+    const [editingId, setEditingId] = useState(null);
+    const [editForm, setEditForm] = useState({
+        username: "",
+        email: "",
+        first_name: "",
+        last_name: "",
+        phone: "",
+    });
     const [formData, setFormData] = useState({
         username: "",
         email: "",
@@ -98,6 +107,74 @@ const DeliveryRiders = () => {
             toast.error(detail);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleEditStart = (rider) => {
+        setEditingId(rider.id);
+        setEditForm({
+            username: rider.username || "",
+            email: rider.email || "",
+            first_name: rider.first_name || "",
+            last_name: rider.last_name || "",
+            phone: rider.phone || "",
+        });
+    };
+
+    const handleEditCancel = () => {
+        setEditingId(null);
+        setEditForm({
+            username: "",
+            email: "",
+            first_name: "",
+            last_name: "",
+            phone: "",
+        });
+    };
+
+    const handleEditChange = (event) => {
+        const { name, value } = event.target;
+        setEditForm((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+    };
+
+    const handleSaveEdit = async (riderId) => {
+        try {
+            setUpdatingId(riderId);
+            await api.patch(`orders/admin/delivery-riders/${riderId}/update/`, editForm);
+            toast.success("Rider details updated successfully.");
+            handleEditCancel();
+            void fetchRiders();
+        } catch (error) {
+            console.error(error);
+            const detail =
+                error.response?.data?.detail ||
+                error.response?.data?.email?.[0] ||
+                error.response?.data?.username?.[0] ||
+                "Failed to update rider.";
+            toast.error(detail);
+        } finally {
+            setUpdatingId(null);
+        }
+    };
+
+    const handleToggleStatus = async (rider) => {
+        const nextValue = !rider.is_active;
+
+        try {
+            setUpdatingId(rider.id);
+            await api.post(`orders/admin/delivery-riders/${rider.id}/toggle-status/`, {
+                is_active: nextValue,
+            });
+            toast.success(`Rider ${nextValue ? "activated" : "deactivated"} successfully.`);
+            void fetchRiders();
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.detail || "Failed to update rider status.");
+        } finally {
+            setUpdatingId(null);
         }
     };
 
@@ -226,30 +303,134 @@ const DeliveryRiders = () => {
                                             <th>Phone</th>
                                             <th>Status</th>
                                             <th>Joined</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredRiders.length > 0 ? (
-                                            filteredRiders.map((rider) => (
-                                                <tr key={rider.id}>
-                                                    <td>{rider.id}</td>
-                                                    <td>{rider.username}</td>
-                                                    <td>{`${rider.first_name || ""} ${rider.last_name || ""}`.trim() || "-"}</td>
-                                                    <td>{rider.email}</td>
-                                                    <td>{rider.phone || "-"}</td>
-                                                    <td>
-                                                        <span className={`badge ${rider.is_active ? "bg-success" : "bg-secondary"}`}>
-                                                            {rider.is_active ? "Active" : "Inactive"}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        {rider.date_joined ? new Date(rider.date_joined).toLocaleDateString() : "-"}
-                                                    </td>
-                                                </tr>
-                                            ))
+                                            filteredRiders.map((rider) => {
+                                                const isEditing = editingId === rider.id;
+
+                                                return (
+                                                    <tr key={rider.id}>
+                                                        <td>{rider.id}</td>
+                                                        <td>
+                                                            {isEditing ? (
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-control form-control-sm"
+                                                                    name="username"
+                                                                    value={editForm.username}
+                                                                    onChange={handleEditChange}
+                                                                />
+                                                            ) : (
+                                                                rider.username
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {isEditing ? (
+                                                                <div className="d-flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        className="form-control form-control-sm"
+                                                                        name="first_name"
+                                                                        value={editForm.first_name}
+                                                                        onChange={handleEditChange}
+                                                                        placeholder="First"
+                                                                    />
+                                                                    <input
+                                                                        type="text"
+                                                                        className="form-control form-control-sm"
+                                                                        name="last_name"
+                                                                        value={editForm.last_name}
+                                                                        onChange={handleEditChange}
+                                                                        placeholder="Last"
+                                                                    />
+                                                                </div>
+                                                            ) : (
+                                                                `${rider.first_name || ""} ${rider.last_name || ""}`.trim() || "-"
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {isEditing ? (
+                                                                <input
+                                                                    type="email"
+                                                                    className="form-control form-control-sm"
+                                                                    name="email"
+                                                                    value={editForm.email}
+                                                                    onChange={handleEditChange}
+                                                                />
+                                                            ) : (
+                                                                rider.email
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {isEditing ? (
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-control form-control-sm"
+                                                                    name="phone"
+                                                                    value={editForm.phone}
+                                                                    onChange={handleEditChange}
+                                                                />
+                                                            ) : (
+                                                                rider.phone || "-"
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            <span className={`badge ${rider.is_active ? "bg-success" : "bg-secondary"}`}>
+                                                                {rider.is_active ? "Active" : "Inactive"}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            {rider.date_joined ? new Date(rider.date_joined).toLocaleDateString() : "-"}
+                                                        </td>
+                                                        <td>
+                                                            {isEditing ? (
+                                                                <div className="d-flex gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-success btn-sm"
+                                                                        onClick={() => handleSaveEdit(rider.id)}
+                                                                        disabled={updatingId === rider.id}
+                                                                    >
+                                                                        {updatingId === rider.id ? "Saving..." : "Save"}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-secondary btn-sm"
+                                                                        onClick={handleEditCancel}
+                                                                        disabled={updatingId === rider.id}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="d-flex gap-2 flex-wrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-primary btn-sm"
+                                                                        onClick={() => handleEditStart(rider)}
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className={`btn btn-sm ${rider.is_active ? "btn-outline-warning" : "btn-outline-success"}`}
+                                                                        onClick={() => handleToggleStatus(rider)}
+                                                                        disabled={updatingId === rider.id}
+                                                                    >
+                                                                        {updatingId === rider.id ? "Updating..." : rider.is_active ? "Deactivate" : "Activate"}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
                                         ) : (
                                             <tr>
-                                                <td colSpan="7" className="text-center py-4 text-muted">
+                                                <td colSpan="8" className="text-center py-4 text-muted">
                                                     No delivery riders found.
                                                 </td>
                                             </tr>

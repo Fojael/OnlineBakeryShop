@@ -74,6 +74,10 @@ class Product(models.Model):
         default=0,
     )
 
+    low_stock_threshold = models.PositiveIntegerField(
+        default=5,
+    )
+
     # ==========================================================
     # AVAILABILITY
     # ==========================================================
@@ -107,6 +111,18 @@ class Product(models.Model):
         ordering = [
             "-created_at"
         ]
+
+    @property
+    def stock_status(self):
+        if self.stock_quantity == 0:
+            return "Out of Stock"
+        if self.stock_quantity <= self.low_stock_threshold:
+            return "Low Stock"
+        return "In Stock"
+
+    def save(self, *args, **kwargs):
+        self.is_available = self.stock_quantity > 0
+        super().save(*args, **kwargs)
 
     # ==========================================================
     # STRING

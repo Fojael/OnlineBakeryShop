@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 
 from cart.models import Cart, CartItem
 from orders.models import Order, OrderItem
+from accounts.permissions import IsAdmin
 
 from .models import Payment
 from .serializers import PaymentSerializer
@@ -931,6 +932,88 @@ class SSLCommerzIPNView(APIView):
             {
                 "message":
                     "IPN received."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
+# ADMIN PAYMENT MANAGEMENT
+# ==========================================================
+
+class AdminPaymentListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsAdmin,
+    ]
+
+    def get(self, request):
+        payments = (
+            Payment.objects
+            .select_related(
+                "order",
+                "order__customer",
+            )
+            .order_by("-created_at")
+        )
+
+        return Response(
+            {
+                "count": payments.count(),
+                "results": PaymentSerializer(payments, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminPaymentStatusUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsAdmin,
+    ]
+
+    def patch(self, request, payment_id):
+        payment = get_object_or_404(
+            Payment.objects.select_related("order"),
+            pk=payment_id,
+        )
+
+        new_status = request.data.get("status")
+        if new_status not in {
+            Payment.STATUS_PENDING,
+            Payment.STATUS_SUCCESS,
+            Payment.STATUS_FAILED,
+            Payment.STATUS_CANCELLED,
+        }:
+            return Response(
+                {"detail": "Invalid payment status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment.status = new_status
+        if new_status == Payment.STATUS_SUCCESS:
+            payment.mark_success()
+            if payment.order.status not in {
+                Order.STATUS_CANCELLED,
+                Order.STATUS_DELIVERED,
+            }:
+                payment.order.status = Order.STATUS_PROCESSING
+                payment.order.save(update_fields=["status", "updated_at"])
+        elif new_status == Payment.STATUS_FAILED:
+            payment.mark_failed(request.data.get("failure_reason", "Payment failed"))
+        elif new_status == Payment.STATUS_CANCELLED:
+            payment.mark_cancelled(request.data.get("failure_reason", "Payment cancelled"))
+        else:
+            payment.mark_pending()
+
+        payment.save()
+
+        return Response(
+            {
+                "message": "Payment status updated.",
+                "payment": PaymentSerializer(payment).data,
             },
             status=status.HTTP_200_OK,
         )

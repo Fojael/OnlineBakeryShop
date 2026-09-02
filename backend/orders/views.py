@@ -27,7 +27,7 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, OrderAddress, Refund
 from .serializers import (
     OrderSerializer,
     OrderCreateSerializer,
@@ -55,6 +55,17 @@ from accounts.permissions import (
 # ==========================================================
 
 DELIVERY_CHARGE = Decimal("60.00")
+
+
+def is_admin_user(user):
+    return bool(
+        user
+        and (
+            user.is_staff
+            or getattr(user, "role", None)
+            == User.ROLE_ADMIN
+        )
+    )
 
 
 # ==========================================================
@@ -241,6 +252,19 @@ class OrderListCreateView(APIView):
                 "payment_method"
             ]
         )
+
+        order_address_data = {
+            "full_name": serializer.validated_data.get("full_name", ""),
+            "phone": serializer.validated_data.get("phone", ""),
+            "email": serializer.validated_data.get("email", request.user.email or ""),
+            "division": serializer.validated_data.get("division", ""),
+            "district": serializer.validated_data.get("district", ""),
+            "city": serializer.validated_data.get("city", ""),
+            "area": serializer.validated_data.get("area", ""),
+            "street_address": serializer.validated_data.get("street_address", ""),
+            "postal_code": serializer.validated_data.get("postal_code", ""),
+            "delivery_note": serializer.validated_data.get("delivery_note", ""),
+        }
 
         # ==================================================
         # LOCK CUSTOMER CART
@@ -566,6 +590,16 @@ class OrderListCreateView(APIView):
         # ==================================================
         # RESPONSE
         # ==================================================
+
+        has_structured_address = any(
+            value for value in order_address_data.values()
+        )
+
+        if has_structured_address:
+            OrderAddress.objects.create(
+                order=order,
+                **order_address_data,
+            )
 
         response_serializer = OrderSerializer(
             order,
@@ -979,8 +1013,230 @@ class CancelOrderView(APIView):
 
 
 # ==========================================================
+# CUSTOMER - REFUND REQUEST
+# ==========================================================
+
+class CustomerRefundRequestView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def post(self, request):
+
+        order_id = request.data.get("order_id")
+        reason = str(request.data.get("reason", "")).strip()
+        description = str(request.data.get("description", "")).strip()
+        refund_amount = request.data.get("refund_amount")
+
+        if not order_id:
+            return Response(
+                {"detail": "Order ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order = get_object_or_404(
+            Order,
+            id=order_id,
+            customer=request.user,
+        )
+
+        if order.status != Order.STATUS_DELIVERED:
+            return Response(
+                {"detail": "Refunds are only allowed for delivered orders."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if reason not in dict(Refund.REASON_CHOICES):
+            return Response(
+                {"detail": "Please choose a valid refund reason."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if Refund.objects.filter(
+            order=order,
+            customer=request.user,
+            status__in=[
+                Refund.STATUS_PENDING,
+                Refund.STATUS_APPROVED,
+            ],
+        ).exists():
+            return Response(
+                {"detail": "A refund request is already active for this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if refund_amount is None:
+            refund_amount = str(order.total_amount)
+
+        refund = Refund.objects.create(
+            order=order,
+            customer=request.user,
+            reason=reason,
+            description=description,
+            refund_amount=Decimal(str(refund_amount)),
+            status=Refund.STATUS_PENDING,
+        )
+
+        notify_customer(
+            customer=request.user,
+            title="Refund Requested",
+            message=(
+                f"Your refund request for Order #{order.id} has been submitted and is pending review."
+            ),
+            notification_type=Notification.TYPE_REFUND_REQUEST,
+        )
+
+        return Response(
+            {
+                "message": "Refund request submitted successfully.",
+                "refund": {
+                    "id": refund.id,
+                    "order_id": refund.order_id,
+                    "reason": refund.reason,
+                    "status": refund.status,
+                    "refund_amount": str(refund.refund_amount),
+                    "requested_at": refund.requested_at,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ==========================================================
 # ADMIN - LIST ALL ORDERS
 # ==========================================================
+
+class AdminRefundListView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request):
+
+        if not is_admin_user(request.user):
+            return Response(
+                {"detail": "Admin permission required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refunds = Refund.objects.select_related(
+            "order",
+            "customer",
+            "admin",
+        ).order_by("-requested_at")
+
+        result = [
+            {
+                "id": refund.id,
+                "order_id": refund.order_id,
+                "customer_email": refund.customer.email,
+                "reason": refund.reason,
+                "description": refund.description,
+                "refund_amount": str(refund.refund_amount),
+                "status": refund.status,
+                "requested_at": refund.requested_at,
+                "admin_notes": refund.admin_notes,
+            }
+            for refund in refunds
+        ]
+
+        return Response(
+            {"count": len(result), "results": result},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminRefundUpdateView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def patch(self, request, refund_id):
+
+        if not is_admin_user(request.user):
+            return Response(
+                {"detail": "Admin permission required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refund = get_object_or_404(
+            Refund.objects.select_related("order", "customer"),
+            id=refund_id,
+        )
+
+        new_status = str(request.data.get("status", "")).strip()
+        allowed_statuses = [
+            Refund.STATUS_APPROVED,
+            Refund.STATUS_REJECTED,
+            Refund.STATUS_COMPLETED,
+        ]
+
+        if new_status not in allowed_statuses:
+            return Response(
+                {"detail": "Invalid refund status.", "allowed_values": allowed_statuses},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refund.status = new_status
+        refund.admin = request.user
+        refund.admin_notes = str(request.data.get("admin_notes", refund.admin_notes or "")).strip()
+
+        if new_status == Refund.STATUS_APPROVED:
+            refund.approved_at = timezone.now()
+        elif new_status == Refund.STATUS_COMPLETED:
+            refund.completed_at = timezone.now()
+
+        update_fields = [
+            "status",
+            "admin",
+            "admin_notes",
+        ]
+
+        if new_status == Refund.STATUS_APPROVED:
+            update_fields.append("approved_at")
+        if new_status == Refund.STATUS_COMPLETED:
+            update_fields.append("completed_at")
+
+        refund.save(update_fields=update_fields)
+
+        title = "Refund Updated"
+        message = f"Your refund request for Order #{refund.order_id} has been {refund.status.lower()}."
+
+        if new_status == Refund.STATUS_APPROVED:
+            title = "Refund Approved"
+            notification_type = Notification.TYPE_REFUND_APPROVED
+        elif new_status == Refund.STATUS_REJECTED:
+            title = "Refund Rejected"
+            notification_type = Notification.TYPE_REFUND_REJECTED
+        elif new_status == Refund.STATUS_COMPLETED:
+            title = "Refund Completed"
+            notification_type = Notification.TYPE_REFUND_COMPLETED
+        else:
+            notification_type = Notification.TYPE_INFO
+
+        notify_customer(
+            customer=refund.customer,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+        )
+
+        return Response(
+            {
+                "message": "Refund status updated successfully.",
+                "refund": {
+                    "id": refund.id,
+                    "order_id": refund.order_id,
+                    "status": refund.status,
+                    "admin_notes": refund.admin_notes,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 class AdminOrderListView(APIView):
 
@@ -993,7 +1249,7 @@ class AdminOrderListView(APIView):
         request,
     ):
 
-        if not request.user.is_staff:
+        if not is_admin_user(request.user):
 
             return Response(
                 {
@@ -1048,7 +1304,7 @@ class AdminOrderDetailView(APIView):
         order_id,
     ):
 
-        if not request.user.is_staff:
+        if not is_admin_user(request.user):
 
             return Response(
                 {
@@ -1105,7 +1361,7 @@ class AdminOrderUpdateView(APIView):
         # ADMIN PERMISSION
         # ==================================================
 
-        if not request.user.is_staff:
+        if not is_admin_user(request.user):
 
             return Response(
                 {
@@ -2377,10 +2633,7 @@ class AdminDeliveryRiderListView(APIView):
 
     def get(self, request):
 
-        if not (
-            request.user.is_staff
-            or getattr(request.user, "role", None) == User.ROLE_ADMIN
-        ):
+        if not is_admin_user(request.user):
             return Response(
                 {
                     "detail": "Admin permission required.",
@@ -2389,7 +2642,7 @@ class AdminDeliveryRiderListView(APIView):
             )
 
         riders = User.objects.filter(
-            role=User.ROLE_DELIVERY,
+            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
         ).order_by("-date_joined")
 
         results = [
@@ -2436,10 +2689,7 @@ class AdminCreateDeliveryRiderView(APIView):
         # ADMIN PERMISSION
         # ==================================================
 
-        if not (
-            request.user.is_staff
-            or getattr(request.user, "role", None) == User.ROLE_ADMIN
-        ):
+        if not is_admin_user(request.user):
 
             return Response(
                 {
@@ -2532,7 +2782,7 @@ class AdminCreateDeliveryRiderView(APIView):
         # ROLE
         # ==================================================
 
-        rider.role = User.ROLE_DELIVERY
+        rider.role = User.ROLE_DELIVERY_RIDER
 
         # Admin-created riders are immediately active.
         rider.is_active = True
@@ -2570,6 +2820,180 @@ class AdminCreateDeliveryRiderView(APIView):
 # ADMIN - ASSIGN DELIVERY RIDER
 # ==========================================================
 
+class AdminUpdateDeliveryRiderView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def patch(self, request, rider_id):
+
+        if not is_admin_user(request.user):
+            return Response(
+                {
+                    "detail": "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rider = get_object_or_404(
+            User,
+            id=rider_id,
+            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
+        )
+
+        first_name = str(
+            request.data.get("first_name", rider.first_name or "")
+        ).strip()
+        last_name = str(
+            request.data.get("last_name", rider.last_name or "")
+        ).strip()
+        phone = str(
+            request.data.get("phone", rider.phone or "")
+        ).strip()
+        username = str(
+            request.data.get("username", rider.username or "")
+        ).strip()
+        email = str(
+            request.data.get("email", rider.email or "")
+        ).strip().lower()
+
+        if username:
+            if len(username) < 3:
+                return Response(
+                    {"detail": "Username must be at least 3 characters long."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                User.objects.filter(username=username)
+                .exclude(id=rider.id)
+                .exists()
+            ):
+                return Response(
+                    {"detail": "This username is already in use."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rider.username = username
+
+        if email:
+            if not email:
+                return Response(
+                    {"detail": "Email is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                User.objects.filter(email=email)
+                .exclude(id=rider.id)
+                .exists()
+            ):
+                return Response(
+                    {"detail": "A user with this email already exists."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rider.email = email
+
+        if phone and len(phone) < 7:
+            return Response(
+                {"detail": "Phone number is too short."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rider.first_name = first_name
+        rider.last_name = last_name
+        rider.phone = phone
+        rider.save(
+            update_fields=[
+                "username",
+                "email",
+                "first_name",
+                "last_name",
+                "phone",
+                "updated_at",
+            ]
+        )
+
+        return Response(
+            {
+                "message": "Delivery rider updated successfully.",
+                "rider": {
+                    "id": rider.id,
+                    "username": rider.username,
+                    "email": rider.email,
+                    "first_name": rider.first_name,
+                    "last_name": rider.last_name,
+                    "phone": rider.phone,
+                    "role": rider.role,
+                    "is_active": rider.is_active,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminToggleDeliveryRiderStatusView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def post(self, request, rider_id):
+
+        if not is_admin_user(request.user):
+            return Response(
+                {
+                    "detail": "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rider = get_object_or_404(
+            User,
+            id=rider_id,
+            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
+        )
+
+        is_active_value = request.data.get("is_active")
+
+        if is_active_value is None:
+            return Response(
+                {"detail": "is_active is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if isinstance(is_active_value, str):
+            normalized = is_active_value.strip().lower()
+            if normalized in {"true", "1", "yes", "active"}:
+                rider.is_active = True
+            elif normalized in {"false", "0", "no", "inactive"}:
+                rider.is_active = False
+            else:
+                return Response(
+                    {"detail": "is_active must be a boolean value."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            rider.is_active = bool(is_active_value)
+
+        rider.save(update_fields=["is_active", "updated_at"])
+
+        return Response(
+            {
+                "message": "Delivery rider status updated successfully.",
+                "rider": {
+                    "id": rider.id,
+                    "username": rider.username,
+                    "email": rider.email,
+                    "first_name": rider.first_name,
+                    "last_name": rider.last_name,
+                    "phone": rider.phone,
+                    "role": rider.role,
+                    "is_active": rider.is_active,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class AdminAssignDeliveryView(APIView):
 
     permission_classes = [
@@ -2587,10 +3011,7 @@ class AdminAssignDeliveryView(APIView):
         # ADMIN PERMISSION
         # ==================================================
 
-        if not (
-            request.user.is_staff
-            or getattr(request.user, "role", None) == User.ROLE_ADMIN
-        ):
+        if not is_admin_user(request.user):
 
             return Response(
                 {
@@ -2727,7 +3148,7 @@ class AdminAssignDeliveryView(APIView):
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role=User.ROLE_DELIVERY,
+            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
             is_active=True,
         )
 

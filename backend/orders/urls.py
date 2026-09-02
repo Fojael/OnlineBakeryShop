@@ -7,6 +7,8 @@ from .views import (
     AdminOrderUpdateView,
     AdminDeliveryRiderListView,
     AdminCreateDeliveryRiderView,
+    AdminUpdateDeliveryRiderView,
+    AdminToggleDeliveryRiderStatusView,
     AdminAssignDeliveryView,
 
     # SUPPLIER
@@ -21,6 +23,9 @@ from .views import (
     OrderListCreateView,
     OrderDetailView,
     CancelOrderView,
+    CustomerRefundRequestView,
+    AdminRefundListView,
+    AdminRefundUpdateView,
 
     # DELIVERY
     DeliveryDashboardView,
@@ -71,6 +76,18 @@ urlpatterns = [
         "admin/delivery-riders/create/",
         AdminCreateDeliveryRiderView.as_view(),
         name="admin-create-delivery-rider",
+    ),
+
+    path(
+        "admin/delivery-riders/<int:rider_id>/update/",
+        AdminUpdateDeliveryRiderView.as_view(),
+        name="admin-update-delivery-rider",
+    ),
+
+    path(
+        "admin/delivery-riders/<int:rider_id>/toggle-status/",
+        AdminToggleDeliveryRiderStatusView.as_view(),
+        name="admin-toggle-delivery-rider-status",
     ),
 
     path(
@@ -161,6 +178,24 @@ urlpatterns = [
         "<int:order_id>/",
         OrderDetailView.as_view(),
         name="order-detail",
+    ),
+
+    path(
+        "refunds/request/",
+        CustomerRefundRequestView.as_view(),
+        name="customer-refund-request",
+    ),
+
+    path(
+        "refunds/admin/",
+        AdminRefundListView.as_view(),
+        name="admin-refunds-list",
+    ),
+
+    path(
+        "refunds/admin/<int:refund_id>/update/",
+        AdminRefundUpdateView.as_view(),
+        name="admin-update-refund",
     ),
 
     path(

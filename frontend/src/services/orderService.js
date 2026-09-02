@@ -142,6 +142,74 @@ export const updateAdminOrderStatus = async (
 
 
 // ============================================================
+// ADMIN - GET DELIVERY RIDERS
+// ============================================================
+
+export const getDeliveryRiders = async () => {
+
+    return await api.get(
+        "/orders/admin/delivery-riders/"
+    );
+
+};
+
+
+// ============================================================
+// ADMIN - UPDATE DELIVERY RIDER
+// ============================================================
+
+export const updateDeliveryRider = async (
+    riderId,
+    payload
+) => {
+
+    return await api.patch(
+        `/orders/admin/delivery-riders/${riderId}/update/`,
+        payload
+    );
+
+};
+
+
+// ============================================================
+// ADMIN - TOGGLE DELIVERY RIDER STATUS
+// ============================================================
+
+export const toggleDeliveryRiderStatus = async (
+    riderId,
+    isActive
+) => {
+
+    return await api.post(
+        `/orders/admin/delivery-riders/${riderId}/toggle-status/`,
+        {
+            is_active: isActive,
+        }
+    );
+
+};
+
+
+// ============================================================
+// ADMIN - ASSIGN DELIVERY RIDER TO ORDER
+// ============================================================
+
+export const assignDeliveryRider = async (
+    orderId,
+    riderId
+) => {
+
+    return await api.post(
+        `/orders/admin/${orderId}/assign-delivery/`,
+        {
+            rider_id: riderId,
+        }
+    );
+
+};
+
+
+// ============================================================
 // SUPPLIER - GET ALL OWN ORDERS
 // ============================================================
 

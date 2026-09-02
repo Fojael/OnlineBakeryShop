@@ -11,7 +11,9 @@ import { toast } from "react-toastify";
 import DashboardLayout from "../../../layouts/DashboardLayout";
 
 import {
+    assignDeliveryRider,
     getAdminOrders,
+    getDeliveryRiders,
 } from "../../../services/orderService";
 
 
@@ -19,9 +21,12 @@ const AdminOrders = () => {
     const navigate = useNavigate();
 
     const [orders, setOrders] = useState([]);
+    const [riders, setRiders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [assigningOrderId, setAssigningOrderId] = useState(null);
+    const [selectedRiders, setSelectedRiders] = useState({});
 
 
     // =========================================================
@@ -66,15 +71,25 @@ const AdminOrders = () => {
     // LOAD ORDERS
     // =========================================================
 
+    const fetchRiders = useCallback(async () => {
+        try {
+            const response = await getDeliveryRiders();
+            setRiders(response?.data?.results || []);
+        } catch (error) {
+            console.error("Failed to load delivery riders:", error);
+        }
+    }, []);
+
     useEffect(() => {
         const timer = window.setTimeout(() => {
             void fetchOrders();
+            void fetchRiders();
         }, 0);
 
         return () => {
             window.clearTimeout(timer);
         };
-    }, [fetchOrders]);
+    }, [fetchOrders, fetchRiders]);
 
 
     // =========================================================
@@ -244,6 +259,35 @@ const AdminOrders = () => {
         navigate(
             `/admin/orders/update/${id}`
         );
+    };
+
+    const handleAssignDelivery = async (orderId) => {
+        const riderId = selectedRiders[orderId];
+
+        if (!riderId) {
+            toast.warning("Please select a delivery rider first.");
+            return;
+        }
+
+        try {
+            setAssigningOrderId(orderId);
+            await assignDeliveryRider(orderId, riderId);
+            toast.success("Delivery rider assigned successfully.");
+            setSelectedRiders((previous) => ({
+                ...previous,
+                [orderId]: "",
+            }));
+            await fetchOrders();
+        } catch (error) {
+            console.error("Failed to assign rider:", error);
+            const detail =
+                error?.response?.data?.detail ||
+                error?.response?.data?.not_ready_items ||
+                "Failed to assign delivery rider.";
+            toast.error(typeof detail === "string" ? detail : "Failed to assign delivery rider.");
+        } finally {
+            setAssigningOrderId(null);
+        }
     };
 
 
@@ -619,19 +663,49 @@ const AdminOrders = () => {
                                                         {/* ACTION */}
 
                                                         <td>
+                                                            <div className="d-flex flex-column gap-2">
+                                                                <div className="d-flex gap-2 align-items-center">
+                                                                    <select
+                                                                        className="form-select form-select-sm"
+                                                                        value={selectedRiders[order.id] || ""}
+                                                                        onChange={(event) =>
+                                                                            setSelectedRiders((previous) => ({
+                                                                                ...previous,
+                                                                                [order.id]: event.target.value,
+                                                                            }))
+                                                                        }
+                                                                    >
+                                                                        <option value="">Select rider</option>
+                                                                        {riders
+                                                                            .filter((rider) => rider.is_active)
+                                                                            .map((rider) => (
+                                                                                <option key={rider.id} value={rider.id}>
+                                                                                    {rider.username}
+                                                                                </option>
+                                                                            ))}
+                                                                    </select>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-primary btn-sm"
+                                                                        onClick={() => handleAssignDelivery(order.id)}
+                                                                        disabled={assigningOrderId === order.id}
+                                                                    >
+                                                                        {assigningOrderId === order.id ? "Assigning..." : "Assign"}
+                                                                    </button>
+                                                                </div>
 
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-warning btn-sm"
-                                                                onClick={() =>
-                                                                    handleUpdateOrder(
-                                                                        order.id
-                                                                    )
-                                                                }
-                                                            >
-                                                                Update
-                                                            </button>
-
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-warning btn-sm"
+                                                                    onClick={() =>
+                                                                        handleUpdateOrder(
+                                                                            order.id
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Update
+                                                                </button>
+                                                            </div>
                                                         </td>
 
                                                     </tr>

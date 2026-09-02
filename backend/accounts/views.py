@@ -386,7 +386,7 @@ class AdminDashboardView(
                     ).count(),
                     "suppliers": Supplier.objects.count(),
                     "delivery_riders": User.objects.filter(
-                        role=User.ROLE_DELIVERY,
+                        role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
                     ).count(),
                     "products": Product.objects.count(),
                     "orders": Order.objects.count(),

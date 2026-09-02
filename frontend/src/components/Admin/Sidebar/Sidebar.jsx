@@ -9,11 +9,10 @@ const Sidebar = () => {
                 minHeight: "100vh",
             }}
         >
-            <h4>Admin Panel</h4>
+            <h4>Admin Dashboard</h4>
             <hr />
 
             <ul className="nav flex-column">
-
                 <li className="nav-item">
                     <Link className="nav-link text-white" to="/admin/dashboard">
                         Dashboard
@@ -21,50 +20,111 @@ const Sidebar = () => {
                 </li>
 
                 <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/products">
-                        Products
+                    <Link className="nav-link text-white" to="/admin/categories">
+                        Category Management
                     </Link>
                 </li>
 
                 <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/categories">
-                        Categories
+                    <Link className="nav-link text-white" to="/admin/products">
+                        Product Management
                     </Link>
                 </li>
 
                 <li className="nav-item">
                     <Link className="nav-link text-white" to="/admin/inventory">
-                        Inventory
+                        Inventory / Stock
                     </Link>
                 </li>
 
                 <li className="nav-item">
                     <Link className="nav-link text-white" to="/admin/suppliers">
-                        Suppliers
-                    </Link>
-                </li>
-
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/delivery-riders">
-                        Delivery Men
-                    </Link>
-                </li>
-
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/orders">
-                        Orders
+                        Supplier Management
                     </Link>
                 </li>
 
                 <li className="nav-item">
                     <Link className="nav-link text-white" to="/admin/customers">
-                        Customers
+                        Customer Management
+                    </Link>
+                </li>
+
+                <li className="nav-item mt-2">
+                    <div className="text-uppercase text-secondary small fw-bold">Order Management</div>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/orders">
+                        Pending Orders
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/orders">
+                        Accepted Orders
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/orders">
+                        Processing Orders
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/orders">
+                        Ready Orders
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/orders">
+                        Completed Orders
+                    </Link>
+                </li>
+
+                <li className="nav-item mt-2">
+                    <div className="text-uppercase text-secondary small fw-bold">Delivery Management</div>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Assign Rider
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Active Deliveries
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Delivery History
+                    </Link>
+                </li>
+
+                <li className="nav-item mt-2">
+                    <div className="text-uppercase text-secondary small fw-bold">Rider Management</div>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Add Rider
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Rider List
+                    </Link>
+                </li>
+                <li className="nav-item">
+                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
+                        Rider Status
+                    </Link>
+                </li>
+
+                <li className="nav-item">
+                    <Link className="nav-link text-white" to="/admin/payments">
+                        Payment Management
                     </Link>
                 </li>
 
                 <li className="nav-item">
                     <Link className="nav-link text-white" to="/admin/reports">
-                        Reports
+                        Sales Reports
                     </Link>
                 </li>
 
@@ -79,7 +139,6 @@ const Sidebar = () => {
                         Notifications
                     </Link>
                 </li>
-
             </ul>
         </div>
     );

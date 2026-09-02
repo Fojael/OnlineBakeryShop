@@ -18,6 +18,18 @@ import {
     createPayment,
 } from "../../services/paymentService";
 
+const initialAddress = {
+    full_name: "",
+    phone: "",
+    email: "",
+    division: "",
+    district: "",
+    city: "",
+    area: "",
+    street_address: "",
+    postal_code: "",
+    delivery_note: "",
+};
 
 const Checkout = () => {
 
@@ -33,6 +45,11 @@ const Checkout = () => {
     ] = useState("");
 
     const [
+        addressForm,
+        setAddressForm,
+    ] = useState(initialAddress);
+
+    const [
         paymentMethod,
         setPaymentMethod,
     ] = useState("Cash on Delivery");
@@ -42,6 +59,53 @@ const Checkout = () => {
         setLoading,
     ] = useState(false);
 
+    const handleAddressFieldChange = (event) => {
+        const { name, value } = event.target;
+
+        setAddressForm((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+
+        if (shippingAddress) {
+            setShippingAddress("");
+        }
+    };
+
+    const validateAddress = () => {
+        const requiredFields = [
+            "full_name",
+            "phone",
+            "email",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+            "postal_code",
+        ];
+
+        for (const field of requiredFields) {
+            if (!String(addressForm[field] || "").trim()) {
+                toast.error(
+                    `Please enter your ${field.replace("_", " ")}.`
+                );
+                return false;
+            }
+        }
+
+        if (!/^01[3-9]\d{8}$/.test(addressForm.phone.trim())) {
+            toast.error("Please enter a valid Bangladeshi phone number.");
+            return false;
+        }
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addressForm.email.trim())) {
+            toast.error("Please enter a valid email address.");
+            return false;
+        }
+
+        return true;
+    };
 
     // ========================================================
     // PLACE ORDER
@@ -49,22 +113,20 @@ const Checkout = () => {
 
     const handlePlaceOrder = async () => {
 
-        // ----------------------------------------------------
-        // Validate shipping address
-        // ----------------------------------------------------
+        const hasStructuredAddress = Object.values(addressForm).some(
+            (value) => String(value || "").trim()
+        );
 
-        if (!shippingAddress.trim()) {
-
+        if (!hasStructuredAddress && !shippingAddress.trim()) {
             toast.error(
-                "Please enter your shipping address."
+                "Please enter your shipping address details."
             );
-
             return;
         }
 
-        // ----------------------------------------------------
-        // Prevent duplicate request
-        // ----------------------------------------------------
+        if (hasStructuredAddress && !validateAddress()) {
+            return;
+        }
 
         if (loading) {
             return;
@@ -74,16 +136,13 @@ const Checkout = () => {
 
         try {
 
-            // =================================================
-            // ORDER DATA
-            // =================================================
-
             const orderData = {
-                shipping_address:
-                    shippingAddress.trim(),
-
-                payment_method:
-                    paymentMethod,
+                payment_method: paymentMethod,
+                ...(hasStructuredAddress
+                    ? addressForm
+                    : {
+                        shipping_address: shippingAddress.trim(),
+                    }),
             };
 
             console.log(
@@ -284,28 +343,154 @@ const Checkout = () => {
 
                             <div className="mb-4">
 
-                                <label
-                                    className="form-label"
-                                >
-                                    Shipping Address
-                                </label>
+                                <div className="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 className="mb-0">Shipping Address</h5>
+                                    <small className="text-muted">Required for delivery</small>
+                                </div>
 
-                                <textarea
-                                    className="form-control"
-                                    rows="4"
-                                    value={
-                                        shippingAddress
-                                    }
-                                    onChange={(
-                                        event
-                                    ) =>
-                                        setShippingAddress(
-                                            event.target.value
-                                        )
-                                    }
-                                    placeholder="Enter your complete shipping address"
-                                    disabled={loading}
-                                />
+                                <div className="row g-3">
+                                    <div className="col-md-6">
+                                        <label className="form-label">Full Name</label>
+                                        <input
+                                            type="text"
+                                            name="full_name"
+                                            className="form-control"
+                                            value={addressForm.full_name}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Enter full name"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Phone</label>
+                                        <input
+                                            type="text"
+                                            name="phone"
+                                            className="form-control"
+                                            value={addressForm.phone}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="01XXXXXXXXX"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Email</label>
+                                        <input
+                                            type="email"
+                                            name="email"
+                                            className="form-control"
+                                            value={addressForm.email}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="name@example.com"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Division</label>
+                                        <input
+                                            type="text"
+                                            name="division"
+                                            className="form-control"
+                                            value={addressForm.division}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Dhaka"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">District</label>
+                                        <input
+                                            type="text"
+                                            name="district"
+                                            className="form-control"
+                                            value={addressForm.district}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Dhaka"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">City</label>
+                                        <input
+                                            type="text"
+                                            name="city"
+                                            className="form-control"
+                                            value={addressForm.city}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Dhaka"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Area</label>
+                                        <input
+                                            type="text"
+                                            name="area"
+                                            className="form-control"
+                                            value={addressForm.area}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Dhanmondi"
+                                        />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Postal Code</label>
+                                        <input
+                                            type="text"
+                                            name="postal_code"
+                                            className="form-control"
+                                            value={addressForm.postal_code}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="1205"
+                                        />
+                                    </div>
+
+                                    <div className="col-12">
+                                        <label className="form-label">Street Address</label>
+                                        <textarea
+                                            name="street_address"
+                                            className="form-control"
+                                            rows="3"
+                                            value={addressForm.street_address}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="House 12, Road 7"
+                                        />
+                                    </div>
+
+                                    <div className="col-12">
+                                        <label className="form-label">Delivery Note (Optional)</label>
+                                        <textarea
+                                            name="delivery_note"
+                                            className="form-control"
+                                            rows="2"
+                                            value={addressForm.delivery_note}
+                                            onChange={handleAddressFieldChange}
+                                            disabled={loading}
+                                            placeholder="Leave at gate / call before delivery"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="mt-3">
+                                    <label className="form-label">Legacy Address (Optional backup)</label>
+                                    <textarea
+                                        className="form-control"
+                                        rows="3"
+                                        value={shippingAddress}
+                                        onChange={(event) => setShippingAddress(event.target.value)}
+                                        placeholder="Optional complete shipping address if you prefer legacy text entry"
+                                        disabled={loading}
+                                    />
+                                </div>
 
                             </div>
 

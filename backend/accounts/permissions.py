@@ -106,6 +106,7 @@ class IsDeliveryRider(
 ):
 
     allowed_roles = [
+        "DELIVERY_RIDER",
         "DELIVERY",
     ]
 
