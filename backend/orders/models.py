@@ -1,3 +1,4 @@
+
 from decimal import Decimal
 
 from django.conf import settings
@@ -17,12 +18,14 @@ class Order(models.Model):
     # ==========================================================
 
     STATUS_PENDING = "Pending"
+    STATUS_ACCEPTED = "Accepted"
     STATUS_PROCESSING = "Processing"
     STATUS_DELIVERED = "Delivered"
     STATUS_CANCELLED = "Cancelled"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
+        (STATUS_ACCEPTED, "Accepted"),
         (STATUS_PROCESSING, "Processing"),
         (STATUS_DELIVERED, "Delivered"),
         (STATUS_CANCELLED, "Cancelled"),
