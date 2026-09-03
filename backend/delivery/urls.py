@@ -86,3 +86,4 @@ urlpatterns = [
         name="delivery-status-update",
     ),
 ]
+

@@ -117,7 +117,7 @@ class NotificationMarkReadView(APIView):
             notification.save(
                 update_fields=[
                     "is_read",
-                    "updated_at",
+            
                 ],
             )
 
@@ -232,3 +232,4 @@ class NotificationDeleteAllView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+        

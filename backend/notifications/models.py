@@ -99,3 +99,4 @@ class Notification(models.Model):
             f"{self.recipient.email} - "
             f"{self.title}"
         )
+        

@@ -11,6 +11,13 @@ class NotificationSerializer(
 
         model = Notification
 
-        fields = "__all__"
-
-        read_only_fields = fields
+        read_only_fields = [
+            "id",
+            "recipient",
+            "title",
+            "message",
+            "notification_type",
+            "is_read",
+            "created_at",
+    ]
+        

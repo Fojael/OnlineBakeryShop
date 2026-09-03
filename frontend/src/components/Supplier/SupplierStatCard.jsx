@@ -73,3 +73,4 @@ SupplierStatCard.propTypes = {
 
 
 export default SupplierStatCard;
+

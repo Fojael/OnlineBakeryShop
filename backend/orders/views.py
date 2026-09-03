@@ -1,6 +1,6 @@
-
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import (
     Sum,
@@ -21,34 +21,37 @@ from cart.models import Cart, CartItem
 from payments.models import Payment
 from products.models import Product
 from suppliers.models import Supplier
-
-from accounts.permissions import IsSupplier
 from notifications.models import Notification
-from django.contrib.auth import get_user_model
 
-User = get_user_model()
+from accounts.permissions import (
+    IsSupplier,
+    IsDeliveryRider,
+)
 
-from .models import Order, OrderItem, OrderAddress, Refund
+from .models import (
+    Order,
+    OrderItem,
+    OrderAddress,
+    Refund,
+    Delivery,
+)
+
 from .serializers import (
     OrderSerializer,
     OrderCreateSerializer,
     SupplierOrderSerializer,
     SupplierOrderItemStatusSerializer,
-)
-from delivery.serializers import (
     DeliveryOrderSerializer,
     DeliveryStatusSerializer,
     DeliveryRiderCreateSerializer,
+    DeliveryRiderUpdateSerializer,
+    RefundSerializer,
+    CustomerRefundRequestSerializer,
+    AdminRefundUpdateSerializer,
 )
-from .models import (
-    Order,
-    OrderItem,
-    Delivery,
-)
-from accounts.permissions import (
-    IsSupplier,
-    IsDeliveryRider,
-)
+
+
+User = get_user_model()
 
 
 # ==========================================================
@@ -58,29 +61,26 @@ from accounts.permissions import (
 DELIVERY_CHARGE = Decimal("60.00")
 
 
-def is_admin_user(user):
-    return bool(
-        user
-        and (
-            user.is_staff
-            or getattr(user, "role", None)
-            == User.ROLE_ADMIN
-        )
-    )
-
-
 # ==========================================================
-# PRODUCT AVAILABILITY HELPER
+# PRODUCT AVAILABILITY
 # ==========================================================
 
-def product_is_available(product):
+def product_is_available(
+    product,
+):
 
-    if hasattr(product, "is_available"):
+    if hasattr(
+        product,
+        "is_available",
+    ):
 
         if not product.is_available:
             return False
 
-    if hasattr(product, "is_active"):
+    if hasattr(
+        product,
+        "is_active",
+    ):
 
         if not product.is_active:
             return False
@@ -98,12 +98,6 @@ def notify_supplier(
     message,
     notification_type,
 ):
-    """
-    Send notification to supplier's User account.
-
-    Notification.recipient expects AUTH_USER_MODEL,
-    while supplier is a Supplier object.
-    """
 
     if not supplier:
         return None
@@ -125,9 +119,6 @@ def notify_customer(
     message,
     notification_type,
 ):
-    """
-    Send notification to customer.
-    """
 
     if not customer:
         return None
@@ -141,14 +132,12 @@ def notify_customer(
 
 
 # ==========================================================
-# GET SUPPLIERS FROM ORDER
+# GET ORDER SUPPLIERS
 # ==========================================================
 
-def get_order_suppliers(order):
-    """
-    Return unique Supplier objects associated with
-    products in an order.
-    """
+def get_order_suppliers(
+    order,
+):
 
     supplier_ids = (
         OrderItem.objects
@@ -178,7 +167,9 @@ def get_order_suppliers(order):
 # CUSTOMER - LIST / CREATE ORDERS
 # ==========================================================
 
-class OrderListCreateView(APIView):
+class OrderListCreateView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -188,7 +179,10 @@ class OrderListCreateView(APIView):
     # GET ORDERS
     # ======================================================
 
-    def get(self, request):
+    def get(
+        self,
+        request,
+    ):
 
         orders = (
             Order.objects
@@ -225,11 +219,10 @@ class OrderListCreateView(APIView):
     # ======================================================
 
     @transaction.atomic
-    def post(self, request):
-
-        # ==================================================
-        # VALIDATE REQUEST
-        # ==================================================
+    def post(
+        self,
+        request,
+    ):
 
         serializer = OrderCreateSerializer(
             data=request.data,
@@ -254,45 +247,18 @@ class OrderListCreateView(APIView):
             ]
         )
 
-        order_address_data = {
-            "full_name": serializer.validated_data.get("full_name", ""),
-            "phone": serializer.validated_data.get("phone", ""),
-            "email": serializer.validated_data.get("email", request.user.email or ""),
-            "division": serializer.validated_data.get("division", ""),
-            "district": serializer.validated_data.get("district", ""),
-            "city": serializer.validated_data.get("city", ""),
-            "area": serializer.validated_data.get("area", ""),
-            "street_address": serializer.validated_data.get("street_address", ""),
-            "postal_code": serializer.validated_data.get("postal_code", ""),
-            "delivery_note": serializer.validated_data.get("delivery_note", ""),
-        }
-
-        # ==================================================
-        # LOCK CUSTOMER CART
-        # ==================================================
+        # --------------------------------------------------
+        # LOCK CART
+        # --------------------------------------------------
 
         cart = get_object_or_404(
             Cart.objects.select_for_update(),
             customer=request.user,
         )
 
-        # ==================================================
+        # --------------------------------------------------
         # LOCK CART ITEMS
-        #
-        # IMPORTANT:
-        #
-        # DO NOT use:
-        #
-        # .select_related("product")
-        # .select_for_update()
-        #
-        # together when product FK can be nullable.
-        #
-        # PostgreSQL can then produce:
-        #
-        # FOR UPDATE cannot be applied to the nullable
-        # side of an outer join
-        # ==================================================
+        # --------------------------------------------------
 
         cart_items = list(
             CartItem.objects
@@ -306,14 +272,15 @@ class OrderListCreateView(APIView):
 
             return Response(
                 {
-                    "detail": "Your cart is empty.",
+                    "detail":
+                        "Your cart is empty.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # GET PRODUCT IDS
-        # ==================================================
+        # --------------------------------------------------
+        # PRODUCT IDS
+        # --------------------------------------------------
 
         product_ids = [
             item.product_id
@@ -325,18 +292,15 @@ class OrderListCreateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Your cart contains no valid products."
-                    ),
+                    "detail":
+                        "Your cart contains no valid products.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # LOCK PRODUCTS SEPARATELY
-        #
-        # This protects stock from simultaneous orders.
-        # ==================================================
+        # --------------------------------------------------
+        # LOCK PRODUCTS
+        # --------------------------------------------------
 
         products = {
             product.id: product
@@ -349,17 +313,13 @@ class OrderListCreateView(APIView):
             )
         }
 
-        # ==================================================
+        # --------------------------------------------------
         # CALCULATE SUBTOTAL
-        # ==================================================
+        # --------------------------------------------------
 
         subtotal = Decimal("0.00")
 
         for item in cart_items:
-
-            # ------------------------------------------------
-            # GET PRODUCT
-            # ------------------------------------------------
 
             product = products.get(
                 item.product_id,
@@ -369,49 +329,33 @@ class OrderListCreateView(APIView):
 
                 return Response(
                     {
-                        "detail": (
-                            "One of the products in "
-                            "your cart no longer exists."
-                        ),
+                        "detail":
+                            "One of the products in your cart no longer exists.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ------------------------------------------------
-            # PRODUCT AVAILABILITY
-            # ------------------------------------------------
-
-            if not product_is_available(product):
+            if not product_is_available(
+                product,
+            ):
 
                 return Response(
                     {
-                        "detail": (
-                            f"{product.name} is "
-                            "no longer available."
-                        ),
+                        "detail":
+                            f"{product.name} is no longer available.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # ------------------------------------------------
-            # QUANTITY VALIDATION
-            # ------------------------------------------------
 
             if item.quantity <= 0:
 
                 return Response(
                     {
-                        "detail": (
-                            f"Invalid quantity for "
-                            f"{product.name}."
-                        ),
+                        "detail":
+                            f"Invalid quantity for {product.name}.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # ------------------------------------------------
-            # STOCK VALIDATION
-            # ------------------------------------------------
 
             if (
                 product.stock_quantity
@@ -431,29 +375,31 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ------------------------------------------------
-            # SUBTOTAL
-            # ------------------------------------------------
-
             subtotal += (
                 product.price
                 * item.quantity
             )
 
-        # ==================================================
-        # DELIVERY
-        # ==================================================
+        # --------------------------------------------------
+        # TOTAL
+        # --------------------------------------------------
 
-        delivery_charge = DELIVERY_CHARGE
+        delivery_charge = (
+            DELIVERY_CHARGE
+        )
 
         total_amount = (
             subtotal
             + delivery_charge
         )
 
-        # ==================================================
+        # --------------------------------------------------
         # CREATE ORDER
-        # ==================================================
+        #
+        # IMPORTANT:
+        #
+        # New order ALWAYS starts Pending.
+        # --------------------------------------------------
 
         order = Order.objects.create(
             customer=request.user,
@@ -463,11 +409,12 @@ class OrderListCreateView(APIView):
             delivery_charge=delivery_charge,
             total_amount=total_amount,
             status=Order.STATUS_PENDING,
+            stock_deducted=False,
         )
 
-        # ==================================================
+        # --------------------------------------------------
         # CREATE ORDER ITEMS
-        # ==================================================
+        # --------------------------------------------------
 
         order_items = []
 
@@ -483,6 +430,9 @@ class OrderListCreateView(APIView):
                     product=product,
                     quantity=item.quantity,
                     price=product.price,
+                    supplier_status=(
+                        OrderItem.STATUS_PENDING
+                    ),
                 )
             )
 
@@ -490,40 +440,14 @@ class OrderListCreateView(APIView):
             order_items,
         )
 
-        # ==================================================
-        # NOTIFY SUPPLIERS
-        # ==================================================
-
-        suppliers = get_order_suppliers(
-            order,
-        )
-
-        for supplier in suppliers:
-
-            notify_supplier(
-                supplier=supplier,
-                title="New Order",
-                message=(
-                    f"Order #{order.id} contains "
-                    "one or more of your products."
-                ),
-                notification_type=(
-                    Notification.TYPE_NEW_ORDER
-                ),
-            )
-
-        # ==================================================
-        # CASH ON DELIVERY
-        # ==================================================
+        # --------------------------------------------------
+        # COD
+        # --------------------------------------------------
 
         if (
             payment_method
             == Order.PAYMENT_COD
         ):
-
-            # ------------------------------------------------
-            # DEDUCT STOCK
-            # ------------------------------------------------
 
             for item in cart_items:
 
@@ -535,73 +459,107 @@ class OrderListCreateView(APIView):
                     item.quantity
                 )
 
-                product.is_available = (
-                    product.stock_quantity > 0
-                )
+                if hasattr(
+                    product,
+                    "is_available",
+                ):
 
-                product.save(
-                    update_fields=[
-                        "stock_quantity",
-                        "is_available",
-                    ],
-                )
+                    product.is_available = (
+                        product.stock_quantity > 0
+                    )
 
-            # ------------------------------------------------
-            # CLEAR CART
-            # ------------------------------------------------
+                    product.save(
+                        update_fields=[
+                            "stock_quantity",
+                            "is_available",
+                        ]
+                    )
+
+                else:
+
+                    product.save(
+                        update_fields=[
+                            "stock_quantity",
+                        ]
+                    )
+
+            order.stock_deducted = True
+
+            order.save(
+                update_fields=[
+                    "stock_deducted",
+                    "updated_at",
+                ]
+            )
+
+            # IMPORTANT:
+            #
+            # DO NOT change Pending → Processing.
+            #
+            # Admin must accept first.
 
             CartItem.objects.filter(
                 cart=cart,
             ).delete()
 
-            
-
-        # ==================================================
+        # --------------------------------------------------
         # SSL COMMERZ
-        # ==================================================
+        # --------------------------------------------------
 
         elif (
             payment_method
             == Order.PAYMENT_SSLCOMMERZ
         ):
 
-            # ------------------------------------------------
-            # DO NOT DEDUCT STOCK
-            #
-            # DO NOT CLEAR CART
-            #
-            # Payment must succeed first.
-            # ------------------------------------------------
+            # Payment workflow handles
+            # stock deduction after
+            # successful payment.
 
             pass
 
-        # ==================================================
-        # RESPONSE
-        # ==================================================
+        # --------------------------------------------------
+        # NOTIFY SUPPLIERS
+        # --------------------------------------------------
 
-        has_structured_address = any(
-            value for value in order_address_data.values()
+        suppliers = get_order_suppliers(
+            order,
         )
 
-        if has_structured_address:
-            OrderAddress.objects.create(
-                order=order,
-                **order_address_data,
+        for supplier in suppliers:
+
+            notify_supplier(
+                supplier=supplier,
+                title="New Order",
+                message=(
+                    f"Order #{order.id} "
+                    "contains one or more of your products."
+                ),
+                notification_type=(
+                    Notification.TYPE_NEW_ORDER
+                ),
             )
 
-        response_serializer = OrderSerializer(
-            order,
-            context={
-                "request": request,
-            },
+        # --------------------------------------------------
+        # RESPONSE
+        # --------------------------------------------------
+
+        response_serializer = (
+            OrderSerializer(
+                order,
+                context={
+                    "request": request,
+                },
+            )
         )
 
         return Response(
             {
-                "message": (
-                    "Order created successfully."
-                ),
-                "order": response_serializer.data,
+                "message":
+                    "Order created successfully.",
+
+                "order":
+                    response_serializer.data,
+
                 "payment_required": (
                     payment_method
                     != Order.PAYMENT_COD
@@ -612,10 +570,12 @@ class OrderListCreateView(APIView):
 
 
 # ==========================================================
-# CUSTOMER - ORDER DETAILS
+# CUSTOMER - ORDER DETAIL
 # ==========================================================
 
-class OrderDetailView(APIView):
+class OrderDetailView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -657,7 +617,9 @@ class OrderDetailView(APIView):
 # CUSTOMER - CANCEL ORDER
 # ==========================================================
 
-class CancelOrderView(APIView):
+class CancelOrderView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -670,10 +632,6 @@ class CancelOrderView(APIView):
         order_id,
     ):
 
-        # ==================================================
-        # LOCK ORDER
-        # ==================================================
-
         order = get_object_or_404(
             Order.objects
             .select_for_update(),
@@ -681,66 +639,49 @@ class CancelOrderView(APIView):
             customer=request.user,
         )
 
-        # ==================================================
-        # ALREADY CANCELLED
-        # ==================================================
+        # --------------------------------------------------
+        # CHECK STATUS
+        # --------------------------------------------------
 
-        if (
-            order.status
-            == Order.STATUS_CANCELLED
-        ):
+        if order.status == Order.STATUS_CANCELLED:
 
             return Response(
                 {
-                    "detail": (
-                        "This order has already "
-                        "been cancelled."
-                    ),
+                    "detail":
+                        "This order has already been cancelled.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # DELIVERED
-        # ==================================================
-
-        if (
-            order.status
-            == Order.STATUS_DELIVERED
-        ):
+        if order.status == Order.STATUS_DELIVERED:
 
             return Response(
                 {
-                    "detail": (
-                        "Delivered orders cannot "
-                        "be cancelled."
-                    ),
+                    "detail":
+                        "Delivered orders cannot be cancelled.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # ==================================================
-        # ONLY PENDING / PROCESSING
-        # ==================================================
 
         if order.status not in [
             Order.STATUS_PENDING,
+            Order.STATUS_ACCEPTED,
             Order.STATUS_PROCESSING,
         ]:
 
             return Response(
                 {
-                    "detail": (
-                        "This order cannot "
-                        "be cancelled."
-                    ),
+                    "detail":
+                        "This order cannot be cancelled at its current status.",
+                    "order_status":
+                        order.status,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # GET PAYMENT
-        # ==================================================
+        # --------------------------------------------------
+        # PAYMENT
+        # --------------------------------------------------
 
         payment = None
 
@@ -758,18 +699,14 @@ class CancelOrderView(APIView):
 
             payment = None
 
-        # ==================================================
-        # SSL COMMERZ
-        # ==================================================
+        # --------------------------------------------------
+        # ONLINE PAYMENT
+        # --------------------------------------------------
 
         if (
             order.payment_method
             == Order.PAYMENT_SSLCOMMERZ
         ):
-
-            # ------------------------------------------------
-            # SUCCESSFUL ONLINE PAYMENT
-            # ------------------------------------------------
 
             if (
                 payment
@@ -782,16 +719,11 @@ class CancelOrderView(APIView):
                         "detail": (
                             "This online-paid order "
                             "cannot be cancelled. "
-                            "Please contact support "
-                            "for a refund."
+                            "Please request a refund."
                         ),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # ------------------------------------------------
-            # PENDING ONLINE PAYMENT
-            # ------------------------------------------------
 
             if (
                 payment
@@ -806,12 +738,8 @@ class CancelOrderView(APIView):
                         "status",
                         "failure_reason",
                         "updated_at",
-                    ],
+                    ]
                 )
-
-            # ------------------------------------------------
-            # CANCEL ORDER
-            # ------------------------------------------------
 
             order.status = (
                 Order.STATUS_CANCELLED
@@ -821,65 +749,22 @@ class CancelOrderView(APIView):
                 update_fields=[
                     "status",
                     "updated_at",
-                ],
+                ]
             )
 
-            # ------------------------------------------------
-            # NOTIFY SUPPLIERS
-            # ------------------------------------------------
+        # --------------------------------------------------
+        # COD
+        # --------------------------------------------------
 
-            suppliers = get_order_suppliers(
-                order,
-            )
-
-            for supplier in suppliers:
-
-                notify_supplier(
-                    supplier=supplier,
-                    title="Order Cancelled",
-                    message=(
-                        f"Order #{order.id} "
-                        "has been cancelled."
-                    ),
-                    notification_type=(
-                        Notification.TYPE_CANCELLED
-                    ),
-                )
-
-            serializer = OrderSerializer(
-                order,
-                context={
-                    "request": request,
-                },
-            )
-
-            return Response(
-                {
-                    "message": (
-                        "Order cancelled successfully."
-                    ),
-                    "order": serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        # ==================================================
-        # CASH ON DELIVERY
-        # ==================================================
-
-        if (
+        elif (
             order.payment_method
             == Order.PAYMENT_COD
         ):
 
-            # ------------------------------------------------
-            # RESTORE STOCK
-            # ------------------------------------------------
+            # Restore stock ONLY if stock was
+            # actually deducted.
 
-            if (
-                order.status
-                == Order.STATUS_PROCESSING
-            ):
+            if order.stock_deducted:
 
                 order_items = list(
                     OrderItem.objects
@@ -900,20 +785,29 @@ class CancelOrderView(APIView):
                         item.quantity
                     )
 
-                    product.is_available = (
-                        product.stock_quantity > 0
-                    )
+                    if hasattr(
+                        product,
+                        "is_available",
+                    ):
 
-                    product.save(
-                        update_fields=[
-                            "stock_quantity",
-                            "is_available",
-                        ],
-                    )
+                        product.is_available = True
 
-            # ------------------------------------------------
-            # CANCEL PAYMENT IF NEEDED
-            # ------------------------------------------------
+                        product.save(
+                            update_fields=[
+                                "stock_quantity",
+                                "is_available",
+                            ]
+                        )
+
+                    else:
+
+                        product.save(
+                            update_fields=[
+                                "stock_quantity",
+                            ]
+                        )
+
+                order.stock_deducted = False
 
             if payment:
 
@@ -929,12 +823,8 @@ class CancelOrderView(APIView):
                             "status",
                             "failure_reason",
                             "updated_at",
-                        ],
+                        ]
                     )
-
-            # ------------------------------------------------
-            # CANCEL ORDER
-            # ------------------------------------------------
 
             order.status = (
                 Order.STATUS_CANCELLED
@@ -943,290 +833,99 @@ class CancelOrderView(APIView):
             order.save(
                 update_fields=[
                     "status",
+                    "stock_deducted",
                     "updated_at",
-                ],
+                ]
             )
 
-            # ------------------------------------------------
-            # NOTIFY SUPPLIERS
-            # ------------------------------------------------
-
-            suppliers = get_order_suppliers(
-                order,
-            )
-
-            for supplier in suppliers:
-
-                notify_supplier(
-                    supplier=supplier,
-                    title="Order Cancelled",
-                    message=(
-                        f"Order #{order.id} "
-                        "has been cancelled."
-                    ),
-                    notification_type=(
-                        Notification.TYPE_CANCELLED
-                    ),
-                )
-
-            serializer = OrderSerializer(
-                order,
-                context={
-                    "request": request,
-                },
-            )
+        else:
 
             return Response(
                 {
-                    "message": (
-                        "Order cancelled successfully."
-                    ),
-                    "order": serializer.data,
+                    "detail":
+                        "This order cannot be cancelled.",
                 },
-                status=status.HTTP_200_OK,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # OTHER PAYMENT METHODS
-        # ==================================================
+        # --------------------------------------------------
+        # CANCEL DELIVERY IF EXISTS
+        # --------------------------------------------------
 
-        return Response(
-            {
-                "detail": (
-                    "This order cannot be cancelled."
+        try:
+
+            delivery = order.orders_delivery
+
+            if delivery.status != (
+                Delivery.STATUS_DELIVERED
+            ):
+
+                delivery.status = (
+                    Delivery.STATUS_CANCELLED
+                )
+
+                delivery.save(
+                    update_fields=[
+                        "status",
+                        "updated_at",
+                    ]
+                )
+
+        except Delivery.DoesNotExist:
+
+            pass
+
+        # --------------------------------------------------
+        # NOTIFY SUPPLIERS
+        # --------------------------------------------------
+
+        suppliers = get_order_suppliers(
+            order,
+        )
+
+        for supplier in suppliers:
+
+            notify_supplier(
+                supplier=supplier,
+                title="Order Cancelled",
+                message=(
+                    f"Order #{order.id} "
+                    "has been cancelled."
                 ),
+                notification_type=(
+                    Notification.TYPE_CANCELLED
+                ),
+            )
+
+        # --------------------------------------------------
+        # CUSTOMER RESPONSE
+        # --------------------------------------------------
+
+        serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
             },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-
-# ==========================================================
-# CUSTOMER - REFUND REQUEST
-# ==========================================================
-
-class CustomerRefundRequestView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
-
-    def post(self, request):
-
-        order_id = request.data.get("order_id")
-        reason = str(request.data.get("reason", "")).strip()
-        description = str(request.data.get("description", "")).strip()
-        refund_amount = request.data.get("refund_amount")
-
-        if not order_id:
-            return Response(
-                {"detail": "Order ID is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        order = get_object_or_404(
-            Order,
-            id=order_id,
-            customer=request.user,
-        )
-
-        if order.status != Order.STATUS_DELIVERED:
-            return Response(
-                {"detail": "Refunds are only allowed for delivered orders."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if reason not in dict(Refund.REASON_CHOICES):
-            return Response(
-                {"detail": "Please choose a valid refund reason."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if Refund.objects.filter(
-            order=order,
-            customer=request.user,
-            status__in=[
-                Refund.STATUS_PENDING,
-                Refund.STATUS_APPROVED,
-            ],
-        ).exists():
-            return Response(
-                {"detail": "A refund request is already active for this order."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if refund_amount is None:
-            refund_amount = str(order.total_amount)
-
-        refund = Refund.objects.create(
-            order=order,
-            customer=request.user,
-            reason=reason,
-            description=description,
-            refund_amount=Decimal(str(refund_amount)),
-            status=Refund.STATUS_PENDING,
-        )
-
-        notify_customer(
-            customer=request.user,
-            title="Refund Requested",
-            message=(
-                f"Your refund request for Order #{order.id} has been submitted and is pending review."
-            ),
-            notification_type=Notification.TYPE_REFUND_REQUEST,
         )
 
         return Response(
             {
-                "message": "Refund request submitted successfully.",
-                "refund": {
-                    "id": refund.id,
-                    "order_id": refund.order_id,
-                    "reason": refund.reason,
-                    "status": refund.status,
-                    "refund_amount": str(refund.refund_amount),
-                    "requested_at": refund.requested_at,
-                },
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
-
-# ==========================================================
-# ADMIN - LIST ALL ORDERS
-# ==========================================================
-
-class AdminRefundListView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
-
-    def get(self, request):
-
-        if not is_admin_user(request.user):
-            return Response(
-                {"detail": "Admin permission required."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        refunds = Refund.objects.select_related(
-            "order",
-            "customer",
-            "admin",
-        ).order_by("-requested_at")
-
-        result = [
-            {
-                "id": refund.id,
-                "order_id": refund.order_id,
-                "customer_email": refund.customer.email,
-                "reason": refund.reason,
-                "description": refund.description,
-                "refund_amount": str(refund.refund_amount),
-                "status": refund.status,
-                "requested_at": refund.requested_at,
-                "admin_notes": refund.admin_notes,
-            }
-            for refund in refunds
-        ]
-
-        return Response(
-            {"count": len(result), "results": result},
-            status=status.HTTP_200_OK,
-        )
-
-
-class AdminRefundUpdateView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
-
-    def patch(self, request, refund_id):
-
-        if not is_admin_user(request.user):
-            return Response(
-                {"detail": "Admin permission required."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        refund = get_object_or_404(
-            Refund.objects.select_related("order", "customer"),
-            id=refund_id,
-        )
-
-        new_status = str(request.data.get("status", "")).strip()
-        allowed_statuses = [
-            Refund.STATUS_APPROVED,
-            Refund.STATUS_REJECTED,
-            Refund.STATUS_COMPLETED,
-        ]
-
-        if new_status not in allowed_statuses:
-            return Response(
-                {"detail": "Invalid refund status.", "allowed_values": allowed_statuses},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        refund.status = new_status
-        refund.admin = request.user
-        refund.admin_notes = str(request.data.get("admin_notes", refund.admin_notes or "")).strip()
-
-        if new_status == Refund.STATUS_APPROVED:
-            refund.approved_at = timezone.now()
-        elif new_status == Refund.STATUS_COMPLETED:
-            refund.completed_at = timezone.now()
-
-        update_fields = [
-            "status",
-            "admin",
-            "admin_notes",
-        ]
-
-        if new_status == Refund.STATUS_APPROVED:
-            update_fields.append("approved_at")
-        if new_status == Refund.STATUS_COMPLETED:
-            update_fields.append("completed_at")
-
-        refund.save(update_fields=update_fields)
-
-        title = "Refund Updated"
-        message = f"Your refund request for Order #{refund.order_id} has been {refund.status.lower()}."
-
-        if new_status == Refund.STATUS_APPROVED:
-            title = "Refund Approved"
-            notification_type = Notification.TYPE_REFUND_APPROVED
-        elif new_status == Refund.STATUS_REJECTED:
-            title = "Refund Rejected"
-            notification_type = Notification.TYPE_REFUND_REJECTED
-        elif new_status == Refund.STATUS_COMPLETED:
-            title = "Refund Completed"
-            notification_type = Notification.TYPE_REFUND_COMPLETED
-        else:
-            notification_type = Notification.TYPE_INFO
-
-        notify_customer(
-            customer=refund.customer,
-            title=title,
-            message=message,
-            notification_type=notification_type,
-        )
-
-        return Response(
-            {
-                "message": "Refund status updated successfully.",
-                "refund": {
-                    "id": refund.id,
-                    "order_id": refund.order_id,
-                    "status": refund.status,
-                    "admin_notes": refund.admin_notes,
-                },
+                "message":
+                    "Order cancelled successfully.",
+                "order":
+                    serializer.data,
             },
             status=status.HTTP_200_OK,
         )
 
 
-class AdminOrderListView(APIView):
+# ==========================================================
+# ADMIN - LIST ORDERS
+# ==========================================================
+
+class AdminOrderListView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1237,13 +936,12 @@ class AdminOrderListView(APIView):
         request,
     ):
 
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
 
             return Response(
                 {
-                    "detail": (
-                        "Admin permission required."
-                    ),
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -1280,7 +978,9 @@ class AdminOrderListView(APIView):
 # ADMIN - ORDER DETAIL
 # ==========================================================
 
-class AdminOrderDetailView(APIView):
+class AdminOrderDetailView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1292,13 +992,12 @@ class AdminOrderDetailView(APIView):
         order_id,
     ):
 
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
 
             return Response(
                 {
-                    "detail": (
-                        "Admin permission required."
-                    ),
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -1327,162 +1026,14 @@ class AdminOrderDetailView(APIView):
             status=status.HTTP_200_OK,
         )
 
-# ==========================================================
-# ADMIN - UPDATE ORDER STATUS
-# ==========================================================
 
-class AdminOrderUpdateView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
-
-    @transaction.atomic
-    def post(
-        self,
-        request,
-        order_id,
-    ):
-
-        # ==================================================
-        # ADMIN PERMISSION
-        # ==================================================
-
-        if not is_admin_user(request.user):
-            return Response(
-                {
-                    "detail": "Admin permission required.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # ==================================================
-        # GET ORDER
-        # ==================================================
-
-        order = get_object_or_404(
-            Order.objects.select_for_update(),
-            id=order_id,
-        )
-
-        new_status = str(
-            request.data.get("status", "")
-        ).strip()
-
-        # ==================================================
-        # VALID STATUSES
-        # ==================================================
-
-        allowed_statuses = [
-            Order.STATUS_PENDING,
-            Order.STATUS_ACCEPTED,
-            Order.STATUS_PROCESSING,
-            Order.STATUS_CANCELLED,
-        ]
-
-        if new_status not in allowed_statuses:
-            return Response(
-                {
-                    "detail": "Invalid order status.",
-                    "allowed_values": allowed_statuses,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        old_status = order.status
-
-        # ==================================================
-        # STATUS TRANSITIONS
-        # ==================================================
-
-        allowed_transitions = {
-            Order.STATUS_PENDING: [
-                Order.STATUS_ACCEPTED,
-                Order.STATUS_CANCELLED,
-            ],
-            Order.STATUS_ACCEPTED: [
-                Order.STATUS_PROCESSING,
-                Order.STATUS_CANCELLED,
-            ],
-            Order.STATUS_PROCESSING: [
-                Order.STATUS_CANCELLED,
-            ],
-            Order.STATUS_DELIVERED: [],
-            Order.STATUS_CANCELLED: [],
-        }
-
-        allowed_next_statuses = allowed_transitions.get(
-            old_status,
-            [],
-        )
-
-        if new_status not in allowed_next_statuses:
-            return Response(
-                {
-                    "detail": (
-                        f"Cannot change order status "
-                        f"from '{old_status}' to "
-                        f"'{new_status}'."
-                    ),
-                    "allowed_next_statuses": (
-                        allowed_next_statuses
-                    ),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # ==================================================
-        # UPDATE STATUS
-        # ==================================================
-
-        order.status = new_status
-
-        order.save(
-            update_fields=[
-                "status",
-                "updated_at",
-            ],
-        )
-
-        # ==================================================
-        # NOTIFY CUSTOMER
-        # ==================================================
-
-        notify_customer(
-            customer=order.customer,
-            title="Order Status Updated",
-            message=(
-                f"Your Order #{order.id} "
-                f"status has been changed to "
-                f"{new_status}."
-            ),
-            notification_type=Notification.TYPE_INFO,
-        )
-
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
-        serializer = OrderSerializer(
-            order,
-            context={
-                "request": request,
-            },
-        )
-
-        return Response(
-            {
-                "message": "Order status updated successfully.",
-                "order": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
-        
 # ==========================================================
 # ADMIN - ACCEPT ORDER
 # ==========================================================
 
-class AdminAcceptOrderView(APIView):
+class AdminAcceptOrderView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1495,59 +1046,53 @@ class AdminAcceptOrderView(APIView):
         order_id,
     ):
 
-        # ==================================================
-        # ADMIN PERMISSION
-        # ==================================================
+        if not request.user.is_staff:
 
-        if not is_admin_user(request.user):
             return Response(
                 {
-                    "detail": "Admin permission required.",
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ==================================================
-        # GET ORDER
-        # ==================================================
-
         order = get_object_or_404(
-            Order.objects.select_for_update(),
+            Order.objects
+            .select_for_update(),
             id=order_id,
         )
 
-        # ==================================================
-        # ONLY PENDING ORDERS CAN BE ACCEPTED
-        # ==================================================
+        if (
+            order.status
+            != Order.STATUS_PENDING
+        ):
 
-        if order.status != Order.STATUS_PENDING:
             return Response(
                 {
                     "detail": (
-                        f"Only Pending orders can "
-                        f"be accepted. Current status: "
-                        f"{order.status}."
+                        "Only Pending orders "
+                        "can be accepted."
                     ),
+                    "current_status":
+                        order.status,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # ACCEPT ORDER
-        # ==================================================
-
-        order.status = Order.STATUS_ACCEPTED
+        order.status = (
+            Order.STATUS_ACCEPTED
+        )
 
         order.save(
             update_fields=[
                 "status",
                 "updated_at",
-            ],
+            ]
         )
 
-        # ==================================================
-        # NOTIFY CUSTOMER
-        # ==================================================
+        # --------------------------------------------------
+        # CUSTOMER
+        # --------------------------------------------------
 
         notify_customer(
             customer=order.customer,
@@ -1556,12 +1101,37 @@ class AdminAcceptOrderView(APIView):
                 f"Your Order #{order.id} "
                 "has been accepted by the bakery."
             ),
-            notification_type=Notification.TYPE_INFO,
+            notification_type=(
+                Notification.TYPE_INFO
+            ),
         )
 
-        # ==================================================
+        # --------------------------------------------------
+        # SUPPLIERS
+        # --------------------------------------------------
+
+        suppliers = get_order_suppliers(
+            order,
+        )
+
+        for supplier in suppliers:
+
+            notify_supplier(
+                supplier=supplier,
+                title="Order Accepted",
+                message=(
+                    f"Order #{order.id} "
+                    "has been accepted and is "
+                    "ready for processing."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        # --------------------------------------------------
         # RESPONSE
-        # ==================================================
+        # --------------------------------------------------
 
         serializer = OrderSerializer(
             order,
@@ -1572,43 +1142,473 @@ class AdminAcceptOrderView(APIView):
 
         return Response(
             {
-                "message": "Order accepted successfully.",
-                "order": serializer.data,
+                "message":
+                    "Order accepted successfully.",
+                "order":
+                    serializer.data,
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ==========================================================
+# ADMIN - UPDATE ORDER STATUS
+# ==========================================================
+
+class AdminOrderUpdateView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def _update(
+        self,
+        request,
+        order_id,
+    ):
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail":
+                        "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        with transaction.atomic():
+
+            order = get_object_or_404(
+                Order.objects
+                .select_for_update(),
+                id=order_id,
+            )
+
+            old_status = order.status
+
+            new_status = str(
+                request.data.get(
+                    "status",
+                    "",
+                )
+            ).strip()
+
+            # --------------------------------------------------
+            # ADMIN MANUAL STATUS OPTIONS
+            #
+            # Delivered is NOT included.
+            # Supplier controls preparation.
+            # Rider controls delivery.
+            # --------------------------------------------------
+
+            allowed_statuses = [
+                Order.STATUS_PENDING,
+                Order.STATUS_ACCEPTED,
+                Order.STATUS_PROCESSING,
+                Order.STATUS_CANCELLED,
+            ]
+
+            if (
+                new_status
+                not in allowed_statuses
+            ):
+
+                return Response(
+                    {
+                        "detail":
+                            "Invalid order status.",
+                        "allowed_values":
+                            allowed_statuses,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # --------------------------------------------------
+            # SAME STATUS
+            # --------------------------------------------------
+
+            if old_status == new_status:
+
+                serializer = OrderSerializer(
+                    order,
+                    context={
+                        "request": request,
+                    },
+                )
+
+                return Response(
+                    {
+                        "message":
+                            "Order status is already set.",
+                        "order":
+                            serializer.data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # --------------------------------------------------
+            # VALID TRANSITIONS
+            # --------------------------------------------------
+
+            allowed_transitions = {
+
+                Order.STATUS_PENDING: [
+                    Order.STATUS_ACCEPTED,
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_ACCEPTED: [
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_PROCESSING: [
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_READY: [
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_ASSIGNED: [
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_OUT_FOR_DELIVERY: [
+                    Order.STATUS_CANCELLED,
+                ],
+
+                Order.STATUS_DELIVERED: [],
+
+                Order.STATUS_CANCELLED: [],
+            }
+
+            allowed_next = (
+                allowed_transitions.get(
+                    old_status,
+                    [],
+                )
+            )
+
+            if (
+                new_status
+                not in allowed_next
+            ):
+
+                return Response(
+                    {
+                        "detail": (
+                            f"Cannot change order "
+                            f"status from "
+                            f"'{old_status}' "
+                            f"to '{new_status}'."
+                        ),
+                        "allowed_next_statuses":
+                            allowed_next,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # --------------------------------------------------
+            # CANCEL
+            # --------------------------------------------------
+
+            if (
+                new_status
+                == Order.STATUS_CANCELLED
+            ):
+
+                payment = None
+
+                try:
+
+                    payment = (
+                        Payment.objects
+                        .select_for_update()
+                        .get(
+                            order=order,
+                        )
+                    )
+
+                except Payment.DoesNotExist:
+
+                    payment = None
+
+                # ----------------------------------------------
+                # ONLINE PAYMENT
+                # ----------------------------------------------
+
+                if (
+                    order.payment_method
+                    == Order.PAYMENT_SSLCOMMERZ
+                    and payment
+                    and payment.status
+                    == Payment.STATUS_SUCCESS
+                ):
+
+                    return Response(
+                        {
+                            "detail": (
+                                "A successfully paid "
+                                "online order cannot be "
+                                "cancelled without a refund."
+                            ),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # ----------------------------------------------
+                # RESTORE STOCK
+                # ----------------------------------------------
+
+                if (
+                    order.payment_method
+                    == Order.PAYMENT_COD
+                    and order.stock_deducted
+                ):
+
+                    order_items = list(
+                        OrderItem.objects
+                        .select_related(
+                            "product",
+                        )
+                        .select_for_update()
+                        .filter(
+                            order=order,
+                        )
+                    )
+
+                    for item in order_items:
+
+                        product = item.product
+
+                        product.stock_quantity += (
+                            item.quantity
+                        )
+
+                        if hasattr(
+                            product,
+                            "is_available",
+                        ):
+
+                            product.is_available = True
+
+                            product.save(
+                                update_fields=[
+                                    "stock_quantity",
+                                    "is_available",
+                                ]
+                            )
+
+                        else:
+
+                            product.save(
+                                update_fields=[
+                                    "stock_quantity",
+                                ]
+                            )
+
+                    order.stock_deducted = False
+
+                # ----------------------------------------------
+                # CANCEL PENDING PAYMENT
+                # ----------------------------------------------
+
+                if payment:
+
+                    if (
+                        payment.status
+                        == Payment.STATUS_PENDING
+                    ):
+
+                        payment.mark_cancelled()
+
+                        payment.save(
+                            update_fields=[
+                                "status",
+                                "failure_reason",
+                                "updated_at",
+                            ]
+                        )
+
+            # --------------------------------------------------
+            # SAVE
+            # --------------------------------------------------
+
+            order.status = new_status
+
+            update_fields = [
+                "status",
+                "updated_at",
+            ]
+
+            if (
+                new_status
+                == Order.STATUS_CANCELLED
+            ):
+
+                update_fields.append(
+                    "stock_deducted"
+                )
+
+            order.save(
+                update_fields=update_fields
+            )
+
+            # --------------------------------------------------
+            # NOTIFICATIONS
+            # --------------------------------------------------
+
+            if (
+                new_status
+                == Order.STATUS_CANCELLED
+            ):
+
+                notify_customer(
+                    customer=order.customer,
+                    title="Order Cancelled",
+                    message=(
+                        f"Your Order #{order.id} "
+                        "has been cancelled."
+                    ),
+                    notification_type=(
+                        Notification.TYPE_CANCELLED
+                    ),
+                )
+
+                suppliers = (
+                    get_order_suppliers(
+                        order,
+                    )
+                )
+
+                for supplier in suppliers:
+
+                    notify_supplier(
+                        supplier=supplier,
+                        title="Order Cancelled",
+                        message=(
+                            f"Order #{order.id} "
+                            "has been cancelled."
+                        ),
+                        notification_type=(
+                            Notification.TYPE_CANCELLED
+                        ),
+                    )
+
+            elif (
+                new_status
+                == Order.STATUS_PROCESSING
+            ):
+
+                notify_customer(
+                    customer=order.customer,
+                    title="Order Processing",
+                    message=(
+                        f"Your Order #{order.id} "
+                        "is now being processed."
+                    ),
+                    notification_type=(
+                        Notification.TYPE_INFO
+                    ),
+                )
+
+            serializer = OrderSerializer(
+                order,
+                context={
+                    "request": request,
+                },
+            )
+
+            return Response(
+                {
+                    "message":
+                        "Order status updated successfully.",
+                    "order":
+                        serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+    # ------------------------------------------------------
+    # POST
+    #
+    # Your React service previously used POST.
+    # ------------------------------------------------------
+
+    def post(
+        self,
+        request,
+        order_id,
+    ):
+
+        return self._update(
+            request,
+            order_id,
+        )
+
+    # ------------------------------------------------------
+    # PATCH
+    #
+    # Also supported so old frontend code does not
+    # immediately break.
+    # ------------------------------------------------------
+
+    def patch(
+        self,
+        request,
+        order_id,
+    ):
+
+        return self._update(
+            request,
+            order_id,
+        )
+
 
 # ==========================================================
 # SUPPLIER - ORDER LIST
 # ==========================================================
 
-class SupplierOrderListView(APIView):
+class SupplierOrderListView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
         IsSupplier,
     ]
 
-    def get(self, request):
-
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
+    def get(
+        self,
+        request,
+    ):
 
         try:
+
             supplier = request.user.supplier
 
         except Supplier.DoesNotExist:
+
             return Response(
                 {
-                    "detail": "Supplier profile not found.",
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # ==================================================
-        # GET ORDERS CONTAINING SUPPLIER PRODUCTS
-        # ==================================================
+        if not supplier.is_active:
+
+            return Response(
+                {
+                    "detail":
+                        "Your supplier account is inactive.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         orders = (
             Order.objects
@@ -1633,6 +1633,7 @@ class SupplierOrderListView(APIView):
             many=True,
             context={
                 "request": request,
+                "supplier": supplier,
             },
         )
 
@@ -1646,7 +1647,9 @@ class SupplierOrderListView(APIView):
 # SUPPLIER - ORDER DETAIL
 # ==========================================================
 
-class SupplierOrderDetailView(APIView):
+class SupplierOrderDetailView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1659,24 +1662,19 @@ class SupplierOrderDetailView(APIView):
         order_id,
     ):
 
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
-
         try:
+
             supplier = request.user.supplier
 
         except Supplier.DoesNotExist:
+
             return Response(
                 {
-                    "detail": "Supplier profile not found.",
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # ==================================================
-        # GET ORDER
-        # ==================================================
 
         order = get_object_or_404(
             Order.objects
@@ -1688,7 +1686,6 @@ class SupplierOrderDetailView(APIView):
                 "items__product",
             )
             .filter(
-                id=order_id,
                 items__product__supplier=supplier,
             )
             .distinct(),
@@ -1699,6 +1696,7 @@ class SupplierOrderDetailView(APIView):
             order,
             context={
                 "request": request,
+                "supplier": supplier,
             },
         )
 
@@ -1709,10 +1707,12 @@ class SupplierOrderDetailView(APIView):
 
 
 # ==========================================================
-# SUPPLIER - UPDATE ORDER ITEM STATUS
+# SUPPLIER - UPDATE ITEM STATUS
 # ==========================================================
 
-class SupplierOrderItemStatusUpdateView(APIView):
+class SupplierOrderItemStatusUpdateView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1726,172 +1726,316 @@ class SupplierOrderItemStatusUpdateView(APIView):
         item_id,
     ):
 
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
-
         try:
+
             supplier = request.user.supplier
 
         except Supplier.DoesNotExist:
+
             return Response(
                 {
-                    "detail": "Supplier profile not found.",
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # ==================================================
-        # GET ORDER ITEM
-        # ==================================================
-
-        item = get_object_or_404(
+        order_item = get_object_or_404(
             OrderItem.objects
             .select_related(
+                "product",
                 "order",
                 "order__customer",
-                "product",
             )
             .select_for_update(),
             id=item_id,
             product__supplier=supplier,
         )
 
-        # ==================================================
-        # VALIDATE STATUS
-        # ==================================================
+        order = order_item.order
 
-        serializer = SupplierOrderItemStatusSerializer(
-            data=request.data,
+        # --------------------------------------------------
+        # PENDING ORDER
+        # --------------------------------------------------
+
+        if (
+            order.status
+            == Order.STATUS_PENDING
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        "This order must be accepted "
+                        "by the admin before supplier "
+                        "processing can begin."
+                    ),
+                    "order_status":
+                        order.status,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --------------------------------------------------
+        # CLOSED ORDER
+        # --------------------------------------------------
+
+        if order.status in [
+            Order.STATUS_CANCELLED,
+            Order.STATUS_DELIVERED,
+            Order.STATUS_ASSIGNED,
+            Order.STATUS_OUT_FOR_DELIVERY,
+        ]:
+
+            return Response(
+                {
+                    "detail": (
+                        "Supplier items cannot be "
+                        f"updated when the order is "
+                        f"'{order.status}'."
+                    ),
+                    "order_status":
+                        order.status,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --------------------------------------------------
+        # VALIDATE
+        # --------------------------------------------------
+
+        serializer = (
+            SupplierOrderItemStatusSerializer(
+                data=request.data,
+            )
         )
 
         serializer.is_valid(
             raise_exception=True,
         )
 
-        new_status = serializer.validated_data[
-            "supplier_status"
-        ]
+        new_status = (
+            serializer.validated_data[
+                "supplier_status"
+            ]
+        )
 
-        old_status = item.supplier_status
+        old_status = (
+            order_item.supplier_status
+        )
 
-        # ==================================================
-        # ALLOWED TRANSITIONS
-        # ==================================================
+        # --------------------------------------------------
+        # VALID TRANSITIONS
+        # --------------------------------------------------
 
-        allowed_transitions = {
+        transitions = {
+
             OrderItem.STATUS_PENDING: [
+                OrderItem.STATUS_PENDING,
                 OrderItem.STATUS_PROCESSING,
             ],
 
             OrderItem.STATUS_PROCESSING: [
+                OrderItem.STATUS_PROCESSING,
                 OrderItem.STATUS_READY,
             ],
 
-            OrderItem.STATUS_READY: [],
+            OrderItem.STATUS_READY: [
+                OrderItem.STATUS_READY,
+            ],
 
-            OrderItem.STATUS_DELIVERED: [],
+            OrderItem.STATUS_DELIVERED: [
+                OrderItem.STATUS_DELIVERED,
+            ],
 
-            OrderItem.STATUS_CANCELLED: [],
+            OrderItem.STATUS_CANCELLED: [
+                OrderItem.STATUS_CANCELLED,
+            ],
         }
 
-        allowed_next_statuses = (
-            allowed_transitions.get(
-                old_status,
-                [],
-            )
+        allowed_next = transitions.get(
+            old_status,
+            [],
         )
 
-        if new_status not in allowed_next_statuses:
+        if (
+            new_status
+            not in allowed_next
+        ):
+
             return Response(
                 {
                     "detail": (
-                        f"Cannot change supplier item "
-                        f"status from '{old_status}' "
-                        f"to '{new_status}'."
+                        f"Invalid status transition: "
+                        f"{old_status} → {new_status}."
                     ),
-                    "allowed_next_statuses": (
-                        allowed_next_statuses
-                    ),
+                    "workflow":
+                        "Pending → Processing → Ready",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # UPDATE STATUS
-        # ==================================================
+        # --------------------------------------------------
+        # SAME STATUS
+        # --------------------------------------------------
 
-        item.supplier_status = new_status
+        if old_status == new_status:
 
-        item.save(
-            update_fields=[
-                "supplier_status",
-                "updated_at",
-            ],
+            return Response(
+                {
+                    "message":
+                        "Order item status is already set.",
+                    "supplier_status":
+                        old_status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # --------------------------------------------------
+        # UPDATE ITEM
+        # --------------------------------------------------
+
+        order_item.supplier_status = (
+            new_status
         )
 
-        # ==================================================
-        # NOTIFY CUSTOMER
-        # ==================================================
+        order_item.save(
+            update_fields=[
+                "supplier_status",
+            ]
+        )
 
-        order = item.order
+        # --------------------------------------------------
+        # PARENT ORDER
+        #
+        # Accepted → Processing
+        # --------------------------------------------------
 
-        if new_status == OrderItem.STATUS_PROCESSING:
+        if (
+            new_status
+            == OrderItem.STATUS_PROCESSING
+            and order.status
+            == Order.STATUS_ACCEPTED
+        ):
+
+            order.status = (
+                Order.STATUS_PROCESSING
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
+
+        # --------------------------------------------------
+        # ALL ITEMS READY
+        #
+        # Processing → Ready
+        # --------------------------------------------------
+
+        if (
+            new_status
+            == OrderItem.STATUS_READY
+        ):
+
+            all_items = list(
+                order.items.all()
+            )
+
+            all_ready = (
+                len(all_items) > 0
+                and all(
+                    item.supplier_status
+                    == OrderItem.STATUS_READY
+                    for item in all_items
+                )
+            )
+
+            if (
+                all_ready
+                and order.status
+                == Order.STATUS_PROCESSING
+            ):
+
+                order.status = (
+                    Order.STATUS_READY
+                )
+
+                order.save(
+                    update_fields=[
+                        "status",
+                        "updated_at",
+                    ]
+                )
+
+        # --------------------------------------------------
+        # CUSTOMER NOTIFICATION
+        # --------------------------------------------------
+
+        if (
+            new_status
+            == OrderItem.STATUS_PROCESSING
+        ):
 
             notify_customer(
                 customer=order.customer,
                 title="Order Processing",
                 message=(
                     f"Your Order #{order.id} "
-                    "is now being prepared."
+                    "is being processed."
                 ),
                 notification_type=(
                     Notification.TYPE_INFO
                 ),
             )
 
-        elif new_status == OrderItem.STATUS_READY:
+        elif (
+            new_status
+            == OrderItem.STATUS_READY
+        ):
 
             notify_customer(
                 customer=order.customer,
                 title="Order Item Ready",
                 message=(
-                    f"An item from Order #{order.id} "
-                    "is ready for delivery."
+                    f"An item in Order #{order.id} "
+                    "has been prepared."
                 ),
                 notification_type=(
                     Notification.TYPE_INFO
                 ),
             )
 
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
         return Response(
             {
-                "message": (
-                    "Supplier order item status "
-                    "updated successfully."
-                ),
-                "item": {
-                    "id": item.id,
-                    "order_id": item.order_id,
-                    "product_id": item.product_id,
-                    "product": item.product.name,
-                    "quantity": item.quantity,
-                    "supplier_status": item.supplier_status,
-                },
+                "message":
+                    "Order item status updated successfully.",
+
+                "order_id":
+                    order.id,
+
+                "order_item_id":
+                    order_item.id,
+
+                "supplier_status":
+                    order_item.supplier_status,
+
+                "order_status":
+                    order.status,
             },
             status=status.HTTP_200_OK,
         )
-        
+
 
 # ==========================================================
 # SUPPLIER DASHBOARD
 # ==========================================================
 
-class SupplierDashboardView(APIView):
+class SupplierDashboardView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -1903,10 +2047,6 @@ class SupplierDashboardView(APIView):
         request,
     ):
 
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
-
         try:
 
             supplier = request.user.supplier
@@ -1915,16 +2055,11 @@ class SupplierDashboardView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Supplier profile not found."
-                    ),
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # ==================================================
-        # SUPPLIER ITEMS
-        # ==================================================
 
         items = (
             OrderItem.objects
@@ -1937,10 +2072,6 @@ class SupplierDashboardView(APIView):
             )
         )
 
-        # ==================================================
-        # TOTAL ORDERS
-        # ==================================================
-
         total_orders = (
             items
             .values(
@@ -1949,10 +2080,6 @@ class SupplierDashboardView(APIView):
             .distinct()
             .count()
         )
-
-        # ==================================================
-        # STATUS COUNTS
-        # ==================================================
 
         pending_items = items.filter(
             supplier_status=(
@@ -1973,28 +2100,26 @@ class SupplierDashboardView(APIView):
         ).count()
 
         delivered_items = items.filter(
-            supplier_status=(
-                OrderItem.STATUS_DELIVERED
+            order__status=(
+                Order.STATUS_DELIVERED
             ),
         ).count()
 
-        # ==================================================
-        # TOTAL SALES
-        # ==================================================
-
-        amount_expression = ExpressionWrapper(
-            F("price") * F("quantity"),
-            output_field=DecimalField(
-                max_digits=12,
-                decimal_places=2,
-            ),
+        amount_expression = (
+            ExpressionWrapper(
+                F("price") * F("quantity"),
+                output_field=DecimalField(
+                    max_digits=12,
+                    decimal_places=2,
+                ),
+            )
         )
 
         total_sales = (
             items
             .filter(
-                supplier_status=(
-                    OrderItem.STATUS_DELIVERED
+                order__status=(
+                    Order.STATUS_DELIVERED
                 ),
             )
             .aggregate(
@@ -2006,18 +2131,25 @@ class SupplierDashboardView(APIView):
             or Decimal("0.00")
         )
 
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
         return Response(
             {
-                "total_orders": total_orders,
-                "pending_items": pending_items,
-                "processing_items": processing_items,
-                "ready_items": ready_items,
-                "delivered_items": delivered_items,
-                "total_sales": total_sales,
+                "total_orders":
+                    total_orders,
+
+                "pending_items":
+                    pending_items,
+
+                "processing_items":
+                    processing_items,
+
+                "ready_items":
+                    ready_items,
+
+                "delivered_items":
+                    delivered_items,
+
+                "total_sales":
+                    total_sales,
             },
             status=status.HTTP_200_OK,
         )
@@ -2027,7 +2159,9 @@ class SupplierDashboardView(APIView):
 # SUPPLIER SALES ANALYTICS
 # ==========================================================
 
-class SupplierSalesAnalyticsView(APIView):
+class SupplierSalesAnalyticsView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -2039,10 +2173,6 @@ class SupplierSalesAnalyticsView(APIView):
         request,
     ):
 
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
-
         try:
 
             supplier = request.user.supplier
@@ -2051,25 +2181,16 @@ class SupplierSalesAnalyticsView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Supplier profile not found."
-                    ),
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # ==================================================
-        # DATE
-        # ==================================================
 
         today = timezone.localdate()
 
         month = today.month
         year = today.year
-
-        # ==================================================
-        # DELIVERED ITEMS
-        # ==================================================
 
         delivered_items = (
             OrderItem.objects
@@ -2079,15 +2200,11 @@ class SupplierSalesAnalyticsView(APIView):
             )
             .filter(
                 product__supplier=supplier,
-                supplier_status=(
-                    OrderItem.STATUS_DELIVERED
+                order__status=(
+                    Order.STATUS_DELIVERED
                 ),
             )
         )
-
-        # ==================================================
-        # AMOUNT EXPRESSION
-        # ==================================================
 
         amount = ExpressionWrapper(
             F("price") * F("quantity"),
@@ -2097,10 +2214,6 @@ class SupplierSalesAnalyticsView(APIView):
             ),
         )
 
-        # ==================================================
-        # TOTAL SALES
-        # ==================================================
-
         total_sales = (
             delivered_items
             .aggregate(
@@ -2109,10 +2222,6 @@ class SupplierSalesAnalyticsView(APIView):
             ["total"]
             or Decimal("0.00")
         )
-
-        # ==================================================
-        # TODAY SALES
-        # ==================================================
 
         today_sales = (
             delivered_items
@@ -2125,10 +2234,6 @@ class SupplierSalesAnalyticsView(APIView):
             ["total"]
             or Decimal("0.00")
         )
-
-        # ==================================================
-        # MONTHLY SALES
-        # ==================================================
 
         monthly_sales = (
             delivered_items
@@ -2143,10 +2248,6 @@ class SupplierSalesAnalyticsView(APIView):
             or Decimal("0.00")
         )
 
-        # ==================================================
-        # YEARLY SALES
-        # ==================================================
-
         yearly_sales = (
             delivered_items
             .filter(
@@ -2159,11 +2260,7 @@ class SupplierSalesAnalyticsView(APIView):
             or Decimal("0.00")
         )
 
-        # ==================================================
-        # DELIVERED ORDERS
-        # ==================================================
-
-        total_orders = (
+        delivered_orders = (
             delivered_items
             .values(
                 "order_id",
@@ -2172,26 +2269,29 @@ class SupplierSalesAnalyticsView(APIView):
             .count()
         )
 
-        # ==================================================
-        # DELIVERED ITEMS
-        # ==================================================
-
-        total_products = (
+        delivered_items_count = (
             delivered_items.count()
         )
 
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
         return Response(
             {
-                "today_sales": today_sales,
-                "monthly_sales": monthly_sales,
-                "yearly_sales": yearly_sales,
-                "total_sales": total_sales,
-                "delivered_orders": total_orders,
-                "delivered_items": total_products,
+                "today_sales":
+                    today_sales,
+
+                "monthly_sales":
+                    monthly_sales,
+
+                "yearly_sales":
+                    yearly_sales,
+
+                "total_sales":
+                    total_sales,
+
+                "delivered_orders":
+                    delivered_orders,
+
+                "delivered_items":
+                    delivered_items_count,
             },
             status=status.HTTP_200_OK,
         )
@@ -2201,7 +2301,9 @@ class SupplierSalesAnalyticsView(APIView):
 # SUPPLIER PRODUCT PERFORMANCE
 # ==========================================================
 
-class SupplierProductPerformanceView(APIView):
+class SupplierProductPerformanceView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -2213,10 +2315,6 @@ class SupplierProductPerformanceView(APIView):
         request,
     ):
 
-        # ==================================================
-        # GET SUPPLIER
-        # ==================================================
-
         try:
 
             supplier = request.user.supplier
@@ -2225,16 +2323,11 @@ class SupplierProductPerformanceView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "Supplier profile not found."
-                    ),
+                    "detail":
+                        "Supplier profile not found.",
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        # ==================================================
-        # AMOUNT
-        # ==================================================
 
         amount = ExpressionWrapper(
             F("price") * F("quantity"),
@@ -2244,16 +2337,12 @@ class SupplierProductPerformanceView(APIView):
             ),
         )
 
-        # ==================================================
-        # PRODUCT PERFORMANCE
-        # ==================================================
-
         products = (
             OrderItem.objects
             .filter(
                 product__supplier=supplier,
-                supplier_status=(
-                    OrderItem.STATUS_DELIVERED
+                order__status=(
+                    Order.STATUS_DELIVERED
                 ),
             )
             .values(
@@ -2277,59 +2366,83 @@ class SupplierProductPerformanceView(APIView):
             )
         )
 
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
         return Response(
             products,
             status=status.HTTP_200_OK,
         )
-        
+
+
 # ==========================================================
-# ADMIN - DELIVERY RIDERS LIST
+# ADMIN - DELIVERY RIDER LIST
 # ==========================================================
 
-class AdminDeliveryRiderListView(APIView):
+class AdminDeliveryRiderListView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
     ]
 
-    def get(self, request):
+    def get(
+        self,
+        request,
+    ):
 
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
+
             return Response(
                 {
-                    "detail": "Admin permission required.",
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        riders = User.objects.filter(
-            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
-        ).order_by("-date_joined")
+        riders = (
+            User.objects
+            .filter(
+                role=User.ROLE_DELIVERY,
+            )
+            .order_by(
+                "-date_joined",
+            )
+        )
 
-        results = [
-            {
-                "id": rider.id,
-                "username": rider.username,
-                "email": rider.email,
-                "first_name": rider.first_name,
-                "last_name": rider.last_name,
-                "phone": rider.phone,
-                "role": rider.role,
-                "is_active": rider.is_active,
-                "date_joined": rider.date_joined,
-            }
-            for rider in riders
-        ]
+        data = []
+
+        for rider in riders:
+
+            data.append(
+                {
+                    "id":
+                        rider.id,
+
+                    "username":
+                        rider.username,
+
+                    "email":
+                        rider.email,
+
+                    "first_name":
+                        rider.first_name,
+
+                    "last_name":
+                        rider.last_name,
+
+                    "phone":
+                        rider.phone,
+
+                    "role":
+                        rider.role,
+
+                    "is_active":
+                        rider.is_active,
+                }
+            )
 
         return Response(
-            {
-                "count": len(results),
-                "results": results,
-            },
+            data,
             status=status.HTTP_200_OK,
         )
 
@@ -2338,7 +2451,9 @@ class AdminDeliveryRiderListView(APIView):
 # ADMIN - CREATE DELIVERY RIDER
 # ==========================================================
 
-class AdminCreateDeliveryRiderView(APIView):
+class AdminCreateDeliveryRiderView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -2350,24 +2465,15 @@ class AdminCreateDeliveryRiderView(APIView):
         request,
     ):
 
-        # ==================================================
-        # ADMIN PERMISSION
-        # ==================================================
-
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
 
             return Response(
                 {
-                    "detail": (
-                        "Admin permission required."
-                    ),
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        # ==================================================
-        # VALIDATE
-        # ==================================================
 
         serializer = (
             DeliveryRiderCreateSerializer(
@@ -2381,49 +2487,54 @@ class AdminCreateDeliveryRiderView(APIView):
 
         data = serializer.validated_data
 
-        email = data["email"].lower().strip()
+        email = (
+            data["email"]
+            .lower()
+            .strip()
+        )
 
-        username = data["username"].strip()
+        username = (
+            data["username"]
+            .strip()
+        )
 
-        # ==================================================
-        # CHECK EMAIL
-        # ==================================================
+        # --------------------------------------------------
+        # EMAIL
+        # --------------------------------------------------
 
         if User.objects.filter(
-            email=email
+            email=email,
         ).exists():
 
             return Response(
                 {
-                    "detail": (
-                        "A user with this "
-                        "email already exists."
-                    ),
+                    "detail":
+                        "A user with this email already exists.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # CHECK USERNAME
-        # ==================================================
+        # --------------------------------------------------
+        # USERNAME
+        # --------------------------------------------------
 
         if User.objects.filter(
-            username=username
+            username=username,
         ).exists():
 
             return Response(
                 {
-                    "detail": (
-                        "This username is "
-                        "already in use."
-                    ),
+                    "detail":
+                        "This username is already in use.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
+        # --------------------------------------------------
         # CREATE RIDER
-        # ==================================================
+        #
+        # create_user() hashes password.
+        # --------------------------------------------------
 
         rider = User.objects.create_user(
             username=username,
@@ -2443,170 +2554,73 @@ class AdminCreateDeliveryRiderView(APIView):
             ),
         )
 
-        # ==================================================
-        # ROLE
-        # ==================================================
+        rider.role = (
+            User.ROLE_DELIVERY
+        )
 
-        rider.role = User.ROLE_DELIVERY_RIDER
-
-        # Admin-created riders are immediately active.
         rider.is_active = True
 
         rider.save(
             update_fields=[
                 "role",
                 "is_active",
-            ],
-        )
-
-        # ==================================================
-        # RESPONSE
-        # ==================================================
-
-        return Response(
-            {
-                "message": (
-                    "Delivery rider created "
-                    "successfully."
-                ),
-                "rider": {
-                    "id": rider.id,
-                    "username": rider.username,
-                    "email": rider.email,
-                    "phone": rider.phone,
-                    "role": rider.role,
-                    "is_active": rider.is_active,
-                },
-            },
-            status=status.HTTP_201_CREATED,
-        )
-        
-# ==========================================================
-# ADMIN - ASSIGN DELIVERY RIDER
-# ==========================================================
-
-class AdminUpdateDeliveryRiderView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
-
-    def patch(self, request, rider_id):
-
-        if not is_admin_user(request.user):
-            return Response(
-                {
-                    "detail": "Admin permission required.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        rider = get_object_or_404(
-            User,
-            id=rider_id,
-            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
-        )
-
-        first_name = str(
-            request.data.get("first_name", rider.first_name or "")
-        ).strip()
-        last_name = str(
-            request.data.get("last_name", rider.last_name or "")
-        ).strip()
-        phone = str(
-            request.data.get("phone", rider.phone or "")
-        ).strip()
-        username = str(
-            request.data.get("username", rider.username or "")
-        ).strip()
-        email = str(
-            request.data.get("email", rider.email or "")
-        ).strip().lower()
-
-        if username:
-            if len(username) < 3:
-                return Response(
-                    {"detail": "Username must be at least 3 characters long."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if (
-                User.objects.filter(username=username)
-                .exclude(id=rider.id)
-                .exists()
-            ):
-                return Response(
-                    {"detail": "This username is already in use."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            rider.username = username
-
-        if email:
-            if not email:
-                return Response(
-                    {"detail": "Email is required."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if (
-                User.objects.filter(email=email)
-                .exclude(id=rider.id)
-                .exists()
-            ):
-                return Response(
-                    {"detail": "A user with this email already exists."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            rider.email = email
-
-        if phone and len(phone) < 7:
-            return Response(
-                {"detail": "Phone number is too short."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        rider.first_name = first_name
-        rider.last_name = last_name
-        rider.phone = phone
-        rider.save(
-            update_fields=[
-                "username",
-                "email",
-                "first_name",
-                "last_name",
-                "phone",
-                "updated_at",
             ]
         )
 
         return Response(
             {
-                "message": "Delivery rider updated successfully.",
+                "message":
+                    "Delivery rider created successfully.",
+
                 "rider": {
-                    "id": rider.id,
-                    "username": rider.username,
-                    "email": rider.email,
-                    "first_name": rider.first_name,
-                    "last_name": rider.last_name,
-                    "phone": rider.phone,
-                    "role": rider.role,
-                    "is_active": rider.is_active,
+                    "id":
+                        rider.id,
+
+                    "username":
+                        rider.username,
+
+                    "email":
+                        rider.email,
+
+                    "phone":
+                        rider.phone,
+
+                    "role":
+                        rider.role,
+
+                    "is_active":
+                        rider.is_active,
                 },
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )
 
 
-class AdminToggleDeliveryRiderStatusView(APIView):
+# ==========================================================
+# ADMIN - UPDATE DELIVERY RIDER
+# ==========================================================
+
+class AdminUpdateDeliveryRiderView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
     ]
 
-    def post(self, request, rider_id):
+    @transaction.atomic
+    def patch(
+        self,
+        request,
+        rider_id,
+    ):
 
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
+
             return Response(
                 {
-                    "detail": "Admin permission required.",
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -2614,52 +2628,251 @@ class AdminToggleDeliveryRiderStatusView(APIView):
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
+            role=User.ROLE_DELIVERY,
         )
 
-        is_active_value = request.data.get("is_active")
+        serializer = (
+            DeliveryRiderUpdateSerializer(
+                data=request.data,
+            )
+        )
 
-        if is_active_value is None:
-            return Response(
-                {"detail": "is_active is required."},
-                status=status.HTTP_400_BAD_REQUEST,
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        data = serializer.validated_data
+
+        # --------------------------------------------------
+        # EMAIL
+        # --------------------------------------------------
+
+        if "email" in data:
+
+            email = (
+                data["email"]
+                .lower()
+                .strip()
             )
 
-        if isinstance(is_active_value, str):
-            normalized = is_active_value.strip().lower()
-            if normalized in {"true", "1", "yes", "active"}:
-                rider.is_active = True
-            elif normalized in {"false", "0", "no", "inactive"}:
-                rider.is_active = False
-            else:
+            if (
+                User.objects
+                .filter(
+                    email=email,
+                )
+                .exclude(
+                    id=rider.id,
+                )
+                .exists()
+            ):
+
                 return Response(
-                    {"detail": "is_active must be a boolean value."},
+                    {
+                        "detail":
+                            "This email is already in use.",
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-        else:
-            rider.is_active = bool(is_active_value)
 
-        rider.save(update_fields=["is_active", "updated_at"])
+            rider.email = email
+
+        # --------------------------------------------------
+        # USERNAME
+        # --------------------------------------------------
+
+        if "username" in data:
+
+            username = (
+                data["username"]
+                .strip()
+            )
+
+            if (
+                User.objects
+                .filter(
+                    username=username,
+                )
+                .exclude(
+                    id=rider.id,
+                )
+                .exists()
+            ):
+
+                return Response(
+                    {
+                        "detail":
+                            "This username is already in use.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            rider.username = username
+
+        # --------------------------------------------------
+        # OTHER FIELDS
+        # --------------------------------------------------
+
+        if "first_name" in data:
+            rider.first_name = (
+                data["first_name"]
+            )
+
+        if "last_name" in data:
+            rider.last_name = (
+                data["last_name"]
+            )
+
+        if "phone" in data:
+            rider.phone = (
+                data["phone"]
+            )
+
+        # --------------------------------------------------
+        # PASSWORD
+        # --------------------------------------------------
+
+        if "password" in data:
+
+            rider.set_password(
+                data["password"]
+            )
+
+        rider.save()
 
         return Response(
             {
-                "message": "Delivery rider status updated successfully.",
+                "message":
+                    "Delivery rider updated successfully.",
+
                 "rider": {
-                    "id": rider.id,
-                    "username": rider.username,
-                    "email": rider.email,
-                    "first_name": rider.first_name,
-                    "last_name": rider.last_name,
-                    "phone": rider.phone,
-                    "role": rider.role,
-                    "is_active": rider.is_active,
+                    "id":
+                        rider.id,
+
+                    "username":
+                        rider.username,
+
+                    "email":
+                        rider.email,
+
+                    "first_name":
+                        rider.first_name,
+
+                    "last_name":
+                        rider.last_name,
+
+                    "phone":
+                        rider.phone,
+
+                    "role":
+                        rider.role,
+
+                    "is_active":
+                        rider.is_active,
                 },
             },
             status=status.HTTP_200_OK,
         )
 
 
-class AdminAssignDeliveryView(APIView):
+# ==========================================================
+# ADMIN - TOGGLE RIDER STATUS
+# ==========================================================
+
+class AdminToggleDeliveryRiderStatusView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        rider_id,
+    ):
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail":
+                        "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rider = get_object_or_404(
+            User,
+            id=rider_id,
+            role=User.ROLE_DELIVERY,
+        )
+
+        is_active = request.data.get(
+            "is_active"
+        )
+
+        if isinstance(
+            is_active,
+            str,
+        ):
+
+            is_active = (
+                is_active.lower()
+                in [
+                    "true",
+                    "1",
+                    "yes",
+                ]
+            )
+
+        if is_active is None:
+
+            is_active = (
+                not rider.is_active
+            )
+
+        rider.is_active = bool(
+            is_active
+        )
+
+        rider.save(
+            update_fields=[
+                "is_active",
+            ]
+        )
+
+        return Response(
+            {
+                "message":
+                    "Delivery rider status updated successfully.",
+
+                "rider": {
+                    "id":
+                        rider.id,
+
+                    "username":
+                        rider.username,
+
+                    "email":
+                        rider.email,
+
+                    "is_active":
+                        rider.is_active,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
+# ADMIN - ASSIGN DELIVERY RIDER
+# ==========================================================
+
+class AdminAssignDeliveryView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -2672,24 +2885,15 @@ class AdminAssignDeliveryView(APIView):
         order_id,
     ):
 
-        # ==================================================
-        # ADMIN PERMISSION
-        # ==================================================
-
-        if not is_admin_user(request.user):
+        if not request.user.is_staff:
 
             return Response(
                 {
-                    "detail": (
-                        "Admin permission required."
-                    ),
+                    "detail":
+                        "Admin permission required.",
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        # ==================================================
-        # GET ORDER
-        # ==================================================
 
         order = get_object_or_404(
             Order.objects
@@ -2700,47 +2904,28 @@ class AdminAssignDeliveryView(APIView):
             id=order_id,
         )
 
-        # ==================================================
-        # CHECK CANCELLED
-        # ==================================================
+        # --------------------------------------------------
+        # ORDER MUST BE READY
+        #
+        # All suppliers must finish first.
+        # --------------------------------------------------
 
         if (
             order.status
-            == Order.STATUS_CANCELLED
+            != Order.STATUS_READY
         ):
 
             return Response(
                 {
                     "detail": (
-                        "Cancelled orders cannot "
+                        "Only Ready orders can "
                         "be assigned for delivery."
                     ),
+                    "order_status":
+                        order.status,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # ==================================================
-        # CHECK DELIVERED
-        # ==================================================
-
-        if (
-            order.status
-            == Order.STATUS_DELIVERED
-        ):
-
-            return Response(
-                {
-                    "detail": (
-                        "This order has already "
-                        "been delivered."
-                    ),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # ==================================================
-        # CHECK ALL SUPPLIER ITEMS READY
-        # ==================================================
 
         items = list(
             order.items.all()
@@ -2750,12 +2935,15 @@ class AdminAssignDeliveryView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "This order has no items."
-                    ),
+                    "detail":
+                        "This order has no items.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # --------------------------------------------------
+        # CHECK SUPPLIER ITEMS
+        # --------------------------------------------------
 
         not_ready_items = [
             item
@@ -2773,13 +2961,17 @@ class AdminAssignDeliveryView(APIView):
                         "be Ready before assigning "
                         "a delivery rider."
                     ),
+
                     "not_ready_items": [
                         {
-                            "item_id": item.id,
-                            "product": item.product.name,
-                            "status": (
-                                item.supplier_status
-                            ),
+                            "item_id":
+                                item.id,
+
+                            "product":
+                                item.product.name,
+
+                            "status":
+                                item.supplier_status,
                         }
                         for item in not_ready_items
                     ],
@@ -2787,9 +2979,9 @@ class AdminAssignDeliveryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # RIDER ID
-        # ==================================================
+        # --------------------------------------------------
+        # RIDER
+        # --------------------------------------------------
 
         rider_id = request.data.get(
             "rider_id"
@@ -2799,104 +2991,88 @@ class AdminAssignDeliveryView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "rider_id is required."
-                    ),
+                    "detail":
+                        "rider_id is required.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # GET RIDER
-        # ==================================================
-
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role__in=[User.ROLE_DELIVERY_RIDER, User.ROLE_DELIVERY],
+            role=User.ROLE_DELIVERY,
             is_active=True,
         )
 
-        # ==================================================
-        # CHECK EXISTING DELIVERY
-        # ==================================================
+        # --------------------------------------------------
+        # EXISTING DELIVERY
+        # --------------------------------------------------
 
-        existing_delivery = (
-            Delivery.objects
-            .filter(
-                order=order,
-            )
-            .first()
-        )
+        try:
 
-        if existing_delivery:
+            delivery = order.orders_delivery
 
             if (
-                existing_delivery.status
+                delivery.status
                 == Delivery.STATUS_DELIVERED
             ):
 
                 return Response(
                     {
-                        "detail": (
-                            "This order has already "
-                            "been delivered."
-                        ),
+                        "detail":
+                            "This order has already been delivered.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ------------------------------------------------
-            # REASSIGN
-            # ------------------------------------------------
+            delivery.rider = rider
 
-            existing_delivery.rider = rider
-
-            existing_delivery.status = (
+            delivery.status = (
                 Delivery.STATUS_ASSIGNED
             )
 
-            existing_delivery.assigned_at = timezone.now()
-            existing_delivery.accepted_at = None
-            existing_delivery.picked_up_at = None
-            existing_delivery.out_for_delivery_at = None
-            existing_delivery.delivered_at = None
+            delivery.assigned_at = (
+                timezone.now()
+            )
 
-            existing_delivery.save()
+            delivery.accepted_at = None
+            delivery.picked_up_at = None
+            delivery.out_for_delivery_at = None
+            delivery.delivered_at = None
 
-            delivery = existing_delivery
+            delivery.save()
 
-        else:
+        except Delivery.DoesNotExist:
 
             delivery = Delivery.objects.create(
                 order=order,
                 rider=rider,
-                status=Delivery.STATUS_ASSIGNED,
+                status=(
+                    Delivery.STATUS_ASSIGNED
+                ),
                 assigned_at=timezone.now(),
             )
-    
-        # ==================================================
+
+        # --------------------------------------------------
         # ORDER STATUS
-        # ==================================================
+        #
+        # Ready → Assigned
+        # --------------------------------------------------
 
-        if (
-            order.status
-            == Order.STATUS_ACCEPTED
-        ):
+        order.status = (
+            Order.STATUS_ASSIGNED
+        )
 
-            order.status = (
-                Order.STATUS_PROCESSING
-            )
+        order.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
 
-            order.save(
-                update_fields=[
-                    "status",
-                    "updated_at",
-                ],
-            )
-        # ==================================================
-        # NOTIFY RIDER
-        # ==================================================
+        # --------------------------------------------------
+        # RIDER NOTIFICATION
+        # --------------------------------------------------
 
         Notification.objects.create(
             recipient=rider,
@@ -2910,49 +3086,54 @@ class AdminAssignDeliveryView(APIView):
             ),
         )
 
-        # ==================================================
-        # NOTIFY CUSTOMER
-        # ==================================================
+        # --------------------------------------------------
+        # CUSTOMER NOTIFICATION
+        # --------------------------------------------------
 
         notify_customer(
             customer=order.customer,
             title="Delivery Assigned",
             message=(
                 f"Order #{order.id} "
-                "has been assigned for delivery."
+                "has been assigned to a delivery rider."
             ),
             notification_type=(
                 Notification.TYPE_INFO
             ),
         )
 
-        # ==================================================
+        # --------------------------------------------------
         # RESPONSE
-        # ==================================================
+        # --------------------------------------------------
 
-        serializer = DeliveryOrderSerializer(
-            delivery,
-            context={
-                "request": request,
-            },
+        serializer = (
+            DeliveryOrderSerializer(
+                delivery,
+                context={
+                    "request": request,
+                },
+            )
         )
 
         return Response(
             {
-                "message": (
-                    "Delivery rider assigned "
-                    "successfully."
-                ),
-                "delivery": serializer.data,
+                "message":
+                    "Delivery rider assigned successfully.",
+
+                "delivery":
+                    serializer.data,
             },
             status=status.HTTP_200_OK,
         )
-        
+
+
 # ==========================================================
 # DELIVERY RIDER - DASHBOARD
 # ==========================================================
 
-class DeliveryDashboardView(APIView):
+class DeliveryDashboardView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -2964,54 +3145,99 @@ class DeliveryDashboardView(APIView):
         request,
     ):
 
-        deliveries = Delivery.objects.filter(
-            rider=request.user,
+        deliveries = (
+            Delivery.objects
+            .filter(
+                rider=request.user,
+            )
         )
 
-        total_deliveries = deliveries.count()
+        total_deliveries = (
+            deliveries.count()
+        )
 
-        assigned = deliveries.filter(
-            status=Delivery.STATUS_ASSIGNED,
-        ).count()
+        assigned_deliveries = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_ASSIGNED
+                ),
+            ).count()
+        )
 
-        accepted = deliveries.filter(
-            status=Delivery.STATUS_ACCEPTED,
-        ).count()
+        accepted_deliveries = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_ACCEPTED
+                ),
+            ).count()
+        )
 
-        picked_up = deliveries.filter(
-            status=Delivery.STATUS_PICKED_UP,
-        ).count()
+        picked_up_deliveries = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_PICKED_UP
+                ),
+            ).count()
+        )
 
-        out_for_delivery = deliveries.filter(
-            status=Delivery.STATUS_OUT_FOR_DELIVERY,
-        ).count()
+        out_for_delivery = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_OUT_FOR_DELIVERY
+                ),
+            ).count()
+        )
 
-        delivered = deliveries.filter(
-            status=Delivery.STATUS_DELIVERED,
-        ).count()
+        completed_deliveries = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_DELIVERED
+                ),
+            ).count()
+        )
 
-        cancelled = deliveries.filter(
-            status=Delivery.STATUS_CANCELLED,
-        ).count()
+        cancelled_deliveries = (
+            deliveries.filter(
+                status=(
+                    Delivery.STATUS_CANCELLED
+                ),
+            ).count()
+        )
 
         return Response(
             {
-                "total_deliveries": total_deliveries,
-                "assigned": assigned,
-                "accepted": accepted,
-                "picked_up": picked_up,
-                "out_for_delivery": out_for_delivery,
-                "delivered": delivered,
-                "cancelled": cancelled,
+                "total_deliveries":
+                    total_deliveries,
+
+                "assigned_deliveries":
+                    assigned_deliveries,
+
+                "accepted_deliveries":
+                    accepted_deliveries,
+
+                "picked_up_deliveries":
+                    picked_up_deliveries,
+
+                "out_for_delivery":
+                    out_for_delivery,
+
+                "completed_deliveries":
+                    completed_deliveries,
+
+                "cancelled_deliveries":
+                    cancelled_deliveries,
             },
             status=status.HTTP_200_OK,
         )
-        
+
+
 # ==========================================================
 # DELIVERY RIDER - DELIVERY LIST
 # ==========================================================
 
-class DeliveryListView(APIView):
+class DeliveryListView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -3031,6 +3257,7 @@ class DeliveryListView(APIView):
             .select_related(
                 "order",
                 "order__customer",
+                "rider",
             )
             .prefetch_related(
                 "order__items__product",
@@ -3040,24 +3267,29 @@ class DeliveryListView(APIView):
             )
         )
 
-        serializer = DeliveryOrderSerializer(
-            deliveries,
-            many=True,
-            context={
-                "request": request,
-            },
+        serializer = (
+            DeliveryOrderSerializer(
+                deliveries,
+                many=True,
+                context={
+                    "request": request,
+                },
+            )
         )
 
         return Response(
             serializer.data,
             status=status.HTTP_200_OK,
         )
-        
+
+
 # ==========================================================
 # DELIVERY RIDER - DELIVERY DETAIL
 # ==========================================================
 
-class DeliveryDetailView(APIView):
+class DeliveryDetailView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -3075,6 +3307,7 @@ class DeliveryDetailView(APIView):
             .select_related(
                 "order",
                 "order__customer",
+                "rider",
             )
             .prefetch_related(
                 "order__items__product",
@@ -3083,23 +3316,28 @@ class DeliveryDetailView(APIView):
             rider=request.user,
         )
 
-        serializer = DeliveryOrderSerializer(
-            delivery,
-            context={
-                "request": request,
-            },
+        serializer = (
+            DeliveryOrderSerializer(
+                delivery,
+                context={
+                    "request": request,
+                },
+            )
         )
 
         return Response(
             serializer.data,
             status=status.HTTP_200_OK,
         )
-        
+
+
 # ==========================================================
 # DELIVERY RIDER - UPDATE DELIVERY STATUS
 # ==========================================================
 
-class DeliveryStatusUpdateView(APIView):
+class DeliveryStatusUpdateView(
+    APIView
+):
 
     permission_classes = [
         IsAuthenticated,
@@ -3113,15 +3351,12 @@ class DeliveryStatusUpdateView(APIView):
         delivery_id,
     ):
 
-        # ==================================================
-        # GET DELIVERY
-        # ==================================================
-
         delivery = get_object_or_404(
             Delivery.objects
             .select_related(
                 "order",
                 "order__customer",
+                "rider",
             )
             .select_for_update(),
             id=delivery_id,
@@ -3130,9 +3365,9 @@ class DeliveryStatusUpdateView(APIView):
 
         order = delivery.order
 
-        # ==================================================
-        # CHECK CANCELLED ORDER
-        # ==================================================
+        # --------------------------------------------------
+        # CANCELLED ORDER
+        # --------------------------------------------------
 
         if (
             order.status
@@ -3141,17 +3376,15 @@ class DeliveryStatusUpdateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "This order has been "
-                        "cancelled."
-                    ),
+                    "detail":
+                        "This order has been cancelled.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
+        # --------------------------------------------------
         # ALREADY DELIVERED
-        # ==================================================
+        # --------------------------------------------------
 
         if (
             delivery.status
@@ -3160,17 +3393,15 @@ class DeliveryStatusUpdateView(APIView):
 
             return Response(
                 {
-                    "detail": (
-                        "This delivery has "
-                        "already been completed."
-                    ),
+                    "detail":
+                        "This delivery has already been completed.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # VALIDATE REQUEST
-        # ==================================================
+        # --------------------------------------------------
+        # VALIDATE
+        # --------------------------------------------------
 
         serializer = DeliveryStatusSerializer(
             data=request.data,
@@ -3180,17 +3411,25 @@ class DeliveryStatusUpdateView(APIView):
             raise_exception=True,
         )
 
-        new_status = serializer.validated_data[
-            "status"
-        ]
+        new_status = (
+            serializer.validated_data[
+                "status"
+            ]
+        )
+
+        delivery_note = (
+            serializer.validated_data.get(
+                "delivery_note"
+            )
+        )
 
         old_status = delivery.status
 
-        # ==================================================
-        # STATUS TRANSITIONS
-        # ==================================================
+        # --------------------------------------------------
+        # VALID TRANSITIONS
+        # --------------------------------------------------
 
-        allowed_transitions = {
+        transitions = {
 
             Delivery.STATUS_ASSIGNED: [
                 Delivery.STATUS_ACCEPTED,
@@ -3208,41 +3447,40 @@ class DeliveryStatusUpdateView(APIView):
                 Delivery.STATUS_DELIVERED,
             ],
 
+            Delivery.STATUS_DELIVERED: [],
+
+            Delivery.STATUS_CANCELLED: [],
         }
 
-        allowed_next_statuses = (
-            allowed_transitions.get(
-                old_status,
-                [],
-            )
+        allowed_next = transitions.get(
+            old_status,
+            [],
         )
 
-        if new_status not in allowed_next_statuses:
+        if (
+            new_status
+            not in allowed_next
+        ):
 
             return Response(
                 {
                     "detail": (
                         f"Cannot change delivery "
                         f"status from "
-                        f"'{old_status}' to "
-                        f"'{new_status}'."
+                        f"'{old_status}' "
+                        f"to '{new_status}'."
                     ),
-                    "allowed_next_statuses": (
-                        allowed_next_statuses
-                    ),
+                    "allowed_next_statuses":
+                        allowed_next,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ==================================================
-        # CURRENT TIME
-        # ==================================================
-
         now = timezone.now()
 
-        # ==================================================
+        # --------------------------------------------------
         # ACCEPTED
-        # ==================================================
+        # --------------------------------------------------
 
         if (
             new_status
@@ -3250,6 +3488,17 @@ class DeliveryStatusUpdateView(APIView):
         ):
 
             delivery.accepted_at = now
+
+            order.status = (
+                Order.STATUS_ASSIGNED
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
 
             notify_customer(
                 customer=order.customer,
@@ -3264,9 +3513,9 @@ class DeliveryStatusUpdateView(APIView):
                 ),
             )
 
-        # ==================================================
+        # --------------------------------------------------
         # PICKED UP
-        # ==================================================
+        # --------------------------------------------------
 
         elif (
             new_status
@@ -3288,9 +3537,9 @@ class DeliveryStatusUpdateView(APIView):
                 ),
             )
 
-        # ==================================================
+        # --------------------------------------------------
         # OUT FOR DELIVERY
-        # ==================================================
+        # --------------------------------------------------
 
         elif (
             new_status
@@ -3298,6 +3547,21 @@ class DeliveryStatusUpdateView(APIView):
         ):
 
             delivery.out_for_delivery_at = now
+
+            # ------------------------------------------------
+            # Order → Out for Delivery
+            # ------------------------------------------------
+
+            order.status = (
+                Order.STATUS_OUT_FOR_DELIVERY
+            )
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
 
             notify_customer(
                 customer=order.customer,
@@ -3311,9 +3575,9 @@ class DeliveryStatusUpdateView(APIView):
                 ),
             )
 
-        # ==================================================
+        # --------------------------------------------------
         # DELIVERED
-        # ==================================================
+        # --------------------------------------------------
 
         elif (
             new_status
@@ -3322,9 +3586,9 @@ class DeliveryStatusUpdateView(APIView):
 
             delivery.delivered_at = now
 
-            # ----------------------------------------------
-            # DELIVERY COMPLETED
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # ORDER → DELIVERED
+            # ------------------------------------------------
 
             order.status = (
                 Order.STATUS_DELIVERED
@@ -3334,7 +3598,23 @@ class DeliveryStatusUpdateView(APIView):
                 update_fields=[
                     "status",
                     "updated_at",
-                ],
+                ]
+            )
+
+            # ------------------------------------------------
+            # SUPPLIER ITEMS
+            #
+            # Supplier does NOT perform this action.
+            # System records completion after rider
+            # completes delivery.
+            # ------------------------------------------------
+
+            OrderItem.objects.filter(
+                order=order,
+            ).update(
+                supplier_status=(
+                    OrderItem.STATUS_DELIVERED
+                )
             )
 
             notify_customer(
@@ -3349,11 +3629,41 @@ class DeliveryStatusUpdateView(APIView):
                 ),
             )
 
-        # ==================================================
+            # ------------------------------------------------
+            # SUPPLIER NOTIFICATION
+            # ------------------------------------------------
+
+            suppliers = (
+                get_order_suppliers(
+                    order,
+                )
+            )
+
+            for supplier in suppliers:
+
+                notify_supplier(
+                    supplier=supplier,
+                    title="Order Delivered",
+                    message=(
+                        f"Order #{order.id} "
+                        "has been delivered."
+                    ),
+                    notification_type=(
+                        Notification.TYPE_DELIVERED
+                    ),
+                )
+
+        # --------------------------------------------------
         # SAVE DELIVERY
-        # ==================================================
+        # --------------------------------------------------
 
         delivery.status = new_status
+
+        if delivery_note is not None:
+
+            delivery.delivery_note = (
+                delivery_note
+            )
 
         update_fields = [
             "status",
@@ -3396,13 +3706,19 @@ class DeliveryStatusUpdateView(APIView):
                 "delivered_at"
             )
 
+        if delivery_note is not None:
+
+            update_fields.append(
+                "delivery_note"
+            )
+
         delivery.save(
             update_fields=update_fields,
         )
 
-        # ==================================================
+        # --------------------------------------------------
         # RESPONSE
-        # ==================================================
+        # --------------------------------------------------
 
         response_serializer = (
             DeliveryOrderSerializer(
@@ -3415,14 +3731,400 @@ class DeliveryStatusUpdateView(APIView):
 
         return Response(
             {
-                "message": (
-                    "Delivery status updated "
-                    "successfully."
-                ),
-                "delivery": (
-                    response_serializer.data
-                ),
+                "message":
+                    "Delivery status updated successfully.",
+
+                "delivery":
+                    response_serializer.data,
             },
             status=status.HTTP_200_OK,
         )
 
+
+# ==========================================================
+# CUSTOMER - REFUND REQUEST
+# ==========================================================
+
+class CustomerRefundRequestView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+    ):
+
+        serializer = (
+            CustomerRefundRequestSerializer(
+                data=request.data,
+                context={
+                    "request": request,
+                },
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        order = serializer.validated_data[
+            "order"
+        ]
+
+        # --------------------------------------------------
+        # PREVENT DUPLICATE ACTIVE REFUND
+        # --------------------------------------------------
+
+        existing = (
+            Refund.objects
+            .filter(
+                order=order,
+                status__in=[
+                    Refund.STATUS_PENDING,
+                    Refund.STATUS_APPROVED,
+                ],
+            )
+            .first()
+        )
+
+        if existing:
+
+            return Response(
+                {
+                    "detail":
+                        "A refund request already exists for this order.",
+                    "refund_id":
+                        existing.id,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refund = Refund.objects.create(
+            order=order,
+            customer=request.user,
+            reason=serializer.validated_data[
+                "reason"
+            ],
+            description=serializer.validated_data.get(
+                "description",
+                "",
+            ),
+            refund_amount=order.total_amount,
+            status=Refund.STATUS_PENDING,
+        )
+
+        # --------------------------------------------------
+        # ADMIN NOTIFICATION
+        # --------------------------------------------------
+
+        admins = User.objects.filter(
+            is_staff=True,
+            is_active=True,
+        )
+
+        for admin in admins:
+
+            Notification.objects.create(
+                recipient=admin,
+                title="New Refund Request",
+                message=(
+                    f"Refund requested for "
+                    f"Order #{order.id}."
+                ),
+                notification_type=(
+                    Notification.TYPE_INFO
+                ),
+            )
+
+        response_serializer = (
+            RefundSerializer(
+                refund,
+            )
+        )
+
+        return Response(
+            {
+                "message":
+                    "Refund request submitted successfully.",
+                "refund":
+                    response_serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ==========================================================
+# ADMIN - REFUND LIST
+# ==========================================================
+
+class AdminRefundListView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(
+        self,
+        request,
+    ):
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail":
+                        "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refunds = (
+            Refund.objects
+            .select_related(
+                "order",
+                "customer",
+                "admin",
+            )
+            .order_by(
+                "-requested_at",
+            )
+        )
+
+        serializer = RefundSerializer(
+            refunds,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
+# ADMIN - UPDATE REFUND
+# ==========================================================
+
+class AdminRefundUpdateView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def patch(
+        self,
+        request,
+        refund_id,
+    ):
+
+        if not request.user.is_staff:
+
+            return Response(
+                {
+                    "detail":
+                        "Admin permission required.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refund = get_object_or_404(
+            Refund.objects
+            .select_for_update()
+            .select_related(
+                "order",
+                "customer",
+            ),
+            id=refund_id,
+        )
+
+        serializer = (
+            AdminRefundUpdateSerializer(
+                data=request.data,
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        new_status = (
+            serializer.validated_data[
+                "status"
+            ]
+        )
+
+        old_status = refund.status
+
+        allowed_transitions = {
+
+            Refund.STATUS_PENDING: [
+                Refund.STATUS_APPROVED,
+                Refund.STATUS_REJECTED,
+            ],
+
+            Refund.STATUS_APPROVED: [
+                Refund.STATUS_COMPLETED,
+            ],
+
+            Refund.STATUS_REJECTED: [],
+
+            Refund.STATUS_COMPLETED: [],
+        }
+
+        allowed_next = (
+            allowed_transitions.get(
+                old_status,
+                [],
+            )
+        )
+
+        if (
+            new_status
+            not in allowed_next
+        ):
+
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot change refund "
+                        f"status from "
+                        f"'{old_status}' "
+                        f"to '{new_status}'."
+                    ),
+                    "allowed_next_statuses":
+                        allowed_next,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refund.status = new_status
+
+        refund.admin = request.user
+
+        if (
+            "refund_amount"
+            in serializer.validated_data
+        ):
+
+            refund.refund_amount = (
+                serializer.validated_data[
+                    "refund_amount"
+                ]
+            )
+
+        if (
+            "admin_notes"
+            in serializer.validated_data
+        ):
+
+            refund.admin_notes = (
+                serializer.validated_data[
+                    "admin_notes"
+                ]
+            )
+
+        update_fields = [
+            "status",
+            "admin",
+            "refund_amount",
+            "admin_notes",
+        ]
+
+        if (
+            new_status
+            == Refund.STATUS_APPROVED
+        ):
+
+            refund.approved_at = (
+                timezone.now()
+            )
+
+            update_fields.append(
+                "approved_at"
+            )
+
+        if (
+            new_status
+            == Refund.STATUS_COMPLETED
+        ):
+
+            refund.completed_at = (
+                timezone.now()
+            )
+
+            update_fields.append(
+                "completed_at"
+            )
+
+        refund.save(
+            update_fields=update_fields,
+        )
+
+        # --------------------------------------------------
+        # CUSTOMER NOTIFICATION
+        # --------------------------------------------------
+
+        if (
+            new_status
+            == Refund.STATUS_APPROVED
+        ):
+
+            message = (
+                f"Your refund request for "
+                f"Order #{refund.order.id} "
+                "has been approved."
+            )
+
+        elif (
+            new_status
+            == Refund.STATUS_REJECTED
+        ):
+
+            message = (
+                f"Your refund request for "
+                f"Order #{refund.order.id} "
+                "has been rejected."
+            )
+
+        else:
+
+            message = (
+                f"Your refund for "
+                f"Order #{refund.order.id} "
+                "has been completed."
+            )
+
+        notify_customer(
+            customer=refund.customer,
+            title="Refund Status Updated",
+            message=message,
+            notification_type=(
+                Notification.TYPE_INFO
+            ),
+        )
+
+        response_serializer = (
+            RefundSerializer(
+                refund,
+            )
+        )
+
+        return Response(
+            {
+                "message":
+                    "Refund status updated successfully.",
+                "refund":
+                    response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )

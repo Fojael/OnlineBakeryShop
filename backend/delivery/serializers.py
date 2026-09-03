@@ -435,3 +435,4 @@ class DeliveryStatusUpdateSerializer(
         required=False,
         allow_blank=True,
     )
+    

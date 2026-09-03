@@ -1,10 +1,13 @@
-
-from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from decimal import Decimal
 
-from .models import Order, OrderItem, Delivery, OrderAddress, Refund
-
-User = get_user_model()
+from .models import (
+    Order,
+    OrderItem,
+    OrderAddress,
+    Refund,
+    Delivery,
+)
 
 
 # ==========================================================
@@ -28,6 +31,7 @@ class OrderItemSerializer(
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
+
         model = OrderItem
 
         fields = [
@@ -37,6 +41,7 @@ class OrderItemSerializer(
             "quantity",
             "price",
             "subtotal",
+            "supplier_status",
             "created_at",
         ]
 
@@ -74,38 +79,71 @@ class OrderSerializer(
 
     item_count = serializers.SerializerMethodField()
 
-    payment_status = serializers.SerializerMethodField()
+    payment_status = (
+        serializers.SerializerMethodField()
+    )
 
-    transaction_id = serializers.SerializerMethodField()
+    transaction_id = (
+        serializers.SerializerMethodField()
+    )
 
     is_paid = serializers.ReadOnlyField()
 
     can_cancel = serializers.ReadOnlyField()
 
+    delivery_id = (
+        serializers.SerializerMethodField()
+    )
+
+    delivery_status = (
+        serializers.SerializerMethodField()
+    )
+
+    rider_name = (
+        serializers.SerializerMethodField()
+    )
+
     class Meta:
+
         model = Order
 
         fields = [
             "id",
+
             "customer_name",
             "customer_email",
+
             "shipping_address",
+
             "payment_method",
             "payment_status",
             "transaction_id",
+
             "subtotal",
             "delivery_charge",
             "total_amount",
+
             "status",
+
             "is_paid",
             "can_cancel",
+
             "items",
             "item_count",
+
+            "delivery_id",
+            "delivery_status",
+            "rider_name",
+
             "created_at",
             "updated_at",
         ]
 
         read_only_fields = fields
+
+    # ======================================================
+    # ITEM COUNT
+    # ======================================================
 
     def get_item_count(
         self,
@@ -113,12 +151,19 @@ class OrderSerializer(
     ):
         return obj.items.count()
 
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
     def get_payment_status(
         self,
         obj,
     ):
 
-        if hasattr(obj, "payment"):
+        if hasattr(
+            obj,
+            "payment",
+        ):
             return obj.payment.status
 
         if (
@@ -129,202 +174,124 @@ class OrderSerializer(
 
         return None
 
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
+
     def get_transaction_id(
         self,
         obj,
     ):
 
-        if hasattr(obj, "payment"):
+        if hasattr(
+            obj,
+            "payment",
+        ):
             return obj.payment.transaction_id
 
         return None
+
+    # ======================================================
+    # DELIVERY ID
+    # ======================================================
+
+    def get_delivery_id(
+        self,
+        obj,
+    ):
+
+        try:
+            return obj.orders_delivery.id
+
+        except Delivery.DoesNotExist:
+            return None
+
+    # ======================================================
+    # DELIVERY STATUS
+    # ======================================================
+
+    def get_delivery_status(
+        self,
+        obj,
+    ):
+
+        try:
+            return obj.orders_delivery.status
+
+        except Delivery.DoesNotExist:
+            return None
+
+    # ======================================================
+    # RIDER NAME
+    # ======================================================
+
+    def get_rider_name(
+        self,
+        obj,
+    ):
+
+        try:
+
+            delivery = obj.orders_delivery
+
+            if not delivery.rider:
+                return None
+
+            return (
+                delivery.rider.get_full_name()
+                or delivery.rider.username
+            )
+
+        except Delivery.DoesNotExist:
+
+            return None
 
 
 # ==========================================================
 # ORDER CREATE SERIALIZER
 # ==========================================================
 
-class OrderAddressSerializer(
-    serializers.ModelSerializer
-):
-
-    class Meta:
-        model = OrderAddress
-        fields = [
-            "full_name",
-            "phone",
-            "email",
-            "division",
-            "district",
-            "city",
-            "area",
-            "street_address",
-            "postal_code",
-            "delivery_note",
-        ]
-
-
 class OrderCreateSerializer(
     serializers.ModelSerializer
 ):
 
-    shipping_address = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    full_name = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    phone = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    email = serializers.EmailField(
-        required=False,
-        allow_blank=True,
-    )
-    division = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    district = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    city = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    area = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    street_address = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    postal_code = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-    delivery_note = serializers.CharField(
-        required=False,
-        allow_blank=True,
-    )
-
     class Meta:
+
         model = Order
 
         fields = [
             "shipping_address",
             "payment_method",
-            "full_name",
-            "phone",
-            "email",
-            "division",
-            "district",
-            "city",
-            "area",
-            "street_address",
-            "postal_code",
-            "delivery_note",
         ]
 
-    def _normalize_optional_text(self, value):
-        if value is None:
-            return ""
-        return str(value).strip()
-
-    def validate(self, attrs):
-        shipping_address = self._normalize_optional_text(
-            attrs.get("shipping_address")
-        )
-
-        structured_fields = {
-            "full_name": self._normalize_optional_text(attrs.get("full_name")),
-            "phone": self._normalize_optional_text(attrs.get("phone")),
-            "email": self._normalize_optional_text(attrs.get("email")),
-            "division": self._normalize_optional_text(attrs.get("division")),
-            "district": self._normalize_optional_text(attrs.get("district")),
-            "city": self._normalize_optional_text(attrs.get("city")),
-            "area": self._normalize_optional_text(attrs.get("area")),
-            "street_address": self._normalize_optional_text(attrs.get("street_address")),
-            "postal_code": self._normalize_optional_text(attrs.get("postal_code")),
-            "delivery_note": self._normalize_optional_text(attrs.get("delivery_note")),
-        }
-
-        has_structured_address = any(
-            value for value in structured_fields.values()
-        )
-
-        if shipping_address:
-            if len(shipping_address) < 10:
-                raise serializers.ValidationError(
-                    {"shipping_address": "Please provide a complete shipping address."}
-                )
-        elif has_structured_address:
-            missing = []
-            for field_name in [
-                "full_name",
-                "phone",
-                "email",
-                "division",
-                "district",
-                "city",
-                "area",
-                "street_address",
-                "postal_code",
-            ]:
-                if not structured_fields[field_name]:
-                    missing.append(field_name)
-
-            if missing:
-                raise serializers.ValidationError(
-                    {field: "This field is required." for field in missing}
-                )
-
-            shipping_address = (
-                f"{structured_fields['full_name']}, "
-                f"{structured_fields['street_address']}, "
-                f"{structured_fields['area']}, "
-                f"{structured_fields['city']}, "
-                f"{structured_fields['district']}, "
-                f"{structured_fields['division']}, "
-                f"{structured_fields['postal_code']}. "
-                f"Phone: {structured_fields['phone']}. "
-                f"Email: {structured_fields['email']}"
-            )
-
-        else:
-            raise serializers.ValidationError(
-                {"shipping_address": "Shipping address is required."}
-            )
-
-        attrs["shipping_address"] = shipping_address
-
-        for key, value in structured_fields.items():
-            attrs[key] = value
-
-        return attrs
+    # ======================================================
+    # SHIPPING ADDRESS
+    # ======================================================
 
     def validate_shipping_address(
         self,
         value,
     ):
-        value = str(value or "").strip()
+
+        value = value.strip()
 
         if not value:
+
             raise serializers.ValidationError(
                 "Shipping address is required."
             )
 
         if len(value) < 10:
+
             raise serializers.ValidationError(
                 "Please provide a complete shipping address."
             )
 
         return value
+
+    # ======================================================
+    # PAYMENT METHOD
+    # ======================================================
 
     def validate_payment_method(
         self,
@@ -337,11 +304,47 @@ class OrderCreateSerializer(
         ]
 
         if value not in allowed:
+
             raise serializers.ValidationError(
                 "Invalid payment method."
             )
 
         return value
+
+
+# ==========================================================
+# ORDER ADDRESS SERIALIZER
+# ==========================================================
+
+class OrderAddressSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = OrderAddress
+
+        fields = [
+            "id",
+            "order",
+            "full_name",
+            "phone",
+            "email",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+            "postal_code",
+            "delivery_note",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "order",
+            "created_at",
+        ]
 
 
 # ==========================================================
@@ -360,6 +363,7 @@ class SupplierOrderItemSerializer(
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
+
         model = OrderItem
 
         fields = [
@@ -374,6 +378,10 @@ class SupplierOrderItemSerializer(
         ]
 
         read_only_fields = fields
+
+    # ======================================================
+    # SUBTOTAL
+    # ======================================================
 
     def get_subtotal(
         self,
@@ -402,11 +410,16 @@ class SupplierOrderSerializer(
 
     items = serializers.SerializerMethodField()
 
-    payment_status = serializers.SerializerMethodField()
+    payment_status = (
+        serializers.SerializerMethodField()
+    )
 
-    transaction_id = serializers.SerializerMethodField()
+    transaction_id = (
+        serializers.SerializerMethodField()
+    )
 
     class Meta:
+
         model = Order
 
         fields = [
@@ -420,16 +433,42 @@ class SupplierOrderSerializer(
             "status",
             "items",
             "created_at",
+            "updated_at",
         ]
 
         read_only_fields = fields
+
+    # ======================================================
+    # SUPPLIER ITEMS ONLY
+    # ======================================================
 
     def get_items(
         self,
         obj,
     ):
 
-        supplier = self.context["supplier"]
+        supplier = self.context.get(
+            "supplier"
+        )
+
+        if supplier is None:
+
+            request = self.context.get(
+                "request"
+            )
+
+            if (
+                request
+                and hasattr(
+                    request.user,
+                    "supplier",
+                )
+            ):
+
+                supplier = request.user.supplier
+
+        if supplier is None:
+            return []
 
         items = obj.items.filter(
             product__supplier=supplier
@@ -440,12 +479,19 @@ class SupplierOrderSerializer(
             many=True,
         ).data
 
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
     def get_payment_status(
         self,
         obj,
     ):
 
-        if hasattr(obj, "payment"):
+        if hasattr(
+            obj,
+            "payment",
+        ):
             return obj.payment.status
 
         if (
@@ -456,12 +502,19 @@ class SupplierOrderSerializer(
 
         return None
 
+    # ======================================================
+    # TRANSACTION ID
+    # ======================================================
+
     def get_transaction_id(
         self,
         obj,
     ):
 
-        if hasattr(obj, "payment"):
+        if hasattr(
+            obj,
+            "payment",
+        ):
             return obj.payment.transaction_id
 
         return None
@@ -469,16 +522,10 @@ class SupplierOrderSerializer(
 
 # ==========================================================
 # SUPPLIER ORDER ITEM STATUS SERIALIZER
-#
-# Supplier workflow:
-#
-# Pending → Processing → Ready
-#
-# Supplier does NOT use Delivered.
 # ==========================================================
 
 class SupplierOrderItemStatusSerializer(
-    serializers.Serializer,
+    serializers.Serializer
 ):
 
     supplier_status = serializers.ChoiceField(
@@ -495,7 +542,7 @@ class SupplierOrderItemStatusSerializer(
                 OrderItem.STATUS_READY,
                 "Ready",
             ),
-        ],
+        ]
     )
 
 
@@ -512,14 +559,14 @@ class DeliveryOrderItemSerializer(
         read_only=True,
     )
 
-    supplier_name = serializers.CharField(
-        source="product.supplier.user.username",
-        read_only=True,
+    supplier_name = (
+        serializers.SerializerMethodField()
     )
 
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
+
         model = OrderItem
 
         fields = [
@@ -534,6 +581,41 @@ class DeliveryOrderItemSerializer(
         ]
 
         read_only_fields = fields
+
+    # ======================================================
+    # SUPPLIER NAME
+    # ======================================================
+
+    def get_supplier_name(
+        self,
+        obj,
+    ):
+
+        try:
+
+            supplier = obj.product.supplier
+
+            if not supplier:
+                return None
+
+            if hasattr(
+                supplier,
+                "user",
+            ):
+
+                return (
+                    supplier.user.get_full_name()
+                    or supplier.user.username
+                )
+
+        except Exception:
+            pass
+
+        return None
+
+    # ======================================================
+    # SUBTOTAL
+    # ======================================================
 
     def get_subtotal(
         self,
@@ -550,6 +632,317 @@ class DeliveryOrderSerializer(
     serializers.ModelSerializer
 ):
 
+    order_id = serializers.IntegerField(
+        source="order.id",
+        read_only=True,
+    )
+
+    customer_name = serializers.CharField(
+        source="order.customer.username",
+        read_only=True,
+    )
+
+    customer_email = serializers.EmailField(
+        source="order.customer.email",
+        read_only=True,
+    )
+
+    customer_phone = serializers.CharField(
+        source="order.customer.phone",
+        read_only=True,
+        allow_null=True,
+    )
+
+    shipping_address = serializers.CharField(
+        source="order.shipping_address",
+        read_only=True,
+    )
+
+    payment_method = serializers.CharField(
+        source="order.payment_method",
+        read_only=True,
+    )
+
+    payment_status = (
+        serializers.SerializerMethodField()
+    )
+
+    order_status = serializers.CharField(
+        source="order.status",
+        read_only=True,
+    )
+
+    subtotal = serializers.DecimalField(
+        source="order.subtotal",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    delivery_charge = serializers.DecimalField(
+        source="order.delivery_charge",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    total_amount = serializers.DecimalField(
+        source="order.total_amount",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    delivery_status = serializers.CharField(
+        source="status",
+        read_only=True,
+    )
+
+    rider_name = (
+        serializers.SerializerMethodField()
+    )
+
+    items = DeliveryOrderItemSerializer(
+        source="order.items",
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+
+        model = Delivery
+
+        fields = [
+            "id",
+            "order_id",
+
+            "customer_name",
+            "customer_email",
+            "customer_phone",
+
+            "shipping_address",
+
+            "payment_method",
+            "payment_status",
+
+            "order_status",
+
+            "subtotal",
+            "delivery_charge",
+            "total_amount",
+
+            "delivery_status",
+            "rider_name",
+
+            "items",
+
+            "delivery_note",
+
+            "assigned_at",
+            "accepted_at",
+            "picked_up_at",
+            "out_for_delivery_at",
+            "delivered_at",
+
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = fields
+
+    # ======================================================
+    # PAYMENT STATUS
+    # ======================================================
+
+    def get_payment_status(
+        self,
+        obj,
+    ):
+
+        try:
+
+            if hasattr(
+                obj.order,
+                "payment",
+            ):
+
+                return obj.order.payment.status
+
+        except Exception:
+            pass
+
+        if (
+            obj.order.payment_method
+            == Order.PAYMENT_COD
+        ):
+
+            return "Cash on Delivery"
+
+        return None
+
+    # ======================================================
+    # RIDER NAME
+    # ======================================================
+
+    def get_rider_name(
+        self,
+        obj,
+    ):
+
+        if not obj.rider:
+            return None
+
+        return (
+            obj.rider.get_full_name()
+            or obj.rider.username
+        )
+
+
+# ==========================================================
+# DELIVERY STATUS SERIALIZER
+# ==========================================================
+
+class DeliveryStatusSerializer(
+    serializers.Serializer
+):
+
+    status = serializers.ChoiceField(
+        choices=[
+            (
+                Delivery.STATUS_ACCEPTED,
+                "Accepted",
+            ),
+            (
+                Delivery.STATUS_PICKED_UP,
+                "Picked Up",
+            ),
+            (
+                Delivery.STATUS_OUT_FOR_DELIVERY,
+                "Out for Delivery",
+            ),
+            (
+                Delivery.STATUS_DELIVERED,
+                "Delivered",
+            ),
+        ]
+    )
+
+    delivery_note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+
+
+# ==========================================================
+# DELIVERY RIDER CREATE SERIALIZER
+# ==========================================================
+
+class DeliveryRiderCreateSerializer(
+    serializers.Serializer
+):
+
+    username = serializers.CharField(
+        max_length=150,
+    )
+
+    email = serializers.EmailField()
+
+    password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+    )
+
+    first_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    last_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=20,
+    )
+
+    def validate_username(
+        self,
+        value,
+    ):
+
+        value = value.strip()
+
+        if not value:
+
+            raise serializers.ValidationError(
+                "Username is required."
+            )
+
+        return value
+
+    def validate_email(
+        self,
+        value,
+    ):
+
+        return value.lower().strip()
+
+
+# ==========================================================
+# DELIVERY RIDER UPDATE SERIALIZER
+# ==========================================================
+
+class DeliveryRiderUpdateSerializer(
+    serializers.Serializer
+):
+
+    username = serializers.CharField(
+        required=False,
+        max_length=150,
+    )
+
+    email = serializers.EmailField(
+        required=False,
+    )
+
+    password = serializers.CharField(
+        required=False,
+        write_only=True,
+        min_length=8,
+    )
+
+    first_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    last_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+    )
+
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=20,
+    )
+
+
+# ==========================================================
+# REFUND SERIALIZER
+# ==========================================================
+
+class RefundSerializer(
+    serializers.ModelSerializer
+):
+
     customer_name = serializers.CharField(
         source="customer.username",
         read_only=True,
@@ -560,187 +953,145 @@ class DeliveryOrderSerializer(
         read_only=True,
     )
 
-    customer_phone = serializers.CharField(
-        source="customer.phone",
-        read_only=True,
-        allow_null=True,
-    )
-
-    items = DeliveryOrderItemSerializer(
-        source="items",
-        many=True,
-        read_only=True,
-    )
-
-    delivery_status = serializers.CharField(
-        source="delivery.status",
-        read_only=True,
-    )
-
-    delivery_id = serializers.IntegerField(
-        source="delivery.id",
+    order_status = serializers.CharField(
+        source="order.status",
         read_only=True,
     )
 
     class Meta:
-        model = Order
+
+        model = Refund
 
         fields = [
             "id",
+            "order",
+            "customer",
             "customer_name",
             "customer_email",
-            "customer_phone",
-            "shipping_address",
-            "payment_method",
-            "payment_status",
+            "order_status",
+            "reason",
+            "description",
+            "refund_amount",
             "status",
-            "subtotal",
-            "delivery_charge",
-            "total_amount",
-            "delivery_id",
-            "delivery_status",
-            "items",
-            "created_at",
-            "updated_at",
+            "requested_at",
+            "approved_at",
+            "completed_at",
+            "admin",
+            "admin_notes",
         ]
 
-        read_only_fields = fields
-
-    payment_status = serializers.SerializerMethodField()
-
-    def get_payment_status(
-        self,
-        obj,
-    ):
-
-        if hasattr(obj, "payment"):
-            return obj.payment.status
-
-        if (
-            obj.payment_method
-            == Order.PAYMENT_COD
-        ):
-            return "Cash on Delivery"
-
-        return None
+        read_only_fields = [
+            "id",
+            "customer",
+            "customer_name",
+            "customer_email",
+            "order_status",
+            "status",
+            "requested_at",
+            "approved_at",
+            "completed_at",
+            "admin",
+        ]
 
 
 # ==========================================================
-# DELIVERY STATUS SERIALIZER
+# CUSTOMER REFUND REQUEST SERIALIZER
 # ==========================================================
 
-class DeliveryStatusSerializer(
-    serializers.Serializer,
+class CustomerRefundRequestSerializer(
+    serializers.ModelSerializer
 ):
 
-    status = serializers.CharField()
+    class Meta:
 
-    def validate_status(
+        model = Refund
+
+        fields = [
+            "order",
+            "reason",
+            "description",
+        ]
+
+    def validate_reason(
         self,
         value,
     ):
 
-        value = str(value).strip()
-
-        allowed = [
-            Delivery.STATUS_ACCEPTED,
-            Delivery.STATUS_PICKED_UP,
-            Delivery.STATUS_OUT_FOR_DELIVERY,
-            Delivery.STATUS_DELIVERED,
-        ]
+        allowed = dict(
+            Refund.REASON_CHOICES
+        )
 
         if value not in allowed:
 
             raise serializers.ValidationError(
-                {
-                    "detail": "Invalid delivery status.",
-                    "allowed_values": allowed,
-                }
+                "Invalid refund reason."
             )
 
         return value
 
+    def validate_order(
+        self,
+        order,
+    ):
+
+        request = self.context.get(
+            "request"
+        )
+
+        if request is None:
+
+            raise serializers.ValidationError(
+                "Request context is required."
+            )
+
+        if order.customer_id != request.user.id:
+
+            raise serializers.ValidationError(
+                "You can only request a refund for your own order."
+            )
+
+        if order.status != Order.STATUS_DELIVERED:
+
+            raise serializers.ValidationError(
+                "Refund can only be requested after the order is delivered."
+            )
+
+        return order
+
 
 # ==========================================================
-# DELIVERY RIDER CREATE SERIALIZER
+# ADMIN REFUND UPDATE SERIALIZER
 # ==========================================================
 
-class DeliveryRiderCreateSerializer(
-    serializers.Serializer,
+class AdminRefundUpdateSerializer(
+    serializers.Serializer
 ):
 
-    email = serializers.EmailField()
-    username = serializers.CharField(
-        min_length=3,
-        max_length=150,
+    status = serializers.ChoiceField(
+        choices=[
+            (
+                Refund.STATUS_APPROVED,
+                "Approved",
+            ),
+            (
+                Refund.STATUS_REJECTED,
+                "Rejected",
+            ),
+            (
+                Refund.STATUS_COMPLETED,
+                "Completed",
+            ),
+        ]
     )
-    password = serializers.CharField(
-        min_length=8,
-        write_only=True,
+
+    refund_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0.00"),
     )
-    first_name = serializers.CharField(
+
+    admin_notes = serializers.CharField(
         required=False,
         allow_blank=True,
-        max_length=30,
     )
-    last_name = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=30,
-    )
-    phone = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=20,
-    )
-
-    def validate_email(
-        self,
-        value,
-    ):
-        return value.strip().lower()
-
-    def validate_username(
-        self,
-        value,
-    ):
-        value = value.strip()
-
-        if not value:
-            raise serializers.ValidationError(
-                "Username is required."
-            )
-
-        if User.objects.filter(
-            username=value
-        ).exists():
-            raise serializers.ValidationError(
-                "This username is already in use."
-            )
-
-        return value
-
-    def validate_password(
-        self,
-        value,
-    ):
-        stripped = value.strip()
-        if len(stripped) < 8:
-            raise serializers.ValidationError(
-                "Password must be at least 8 characters long."
-            )
-        return stripped
-
-    def validate_phone(
-        self,
-        value,
-    ):
-        if value is None:
-            return ""
-
-        value = str(value).strip()
-        if value and len(value) < 7:
-            raise serializers.ValidationError(
-                "Phone number is too short."
-            )
-        return value

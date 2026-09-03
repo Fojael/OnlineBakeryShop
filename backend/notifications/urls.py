@@ -54,3 +54,4 @@ urlpatterns = [
         name="notification-delete",
     ),
 ]
+

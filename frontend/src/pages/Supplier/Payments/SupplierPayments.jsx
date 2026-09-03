@@ -19,3 +19,4 @@ const SupplierPayments = () => {
 
 
 export default SupplierPayments;
+
