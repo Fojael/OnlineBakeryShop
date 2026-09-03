@@ -23,7 +23,7 @@ class SupplierDashboardService:
             supplier.products
             .select_related(
                 "inventory",
-                "category",
+                
             )
             .all()
         )
@@ -119,7 +119,7 @@ class SupplierDashboardService:
         pending_orders = (
             orders
             .filter(
-                status="PENDING",
+                status="Pending"
             )
             .count()
         )
@@ -127,7 +127,7 @@ class SupplierDashboardService:
         completed_orders = (
             orders
             .filter(
-                status="DELIVERED",
+                status="Delivered"
             )
             .count()
         )
@@ -135,7 +135,7 @@ class SupplierDashboardService:
         cancelled_orders = (
             orders
             .filter(
-                status="CANCELLED",
+                status="Cancelled"
             )
             .count()
         )
@@ -172,7 +172,7 @@ class SupplierDashboardService:
         pending_payments = (
             payments
             .filter(
-                status="PENDING",
+                status="Pending"
             )
             .count()
         )
@@ -180,7 +180,7 @@ class SupplierDashboardService:
         completed_payments = (
             payments
             .filter(
-                status="SUCCESS",
+                status="Success"
             )
             .count()
         )
@@ -188,7 +188,7 @@ class SupplierDashboardService:
         total_income = (
             payments
             .filter(
-                status="SUCCESS",
+                status="Success"
             )
             .aggregate(
                 total=Sum("amount"),

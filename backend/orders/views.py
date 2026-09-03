@@ -554,20 +554,7 @@ class OrderListCreateView(APIView):
                 cart=cart,
             ).delete()
 
-            # ------------------------------------------------
-            # PROCESSING
-            # ------------------------------------------------
-
-            order.status = (
-                Order.STATUS_PROCESSING
-            )
-
-            order.save(
-                update_fields=[
-                    "status",
-                    "updated_at",
-                ],
-            )
+            
 
         # ==================================================
         # SSL COMMERZ
@@ -2869,9 +2856,11 @@ class AdminAssignDeliveryView(APIView):
                 Delivery.STATUS_ASSIGNED
             )
 
+            existing_delivery.assigned_at = timezone.now()
             existing_delivery.accepted_at = None
             existing_delivery.picked_up_at = None
             existing_delivery.out_for_delivery_at = None
+            existing_delivery.delivered_at = None
 
             existing_delivery.save()
 
@@ -2883,15 +2872,16 @@ class AdminAssignDeliveryView(APIView):
                 order=order,
                 rider=rider,
                 status=Delivery.STATUS_ASSIGNED,
+                assigned_at=timezone.now(),
             )
-
+    
         # ==================================================
         # ORDER STATUS
         # ==================================================
 
         if (
             order.status
-            == Order.STATUS_PENDING
+            == Order.STATUS_ACCEPTED
         ):
 
             order.status = (
@@ -2904,7 +2894,6 @@ class AdminAssignDeliveryView(APIView):
                     "updated_at",
                 ],
             )
-
         # ==================================================
         # NOTIFY RIDER
         # ==================================================

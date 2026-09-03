@@ -169,27 +169,36 @@ const AdminOrders = () => {
 
     const getStatusBadge = (status) => {
 
-        switch (status) {
+    switch (status) {
 
-            case "Pending":
-                return "badge bg-warning text-dark";
+        case "Pending":
+            return "badge bg-warning text-dark";
 
-            case "Accepted":
-                return "badge bg-primary";
+        case "Accepted":
+            return "badge bg-primary";
 
-            case "Processing":
-                return "badge bg-info text-dark";
+        case "Processing":
+            return "badge bg-info";
 
-            case "Delivered":
-                return "badge bg-success";
+        case "Ready":
+            return "badge bg-success";
 
-            case "Cancelled":
-                return "badge bg-danger";
+        case "Assigned":
+            return "badge bg-secondary";
 
-            default:
-                return "badge bg-secondary";
-        }
-    };
+        case "Out for Delivery":
+            return "badge bg-dark";
+
+        case "Delivered":
+            return "badge bg-success";
+
+        case "Cancelled":
+            return "badge bg-danger";
+
+        default:
+            return "badge bg-light text-dark";
+    }
+};
 
 
     // =========================================================
@@ -471,29 +480,37 @@ const handleAcceptOrder = async (orderId) => {
                                     }
                                 >
 
-                                    <option value="All">
-                                        All Orders
-                                    </option>
+<option value="Pending">
+    Pending
+</option>
 
-                                    <option value="Pending">
-                                        Pending
-                                    </option>
+<option value="Accepted">
+    Accepted
+</option>
 
-                                    <option value="Processing">
-                                        Processing
-                                    </option>
+<option value="Processing">
+    Processing
+</option>
 
-                                    <option value="Accepted">
-                                        Accepted
-                                    </option>
+<option value="Ready">
+    Ready
+</option>
 
-                                    <option value="Delivered">
-                                        Delivered
-                                    </option>
+<option value="Assigned">
+    Assigned
+</option>
 
-                                    <option value="Cancelled">
-                                        Cancelled
-                                    </option>
+<option value="Out for Delivery">
+    Out for Delivery
+</option>
+
+<option value="Delivered">
+    Delivered
+</option>
+
+<option value="Cancelled">
+    Cancelled
+</option>
 
                                 </select>
 
@@ -767,10 +784,7 @@ const handleAcceptOrder = async (orderId) => {
             DELIVERY RIDER ASSIGNMENT
         ================================================= */}
 
-       {(
-    order.status === "Accepted" ||
-    order.status === "Processing"
-) && (
+       {order.status === "Ready" && (
 
     <div className="d-flex gap-2 align-items-center">
 
@@ -842,17 +856,22 @@ const handleAcceptOrder = async (orderId) => {
             UPDATE ORDER
         ================================================= */}
 
-        <button
-            type="button"
-            className="btn btn-warning btn-sm"
-            onClick={() =>
-                handleUpdateOrder(
-                    order.id
-                )
-            }
-        >
-            Update
-        </button>
+       {(
+    order.status === "Pending" ||
+    order.status === "Ready"
+) && (
+
+    <button
+        type="button"
+        className="btn btn-warning btn-sm"
+        onClick={() =>
+            handleUpdateOrder(order.id)
+        }
+    >
+        Update
+    </button>
+
+)}
 
     </div>
 

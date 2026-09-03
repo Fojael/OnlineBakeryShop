@@ -123,7 +123,7 @@ const Categories = () => {
 
                                             <td>
                                                 <strong>
-                                                    {category.name}
+                                                    {category}
                                                 </strong>
                                             </td>
 

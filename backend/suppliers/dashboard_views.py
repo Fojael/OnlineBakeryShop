@@ -47,7 +47,7 @@ class SupplierDashboardView(
         .prefetch_related(
             "products",
             "products__inventory",
-            "products__category",
+            
         )
     )
 
@@ -181,8 +181,9 @@ class SupplierDashboardView(
         # ======================================================
 
         serializer = self.get_serializer(
-            data
+            instance=data
         )
+
 
 
         # ======================================================
@@ -192,8 +193,6 @@ class SupplierDashboardView(
         return Response(
             {
                 "success": True,
-
-                "dashboard":
-                    serializer.data,
+                "dashboard": serializer.data,
             }
         )

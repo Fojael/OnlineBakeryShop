@@ -23,6 +23,34 @@ const UpdateOrder = () => {
     // =========================================================
     // Fetch Order
     // =========================================================
+const getAvailableStatuses = (currentStatus) => {
+    switch (currentStatus) {
+
+        case "Pending":
+            return [
+                {
+                    value: "Accepted",
+                    label: "Accept Order",
+                },
+                {
+                    value: "Cancelled",
+                    label: "Cancel Order",
+                },
+            ];
+
+        case "Ready":
+            return [
+                {
+                    value: "Assigned",
+                    label: "Assign Rider",
+                },
+            ];
+
+        default:
+            return [];
+    }
+};
+
 
     useEffect(() => {
         let cancelled = false;
@@ -40,7 +68,15 @@ const UpdateOrder = () => {
                 const orderData = response.data;
 
                 setOrder(orderData);
-                setStatus(orderData.status || "Pending");
+
+const available =
+    getAvailableStatuses(orderData.status);
+
+setStatus(
+    available.length
+        ? available[0].value
+        : ""
+);
             } catch (error) {
                 if (cancelled) {
                     return;
@@ -69,24 +105,38 @@ const UpdateOrder = () => {
     // Status Badge
     // =========================================================
 
-    const getStatusBadge = (orderStatus) => {
-        switch (orderStatus) {
-            case "Pending":
-                return "badge bg-warning text-dark";
+    const getStatusBadge = (status) => {
 
-            case "Processing":
-                return "badge bg-info";
+    switch (status) {
 
-            case "Delivered":
-                return "badge bg-success";
+        case "Pending":
+            return "badge bg-warning text-dark";
 
-            case "Cancelled":
-                return "badge bg-danger";
+        case "Accepted":
+            return "badge bg-primary";
 
-            default:
-                return "badge bg-secondary";
-        }
-    };
+        case "Processing":
+            return "badge bg-info";
+
+        case "Ready":
+            return "badge bg-success";
+
+        case "Assigned":
+            return "badge bg-secondary";
+
+        case "Out for Delivery":
+            return "badge bg-dark";
+
+        case "Delivered":
+            return "badge bg-success";
+
+        case "Cancelled":
+            return "badge bg-danger";
+
+        default:
+            return "badge bg-light text-dark";
+    }
+};
 
     // =========================================================
     // Customer Name
@@ -317,12 +367,8 @@ const UpdateOrder = () => {
                                         </label>
 
                                         <div>
-                                            <span
-                                                className={getStatusBadge(
-                                                    status
-                                                )}
-                                            >
-                                                {status}
+                                            <span className={getStatusBadge(order.status)}>
+                                                {order.status}
                                             </span>
                                         </div>
                                     </div>
@@ -347,27 +393,31 @@ const UpdateOrder = () => {
                                                     event.target.value
                                                 )
                                             }
-                                            disabled={saving}
+                                            disabled={
+                                                saving ||
+                                                !status
+                                            }
                                         >
-                                            <option value="">
-                                                Select Status
-                                            </option>
+                                           {getAvailableStatuses(order.status).length > 0 ? (
 
-                                            <option value="Pending">
-                                                Pending
-                                            </option>
+                                                getAvailableStatuses(order.status).map((item) => (
 
-                                            <option value="Processing">
-                                                Processing
-                                            </option>
+                                                    <option
+                                                        key={item.value}
+                                                        value={item.value}
+                                                    >
+                                                        {item.label}
+                                                    </option>
 
-                                            <option value="Delivered">
-                                                Delivered
-                                            </option>
+                                                ))
 
-                                            <option value="Cancelled">
-                                                Cancelled
-                                            </option>
+                                            ) : (
+
+                                                    <option value="">
+                                                        No admin action available
+                                                    </option>
+
+                                            )} 
                                         </select>
                                     </div>
 
@@ -423,3 +473,4 @@ const UpdateOrder = () => {
 };
 
 export default UpdateOrder;
+

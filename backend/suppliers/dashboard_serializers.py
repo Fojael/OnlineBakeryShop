@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from products.models import Product
 
+from .serializers import SupplierProductSerializer
 
 # ==========================================================
 # SUPPLIER DASHBOARD PRODUCT
@@ -12,7 +13,7 @@ class SupplierDashboardProductSerializer(
 ):
 
     category_name = serializers.CharField(
-        source="category.name",
+        source="category",
         read_only=True,
     )
 
@@ -136,53 +137,30 @@ class SupplierRecentActivitySerializer(
 # COMPLETE DASHBOARD
 # ==========================================================
 
-class SupplierDashboardSerializer(
-    serializers.Serializer
-):
+from rest_framework import serializers
 
-    supplier = SupplierDashboardSupplierSerializer()
+from .serializers import SupplierProductSerializer
 
-    statistics = (
-        SupplierDashboardStatisticsSerializer()
+
+class SupplierDashboardSerializer(serializers.Serializer):
+
+    supplier = serializers.DictField()
+
+    statistics = serializers.DictField()
+
+    notifications = serializers.ListField()
+
+    recent_activity = serializers.ListField()
+
+    recent_products = SupplierProductSerializer(
+        many=True,
+        read_only=True,
     )
 
-    notifications = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        default=list,
-    )
+    recent_orders = serializers.ListField()
 
-    recent_activity = (
-        SupplierRecentActivitySerializer(
-            many=True,
-        )
-    )
+    low_stock_alerts = serializers.ListField()
 
-    recent_orders = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        default=list,
-    )
+    inventory_summary = serializers.DictField()
 
-    low_stock_alerts = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        default=list,
-    )
-
-    inventory_summary = serializers.DictField(
-        required=False,
-        default=dict,
-    )
-
-    sales_overview = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        default=list,
-    )
-
-    recent_products = (
-        SupplierDashboardProductSerializer(
-            many=True,
-        )
-    )
+    sales_overview = serializers.ListField()

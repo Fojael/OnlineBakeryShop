@@ -21,31 +21,53 @@ class SupplierProductSerializer(
     their own products.
     """
 
-    category_name = serializers.CharField(
-        source="category.name",
-        read_only=True,
-    )
+    category_name = serializers.SerializerMethodField()
+
+    def get_category_name(self, obj):
+        return obj.category
 
     supplier_name = serializers.CharField(
         source="supplier.name",
         read_only=True,
     )
 
-    current_stock = serializers.IntegerField(
-        source="inventory.current_stock",
-        read_only=True,
-    )
+    current_stock = serializers.SerializerMethodField()
 
-    minimum_stock = serializers.IntegerField(
-        source="inventory.minimum_stock",
-        read_only=True,
-    )
+    minimum_stock = serializers.SerializerMethodField()
 
-    inventory_status = serializers.CharField(
-        source="inventory.status",
-        read_only=True,
-    )
+    inventory_status = serializers.SerializerMethodField()
+    
+    def get_current_stock(self, obj):
 
+        inventory = getattr(obj, "inventory", None)
+
+        if inventory:
+
+            return inventory.current_stock
+
+        return obj.stock_quantity
+
+
+    def get_minimum_stock(self, obj):
+
+        inventory = getattr(obj, "inventory", None)
+
+        if inventory:
+
+            return inventory.minimum_stock
+
+        return 0
+
+
+    def get_inventory_status(self, obj):
+
+        inventory = getattr(obj, "inventory", None)
+
+        if inventory:
+
+            return inventory.status
+
+        return "Normal"
     class Meta:
 
         model = Product
