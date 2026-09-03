@@ -1,16 +1,14 @@
 from rest_framework import serializers
 
 from products.models import Product
-
 from .serializers import SupplierProductSerializer
+
 
 # ==========================================================
 # SUPPLIER DASHBOARD PRODUCT
 # ==========================================================
 
-class SupplierDashboardProductSerializer(
-    serializers.ModelSerializer
-):
+class SupplierDashboardProductSerializer(serializers.ModelSerializer):
 
     category_name = serializers.CharField(
         source="category",
@@ -33,31 +31,19 @@ class SupplierDashboardProductSerializer(
     )
 
     class Meta:
-
         model = Product
 
         fields = (
-
             "id",
-
             "name",
-
             "category",
-
             "category_name",
-
             "price",
-
             "stock_quantity",
-
             "current_stock",
-
             "minimum_stock",
-
             "inventory_status",
-
             "is_available",
-
         )
 
 
@@ -65,9 +51,7 @@ class SupplierDashboardProductSerializer(
 # SUPPLIER INFORMATION
 # ==========================================================
 
-class SupplierDashboardSupplierSerializer(
-    serializers.Serializer
-):
+class SupplierDashboardSupplierSerializer(serializers.Serializer):
 
     id = serializers.IntegerField()
 
@@ -84,9 +68,7 @@ class SupplierDashboardSupplierSerializer(
 # DASHBOARD STATISTICS
 # ==========================================================
 
-class SupplierDashboardStatisticsSerializer(
-    serializers.Serializer
-):
+class SupplierDashboardStatisticsSerializer(serializers.Serializer):
 
     total_products = serializers.IntegerField()
 
@@ -118,9 +100,7 @@ class SupplierDashboardStatisticsSerializer(
 # RECENT ACTIVITY
 # ==========================================================
 
-class SupplierRecentActivitySerializer(
-    serializers.Serializer
-):
+class SupplierRecentActivitySerializer(serializers.Serializer):
 
     id = serializers.IntegerField()
 
@@ -136,11 +116,6 @@ class SupplierRecentActivitySerializer(
 # ==========================================================
 # COMPLETE DASHBOARD
 # ==========================================================
-
-from rest_framework import serializers
-
-from .serializers import SupplierProductSerializer
-
 
 class SupplierDashboardSerializer(serializers.Serializer):
 
@@ -164,3 +139,4 @@ class SupplierDashboardSerializer(serializers.Serializer):
     inventory_summary = serializers.DictField()
 
     sales_overview = serializers.ListField()
+    

@@ -20,6 +20,9 @@ class Order(models.Model):
     STATUS_PENDING = "Pending"
     STATUS_ACCEPTED = "Accepted"
     STATUS_PROCESSING = "Processing"
+    STATUS_READY = "Ready"
+    STATUS_ASSIGNED = "Assigned"
+    STATUS_OUT_FOR_DELIVERY = "Out for Delivery"
     STATUS_DELIVERED = "Delivered"
     STATUS_CANCELLED = "Cancelled"
 
@@ -27,6 +30,9 @@ class Order(models.Model):
         (STATUS_PENDING, "Pending"),
         (STATUS_ACCEPTED, "Accepted"),
         (STATUS_PROCESSING, "Processing"),
+        (STATUS_READY, "Ready"),
+        (STATUS_ASSIGNED, "Assigned"),
+        (STATUS_OUT_FOR_DELIVERY, "Out for Delivery"),
         (STATUS_DELIVERED, "Delivered"),
         (STATUS_CANCELLED, "Cancelled"),
     ]
@@ -162,6 +168,7 @@ class Order(models.Model):
 
         if self.status not in [
             self.STATUS_PENDING,
+            self.STATUS_ACCEPTED,
             self.STATUS_PROCESSING,
         ]:
             return False

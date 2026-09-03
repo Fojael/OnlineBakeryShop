@@ -148,3 +148,5 @@ class InventoryUpdateView(
         serializer.instance = inventory
 
         serializer.save()
+        
+        

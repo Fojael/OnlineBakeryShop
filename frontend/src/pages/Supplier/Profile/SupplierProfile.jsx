@@ -288,3 +288,4 @@ const SupplierProfile = () => {
 };
 
 export default SupplierProfile;
+

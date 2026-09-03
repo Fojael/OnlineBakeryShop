@@ -152,3 +152,5 @@ class InventorySerializer(serializers.ModelSerializer):
         )
 
         return instance
+    
+    

@@ -195,3 +195,4 @@ export const deactivateSupplier = async (id) => {
 
     return response;
 };
+

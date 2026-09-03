@@ -14,3 +14,5 @@ class InventoryDashboardSerializer(
     low_stock = serializers.IntegerField()
 
     out_of_stock = serializers.IntegerField()
+    
+    

@@ -235,3 +235,4 @@ class Supplier(models.Model):
             and self.user is not None
             and self.user.is_active
         )
+        

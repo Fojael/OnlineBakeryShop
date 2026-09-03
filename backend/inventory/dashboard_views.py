@@ -111,3 +111,4 @@ class InventoryDashboardView(
         return Response(
             serializer.data
         )
+        
