@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
+import DashboardLayout from "../../../layouts/DashboardLayout";
+
 import {
     getCategory,
     updateCategory,
@@ -14,34 +16,58 @@ const EditCategory = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const [name, setName] = useState("");
-    const [description, setDescription] = useState("");
+    const [formData, setFormData] = useState({
+        name: "",
+        description: "",
+    });
 
     useEffect(() => {
-        const loadCategory = async () => {
+        const controller = new AbortController();
+
+        (async () => {
             try {
-                const response = await getCategory(id);
+                const response = await getCategory(id, {
+                    signal: controller.signal,
+                });
 
-                setName(response.data.name);
-                setDescription(response.data.description || "");
+                setFormData({
+                    name: response.data.name || "",
+                    description: response.data.description || "",
+                });
             } catch (error) {
-                console.log(error);
+                if (
+                    error.name !== "CanceledError" &&
+                    error.name !== "AbortError"
+                ) {
+                    console.error(error);
 
-                toast.error("Failed to load category.");
+                    toast.error("Failed to load category.");
 
-                navigate("/admin/categories");
+                    navigate("/admin/categories", {
+                        replace: true,
+                    });
+                }
             } finally {
                 setLoading(false);
             }
-        };
+        })();
 
-        loadCategory();
+        return () => controller.abort();
     }, [id, navigate]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+
+        setFormData((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!name.trim()) {
+        if (!formData.name.trim()) {
             toast.error("Category name is required.");
             return;
         }
@@ -50,38 +76,44 @@ const EditCategory = () => {
             setSaving(true);
 
             await updateCategory(id, {
-                name,
-                description,
+                name: formData.name.trim(),
+                description: formData.description.trim(),
             });
 
             toast.success("Category updated successfully.");
 
             navigate("/admin/categories");
-
         } catch (error) {
-
-            console.log(error);
-
+            console.error(error);
             toast.error("Failed to update category.");
-
         } finally {
-
             setSaving(false);
-
         }
     };
 
     if (loading) {
         return (
-            <div className="container py-5 text-center">
-                <h4>Loading Category...</h4>
-            </div>
+            <DashboardLayout>
+                <div className="text-center py-5">
+                    <div
+                        className="spinner-border text-warning"
+                        role="status"
+                    >
+                        <span className="visually-hidden">
+                            Loading...
+                        </span>
+                    </div>
+
+                    <h5 className="mt-3">
+                        Loading Category...
+                    </h5>
+                </div>
+            </DashboardLayout>
         );
     }
 
     return (
-        <div className="container py-4">
-
+        <DashboardLayout>
             <div className="row justify-content-center">
 
                 <div className="col-lg-8">
@@ -108,11 +140,10 @@ const EditCategory = () => {
 
                                     <input
                                         type="text"
+                                        name="name"
                                         className="form-control"
-                                        value={name}
-                                        onChange={(e) =>
-                                            setName(e.target.value)
-                                        }
+                                        value={formData.name}
+                                        onChange={handleChange}
                                         required
                                     />
 
@@ -126,13 +157,10 @@ const EditCategory = () => {
 
                                     <textarea
                                         rows="4"
+                                        name="description"
                                         className="form-control"
-                                        value={description}
-                                        onChange={(e) =>
-                                            setDescription(
-                                                e.target.value
-                                            )
-                                        }
+                                        value={formData.description}
+                                        onChange={handleChange}
                                     />
 
                                 </div>
@@ -172,8 +200,7 @@ const EditCategory = () => {
                 </div>
 
             </div>
-
-        </div>
+        </DashboardLayout>
     );
 };
 

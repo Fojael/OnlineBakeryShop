@@ -1,5 +1,6 @@
-import useNotification
-    from "../../../hooks/useNotification";
+import useNotification from "../../../hooks/useNotification";
+
+import DashboardLayout from "../../../layouts/DashboardLayout";
 
 import "../../../styles/Notification.css";
 
@@ -7,136 +8,103 @@ import "../../../styles/Notification.css";
 const NotificationsPage = () => {
 
     const {
-
         notifications,
-
         unreadCount,
-
         loading,
-
         markNotificationRead,
-
         markAllRead,
-
         deleteNotification,
-
         deleteAllNotifications,
-
     } = useNotification();
 
 
     return (
 
-        <div className="container py-4">
+        <DashboardLayout>
 
-            <div className="notification-header">
+            <div className="container-fluid py-4">
 
-                <div>
+                {/* =====================================================
+                    PAGE HEADER
+                ====================================================== */}
 
-                    <h2 className="mb-1">
-                        Notifications
-                    </h2>
+                <div className="notification-header">
 
-                    <p className="text-muted mb-0">
+                    <div>
 
-                        Total: {notifications.length}
+                        <h2 className="mb-1">
+                            Notifications
+                        </h2>
 
-                        {" | "}
+                        <p className="text-muted mb-0">
 
-                        Unread: {unreadCount}
+                            Total: {notifications.length}
 
-                    </p>
+                            {" | "}
 
-                </div>
+                            Unread: {unreadCount}
 
+                        </p>
 
-                <div
-                    className="
-                        notification-actions
-                    "
-                >
-
-                    <button
-                        type="button"
-                        className="
-                            btn
-                            btn-primary
-                        "
-                        onClick={markAllRead}
-                        disabled={
-                            unreadCount === 0
-                        }
-                    >
-                        Mark All Read
-                    </button>
+                    </div>
 
 
-                    <button
-                        type="button"
-                        className="
-                            btn
-                            btn-danger
-                        "
-                        onClick={
-                            deleteAllNotifications
-                        }
-                        disabled={
-                            notifications.length === 0
-                        }
-                    >
-                        Delete All
-                    </button>
+                    {/* =================================================
+                        HEADER ACTIONS
+                    ================================================== */}
 
-                </div>
+                    <div className="notification-actions">
 
-            </div>
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={markAllRead}
+                            disabled={unreadCount === 0}
+                        >
+                            Mark All Read
+                        </button>
 
 
-            <hr />
-
-
-            {loading && (
-
-                <div
-                    className="
-                        text-center
-                        py-5
-                    "
-                >
-
-                    <div
-                        className="
-                            spinner-border
-                        "
-                        role="status"
-                    >
-
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
+                        <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={deleteAllNotifications}
+                            disabled={
+                                notifications.length === 0
+                            }
+                        >
+                            Delete All
+                        </button>
 
                     </div>
 
                 </div>
 
-            )}
+
+                <hr />
 
 
-            {!loading &&
-                notifications.length === 0 && (
+                {/* =====================================================
+                    LOADING
+                ====================================================== */}
 
-                    <div
-                        className="
-                            empty-notification
-                        "
-                    >
+                {loading && (
 
-                        <h4>
-                            🎉 You're all caught up!
-                        </h4>
+                    <div className="text-center py-5">
 
-                        <p>
-                            No notifications found.
+                        <div
+                            className="spinner-border"
+                            role="status"
+                        >
+
+                            <span className="visually-hidden">
+                                Loading...
+                            </span>
+
+                        </div>
+
+                        <p className="mt-3 text-muted">
+                            Loading notifications...
                         </p>
 
                     </div>
@@ -144,14 +112,38 @@ const NotificationsPage = () => {
                 )}
 
 
-            {!loading &&
-                notifications.map(
-                    (notification) => (
+                {/* =====================================================
+                    EMPTY STATE
+                ====================================================== */}
+
+                {!loading &&
+                    notifications.length === 0 && (
+
+                        <div className="empty-notification">
+
+                            <h4>
+                                🎉 You're all caught up!
+                            </h4>
+
+                            <p>
+                                No notifications found.
+                            </p>
+
+                        </div>
+
+                    )}
+
+
+                {/* =====================================================
+                    NOTIFICATION LIST
+                ====================================================== */}
+
+                {!loading &&
+                    notifications.length > 0 &&
+                    notifications.map((notification) => (
 
                         <div
-                            key={
-                                notification.id
-                            }
+                            key={notification.id}
                             className={`
                                 notification-card
                                 ${
@@ -162,46 +154,42 @@ const NotificationsPage = () => {
                             `}
                         >
 
-                            <div
-                                className="
-                                    notification-content
-                                "
-                            >
+                            {/* =================================================
+                                NOTIFICATION CONTENT
+                            ================================================== */}
+
+                            <div className="notification-content">
 
                                 <h5>
-                                    {
-                                        notification.title
-                                    }
+                                    {notification.title}
                                 </h5>
 
 
                                 <p>
-                                    {
-                                        notification.message
-                                    }
+                                    {notification.message}
                                 </p>
 
 
-                                <small
-                                    className="
-                                        text-muted
-                                    "
-                                >
+                                <small className="text-muted">
 
-                                    {new Date(
-                                        notification.created_at
-                                    ).toLocaleString()}
+                                    {notification.created_at
+                                        ? new Date(
+                                              notification.created_at
+                                          ).toLocaleString()
+                                        : "Unknown date"}
 
                                 </small>
 
                             </div>
 
 
-                            <div
-                                className="
-                                    notification-buttons
-                                "
-                            >
+                            {/* =================================================
+                                NOTIFICATION ACTIONS
+                            ================================================== */}
+
+                            <div className="notification-buttons">
+
+                                {/* Mark Read */}
 
                                 {!notification.is_read && (
 
@@ -224,6 +212,8 @@ const NotificationsPage = () => {
                                 )}
 
 
+                                {/* Delete */}
+
                                 <button
                                     type="button"
                                     className="
@@ -244,10 +234,11 @@ const NotificationsPage = () => {
 
                         </div>
 
-                    )
-                )}
+                    ))}
 
-        </div>
+            </div>
+
+        </DashboardLayout>
 
     );
 

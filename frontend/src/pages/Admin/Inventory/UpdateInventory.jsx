@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
+import DashboardLayout from "../../../layouts/DashboardLayout";
+
 import {
     getInventoryItem,
     updateInventory,
@@ -16,80 +18,96 @@ const UpdateInventory = () => {
 
     const [productName, setProductName] = useState("");
 
-    const [currentStock, setCurrentStock] = useState(0);
-    const [minimumStock, setMinimumStock] = useState(10);
+    const [formData, setFormData] = useState({
+        current_stock: 0,
+        minimum_stock: 10,
+    });
 
     useEffect(() => {
-        const fetchInventory = async () => {
+        let ignore = false;
+
+        const loadInventory = async () => {
             try {
-                const response =
-                    await getInventoryItem(id);
+                const response = await getInventoryItem(id);
+
+                if (ignore) return;
 
                 const item = response.data;
 
-                setProductName(item.product_name);
-                setCurrentStock(item.current_stock);
-                setMinimumStock(item.minimum_stock);
+                setProductName(item.product_name || "");
+
+                setFormData({
+                    current_stock: Number(item.current_stock),
+                    minimum_stock: Number(item.minimum_stock),
+                });
 
             } catch (error) {
-                console.log(error);
-                toast.error(
-                    "Failed to load inventory."
-                );
+                console.error(error);
 
-                navigate("/admin/inventory");
+                if (!ignore) {
+                    toast.error("Failed to load inventory.");
+                    navigate("/admin/inventory");
+                }
+
             } finally {
-                setLoading(false);
+                if (!ignore) {
+                    setLoading(false);
+                }
             }
         };
 
-        fetchInventory();
+        loadInventory();
+
+        return () => {
+            ignore = true;
+        };
     }, [id, navigate]);
 
-    // Remaining Stock
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+
+        setFormData((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+    };
+
     const remainingStock = useMemo(() => {
         return (
-            Number(currentStock) -
-            Number(minimumStock)
+            Number(formData.current_stock) -
+            Number(formData.minimum_stock)
         );
-    }, [currentStock, minimumStock]);
+    }, [formData]);
 
-    // Inventory Status
     const inventoryStatus = useMemo(() => {
 
-        if (Number(currentStock) === 0)
-            return "Out of Stock";
+        const stock = Number(formData.current_stock);
+        const minimum = Number(formData.minimum_stock);
 
-        if (
-            Number(currentStock) <=
-            Number(minimumStock)
-        )
-            return "Low Stock";
+        if (stock === 0) return "Out of Stock";
+
+        if (stock <= minimum) return "Low Stock";
 
         return "In Stock";
 
-    }, [currentStock, minimumStock]);
+    }, [formData]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (
-            currentStock === "" ||
-            minimumStock === ""
+            formData.current_stock === "" ||
+            formData.minimum_stock === ""
         ) {
-            toast.warning(
-                "Please fill all required fields."
-            );
+            toast.warning("Please fill all required fields.");
             return;
         }
 
         if (
-            Number(currentStock) < 0 ||
-            Number(minimumStock) < 0
+            Number(formData.current_stock) < 0 ||
+            Number(formData.minimum_stock) < 0
         ) {
-            toast.warning(
-                "Stock values cannot be negative."
-            );
+            toast.warning("Stock values cannot be negative.");
             return;
         }
 
@@ -97,23 +115,19 @@ const UpdateInventory = () => {
             setSaving(true);
 
             await updateInventory(id, {
-                current_stock: Number(currentStock),
-                minimum_stock: Number(minimumStock),
+                current_stock: Number(formData.current_stock),
+                minimum_stock: Number(formData.minimum_stock),
             });
 
-            toast.success(
-                "Inventory updated successfully."
-            );
+            toast.success("Inventory updated successfully.");
 
             navigate("/admin/inventory");
 
         } catch (error) {
 
-            console.log(error);
+            console.error(error);
 
-            toast.error(
-                "Failed to update inventory."
-            );
+            toast.error("Failed to update inventory.");
 
         } finally {
 
@@ -124,27 +138,29 @@ const UpdateInventory = () => {
 
     if (loading) {
         return (
-            <div className="container py-5 text-center">
+            <DashboardLayout>
+                <div className="text-center py-5">
 
-                <div
-                    className="spinner-border text-primary"
-                    role="status"
-                >
-                    <span className="visually-hidden">
-                        Loading...
-                    </span>
+                    <div
+                        className="spinner-border text-primary"
+                        role="status"
+                    >
+                        <span className="visually-hidden">
+                            Loading...
+                        </span>
+                    </div>
+
+                    <h5 className="mt-3">
+                        Loading Inventory...
+                    </h5>
+
                 </div>
-
-                <h4 className="mt-3">
-                    Loading Inventory...
-                </h4>
-
-            </div>
+            </DashboardLayout>
         );
     }
 
     return (
-        <div className="container py-4">
+        <DashboardLayout>
 
             <div className="row justify-content-center">
 
@@ -162,11 +178,7 @@ const UpdateInventory = () => {
 
                         <div className="card-body">
 
-                            <form
-                                onSubmit={handleSubmit}
-                            >
-
-                                {/* Product Name */}
+                            <form onSubmit={handleSubmit}>
 
                                 <div className="mb-3">
 
@@ -183,8 +195,6 @@ const UpdateInventory = () => {
 
                                 </div>
 
-                                {/* Current Stock */}
-
                                 <div className="mb-3">
 
                                     <label className="form-label">
@@ -193,22 +203,14 @@ const UpdateInventory = () => {
 
                                     <input
                                         type="number"
+                                        name="current_stock"
                                         min="0"
                                         className="form-control"
-                                        value={
-                                            currentStock
-                                        }
-                                        onChange={(e) =>
-                                            setCurrentStock(
-                                                e.target
-                                                    .value
-                                            )
-                                        }
+                                        value={formData.current_stock}
+                                        onChange={handleChange}
                                     />
 
                                 </div>
-
-                                {/* Minimum Stock */}
 
                                 <div className="mb-3">
 
@@ -218,105 +220,84 @@ const UpdateInventory = () => {
 
                                     <input
                                         type="number"
+                                        name="minimum_stock"
                                         min="0"
                                         className="form-control"
-                                        value={
-                                            minimumStock
-                                        }
-                                        onChange={(e) =>
-                                            setMinimumStock(
-                                                e.target
-                                                    .value
-                                            )
-                                        }
+                                        value={formData.minimum_stock}
+                                        onChange={handleChange}
                                     />
 
                                 </div>
 
-                                {/* Remaining Stock */}
-
                                 <div className="mb-3">
 
                                     <label className="form-label">
-                                        Remaining
-                                        Stock
+                                        Remaining Stock
                                     </label>
 
                                     <input
                                         type="text"
                                         className="form-control"
-                                        value={
-                                            remainingStock
-                                        }
+                                        value={remainingStock}
                                         readOnly
                                     />
 
                                 </div>
 
-                                {/* Status */}
-
                                 <div className="mb-4">
 
                                     <label className="form-label">
-                                        Inventory
-                                        Status
+                                        Inventory Status
                                     </label>
 
                                     <div>
 
-                                        {inventoryStatus ===
-                                        "In Stock" ? (
-
+                                        {inventoryStatus === "In Stock" && (
                                             <span className="badge bg-success fs-6">
                                                 In Stock
                                             </span>
+                                        )}
 
-                                        ) : inventoryStatus ===
-                                          "Low Stock" ? (
-
+                                        {inventoryStatus === "Low Stock" && (
                                             <span className="badge bg-warning text-dark fs-6">
-                                                Low
-                                                Stock
+                                                Low Stock
                                             </span>
+                                        )}
 
-                                        ) : (
-
+                                        {inventoryStatus === "Out of Stock" && (
                                             <span className="badge bg-danger fs-6">
-                                                Out
-                                                of
-                                                Stock
+                                                Out of Stock
                                             </span>
-
                                         )}
 
                                     </div>
 
                                 </div>
 
-                                {/* Buttons */}
+                                <div className="d-flex gap-2">
 
-                                <button
-                                    className="btn btn-primary"
-                                    disabled={
-                                        saving
-                                    }
-                                >
-                                    {saving
-                                        ? "Updating..."
-                                        : "Save Changes"}
-                                </button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary"
+                                        disabled={saving}
+                                    >
+                                        {saving
+                                            ? "Updating..."
+                                            : "Save Changes"}
+                                    </button>
 
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary ms-2"
-                                    onClick={() =>
-                                        navigate(
-                                            "/admin/inventory"
-                                        )
-                                    }
-                                >
-                                    Cancel
-                                </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        disabled={saving}
+                                        onClick={() =>
+                                            navigate("/admin/inventory")
+                                        }
+                                    >
+                                        Cancel
+                                    </button>
+
+                                </div>
 
                             </form>
 
@@ -328,7 +309,7 @@ const UpdateInventory = () => {
 
             </div>
 
-        </div>
+        </DashboardLayout>
     );
 };
 

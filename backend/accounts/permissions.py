@@ -124,3 +124,4 @@ class IsDeliveryRider(
             return False
 
         return request.user.is_active
+    

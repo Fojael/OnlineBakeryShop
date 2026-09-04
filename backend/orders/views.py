@@ -28,12 +28,19 @@ from accounts.permissions import (
     IsDeliveryRider,
 )
 
+from delivery.models import Delivery
+from delivery.serializers import (
+    DeliveryOrderSerializer,
+    DeliveryStatusUpdateSerializer,
+    DeliveryRiderCreateSerializer,
+    DeliveryRiderUpdateSerializer,
+)
+
 from .models import (
     Order,
     OrderItem,
     OrderAddress,
     Refund,
-    Delivery,
 )
 
 from .serializers import (
@@ -41,10 +48,6 @@ from .serializers import (
     OrderCreateSerializer,
     SupplierOrderSerializer,
     SupplierOrderItemStatusSerializer,
-    DeliveryOrderSerializer,
-    DeliveryStatusSerializer,
-    DeliveryRiderCreateSerializer,
-    DeliveryRiderUpdateSerializer,
     RefundSerializer,
     CustomerRefundRequestSerializer,
     AdminRefundUpdateSerializer,
@@ -65,22 +68,14 @@ DELIVERY_CHARGE = Decimal("60.00")
 # PRODUCT AVAILABILITY
 # ==========================================================
 
-def product_is_available(
-    product,
-):
+def product_is_available(product):
 
-    if hasattr(
-        product,
-        "is_available",
-    ):
+    if hasattr(product, "is_available"):
 
         if not product.is_available:
             return False
 
-    if hasattr(
-        product,
-        "is_active",
-    ):
+    if hasattr(product, "is_active"):
 
         if not product.is_active:
             return False
@@ -131,13 +126,88 @@ def notify_customer(
     )
 
 
+def notify_user(
+    recipient,
+    title,
+    message,
+    notification_type,
+):
+
+    if not recipient:
+        return None
+
+    try:
+
+        return Notification.objects.create(
+            recipient=recipient,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+        )
+
+    except Exception:
+        return None
+
+
+# ==========================================================
+# DELIVERY RIDER HELPER
+# ==========================================================
+
+def is_delivery_rider_user(user):
+
+    if not user:
+        return False
+
+    if not user.is_active:
+        return False
+
+    user_role = getattr(
+        user,
+        "role",
+        None,
+    )
+
+    allowed_roles = set()
+
+    role_delivery = getattr(
+        User,
+        "ROLE_DELIVERY",
+        None,
+    )
+
+    role_delivery_rider = getattr(
+        User,
+        "ROLE_DELIVERY_RIDER",
+        None,
+    )
+
+    if role_delivery:
+        allowed_roles.add(
+            role_delivery
+        )
+
+    if role_delivery_rider:
+        allowed_roles.add(
+            role_delivery_rider
+        )
+
+    allowed_roles.update(
+        {
+            "Delivery",
+            "Delivery Rider",
+            "delivery",
+            "delivery_rider",
+        }
+    )
+
+    return user_role in allowed_roles
+
+
 # ==========================================================
 # GET ORDER SUPPLIERS
 # ==========================================================
 
-def get_order_suppliers(
-    order,
-):
+def get_order_suppliers(order):
 
     supplier_ids = (
         OrderItem.objects
@@ -164,12 +234,33 @@ def get_order_suppliers(
 
 
 # ==========================================================
+# CHECK ORDER READY FOR DELIVERY
+# ==========================================================
+
+def order_is_ready_for_delivery(order):
+
+    if order.status != Order.STATUS_READY:
+        return False
+
+    items = list(
+        order.items.all()
+    )
+
+    if not items:
+        return False
+
+    return all(
+        item.supplier_status
+        == OrderItem.STATUS_READY
+        for item in items
+    )
+
+
+# ==========================================================
 # CUSTOMER - LIST / CREATE ORDERS
 # ==========================================================
 
-class OrderListCreateView(
-    APIView
-):
+class OrderListCreateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -384,9 +475,7 @@ class OrderListCreateView(
         # TOTAL
         # --------------------------------------------------
 
-        delivery_charge = (
-            DELIVERY_CHARGE
-        )
+        delivery_charge = DELIVERY_CHARGE
 
         total_amount = (
             subtotal
@@ -396,9 +485,7 @@ class OrderListCreateView(
         # --------------------------------------------------
         # CREATE ORDER
         #
-        # IMPORTANT:
-        #
-        # New order ALWAYS starts Pending.
+        # ALWAYS STARTS AS PENDING
         # --------------------------------------------------
 
         order = Order.objects.create(
@@ -492,12 +579,6 @@ class OrderListCreateView(
                 ]
             )
 
-            # IMPORTANT:
-            #
-            # DO NOT change Pending → Processing.
-            #
-            # Admin must accept first.
-
             CartItem.objects.filter(
                 cart=cart,
             ).delete()
@@ -511,9 +592,8 @@ class OrderListCreateView(
             == Order.PAYMENT_SSLCOMMERZ
         ):
 
-            # Payment workflow handles
-            # stock deduction after
-            # successful payment.
+            # Stock will be deducted by the
+            # successful payment workflow.
 
             pass
 
@@ -543,13 +623,11 @@ class OrderListCreateView(
         # RESPONSE
         # --------------------------------------------------
 
-        response_serializer = (
-            OrderSerializer(
-                order,
-                context={
-                    "request": request,
-                },
-            )
+        response_serializer = OrderSerializer(
+            order,
+            context={
+                "request": request,
+            },
         )
 
         return Response(
@@ -573,9 +651,7 @@ class OrderListCreateView(
 # CUSTOMER - ORDER DETAIL
 # ==========================================================
 
-class OrderDetailView(
-    APIView
-):
+class OrderDetailView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -617,9 +693,7 @@ class OrderDetailView(
 # CUSTOMER - CANCEL ORDER
 # ==========================================================
 
-class CancelOrderView(
-    APIView
-):
+class CancelOrderView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -638,10 +712,6 @@ class CancelOrderView(
             id=order_id,
             customer=request.user,
         )
-
-        # --------------------------------------------------
-        # CHECK STATUS
-        # --------------------------------------------------
 
         if order.status == Order.STATUS_CANCELLED:
 
@@ -700,7 +770,7 @@ class CancelOrderView(
             payment = None
 
         # --------------------------------------------------
-        # ONLINE PAYMENT
+        # SSL COMMERZ
         # --------------------------------------------------
 
         if (
@@ -760,9 +830,6 @@ class CancelOrderView(
             order.payment_method
             == Order.PAYMENT_COD
         ):
-
-            # Restore stock ONLY if stock was
-            # actually deducted.
 
             if order.stock_deducted:
 
@@ -852,13 +919,18 @@ class CancelOrderView(
         # CANCEL DELIVERY IF EXISTS
         # --------------------------------------------------
 
-        try:
+        delivery = (
+            Delivery.objects
+            .filter(order=order)
+            .first()
+        )
 
-            delivery = order.orders_delivery
+        if delivery:
 
-            if delivery.status != (
-                Delivery.STATUS_DELIVERED
-            ):
+            if delivery.status not in [
+                Delivery.STATUS_DELIVERED,
+                Delivery.STATUS_CANCELLED,
+            ]:
 
                 delivery.status = (
                     Delivery.STATUS_CANCELLED
@@ -870,10 +942,6 @@ class CancelOrderView(
                         "updated_at",
                     ]
                 )
-
-        except Delivery.DoesNotExist:
-
-            pass
 
         # --------------------------------------------------
         # NOTIFY SUPPLIERS
@@ -912,6 +980,7 @@ class CancelOrderView(
             {
                 "message":
                     "Order cancelled successfully.",
+
                 "order":
                     serializer.data,
             },
@@ -923,9 +992,7 @@ class CancelOrderView(
 # ADMIN - LIST ORDERS
 # ==========================================================
 
-class AdminOrderListView(
-    APIView
-):
+class AdminOrderListView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -978,9 +1045,7 @@ class AdminOrderListView(
 # ADMIN - ORDER DETAIL
 # ==========================================================
 
-class AdminOrderDetailView(
-    APIView
-):
+class AdminOrderDetailView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1031,9 +1096,7 @@ class AdminOrderDetailView(
 # ADMIN - ACCEPT ORDER
 # ==========================================================
 
-class AdminAcceptOrderView(
-    APIView
-):
+class AdminAcceptOrderView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1129,10 +1192,6 @@ class AdminAcceptOrderView(
                 ),
             )
 
-        # --------------------------------------------------
-        # RESPONSE
-        # --------------------------------------------------
-
         serializer = OrderSerializer(
             order,
             context={
@@ -1144,6 +1203,7 @@ class AdminAcceptOrderView(
             {
                 "message":
                     "Order accepted successfully.",
+
                 "order":
                     serializer.data,
             },
@@ -1155,9 +1215,7 @@ class AdminAcceptOrderView(
 # ADMIN - UPDATE ORDER STATUS
 # ==========================================================
 
-class AdminOrderUpdateView(
-    APIView
-):
+class AdminOrderUpdateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1197,17 +1255,17 @@ class AdminOrderUpdateView(
             ).strip()
 
             # --------------------------------------------------
-            # ADMIN MANUAL STATUS OPTIONS
+            # ADMIN CAN ONLY MANAGE EARLY ORDER STATES
             #
-            # Delivered is NOT included.
-            # Supplier controls preparation.
-            # Rider controls delivery.
+            # Delivered is NEVER manually set by admin.
+            # Ready is controlled by suppliers.
+            # Assigned / Out for Delivery / Delivered
+            # are controlled by delivery workflow.
             # --------------------------------------------------
 
             allowed_statuses = [
                 Order.STATUS_PENDING,
                 Order.STATUS_ACCEPTED,
-                Order.STATUS_PROCESSING,
                 Order.STATUS_CANCELLED,
             ]
 
@@ -1219,16 +1277,12 @@ class AdminOrderUpdateView(
                 return Response(
                     {
                         "detail":
-                            "Invalid order status.",
+                            "Invalid order status for admin update.",
                         "allowed_values":
                             allowed_statuses,
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            # --------------------------------------------------
-            # SAME STATUS
-            # --------------------------------------------------
 
             if old_status == new_status:
 
@@ -1243,6 +1297,7 @@ class AdminOrderUpdateView(
                     {
                         "message":
                             "Order status is already set.",
+
                         "order":
                             serializer.data,
                     },
@@ -1273,16 +1328,16 @@ class AdminOrderUpdateView(
                 ],
 
                 Order.STATUS_ASSIGNED: [
-                    Order.STATUS_CANCELLED,
                 ],
 
                 Order.STATUS_OUT_FOR_DELIVERY: [
-                    Order.STATUS_CANCELLED,
                 ],
 
-                Order.STATUS_DELIVERED: [],
+                Order.STATUS_DELIVERED: [
+                ],
 
-                Order.STATUS_CANCELLED: [],
+                Order.STATUS_CANCELLED: [
+                ],
             }
 
             allowed_next = (
@@ -1312,7 +1367,7 @@ class AdminOrderUpdateView(
                 )
 
             # --------------------------------------------------
-            # CANCEL
+            # ADMIN CANCELLATION
             # --------------------------------------------------
 
             if (
@@ -1364,9 +1419,12 @@ class AdminOrderUpdateView(
                 # ----------------------------------------------
 
                 if (
-                    order.payment_method
-                    == Order.PAYMENT_COD
-                    and order.stock_deducted
+                    order.stock_deducted
+                    and order.status in [
+                        Order.STATUS_PENDING,
+                        Order.STATUS_ACCEPTED,
+                        Order.STATUS_PROCESSING,
+                    ]
                 ):
 
                     order_items = list(
@@ -1434,7 +1492,7 @@ class AdminOrderUpdateView(
                         )
 
             # --------------------------------------------------
-            # SAVE
+            # SAVE ORDER
             # --------------------------------------------------
 
             order.status = new_status
@@ -1456,6 +1514,41 @@ class AdminOrderUpdateView(
             order.save(
                 update_fields=update_fields
             )
+
+            # --------------------------------------------------
+            # CANCEL EXISTING DELIVERY
+            # --------------------------------------------------
+
+            if (
+                new_status
+                == Order.STATUS_CANCELLED
+            ):
+
+                delivery = (
+                    Delivery.objects
+                    .filter(
+                        order=order,
+                    )
+                    .first()
+                )
+
+                if delivery:
+
+                    if delivery.status not in [
+                        Delivery.STATUS_DELIVERED,
+                        Delivery.STATUS_CANCELLED,
+                    ]:
+
+                        delivery.status = (
+                            Delivery.STATUS_CANCELLED
+                        )
+
+                        delivery.save(
+                            update_fields=[
+                                "status",
+                                "updated_at",
+                            ]
+                        )
 
             # --------------------------------------------------
             # NOTIFICATIONS
@@ -1498,23 +1591,6 @@ class AdminOrderUpdateView(
                         ),
                     )
 
-            elif (
-                new_status
-                == Order.STATUS_PROCESSING
-            ):
-
-                notify_customer(
-                    customer=order.customer,
-                    title="Order Processing",
-                    message=(
-                        f"Your Order #{order.id} "
-                        "is now being processed."
-                    ),
-                    notification_type=(
-                        Notification.TYPE_INFO
-                    ),
-                )
-
             serializer = OrderSerializer(
                 order,
                 context={
@@ -1526,17 +1602,12 @@ class AdminOrderUpdateView(
                 {
                     "message":
                         "Order status updated successfully.",
+
                     "order":
                         serializer.data,
                 },
                 status=status.HTTP_200_OK,
             )
-
-    # ------------------------------------------------------
-    # POST
-    #
-    # Your React service previously used POST.
-    # ------------------------------------------------------
 
     def post(
         self,
@@ -1548,13 +1619,6 @@ class AdminOrderUpdateView(
             request,
             order_id,
         )
-
-    # ------------------------------------------------------
-    # PATCH
-    #
-    # Also supported so old frontend code does not
-    # immediately break.
-    # ------------------------------------------------------
 
     def patch(
         self,
@@ -1572,9 +1636,7 @@ class AdminOrderUpdateView(
 # SUPPLIER - ORDER LIST
 # ==========================================================
 
-class SupplierOrderListView(
-    APIView
-):
+class SupplierOrderListView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1647,9 +1709,7 @@ class SupplierOrderListView(
 # SUPPLIER - ORDER DETAIL
 # ==========================================================
 
-class SupplierOrderDetailView(
-    APIView
-):
+class SupplierOrderDetailView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1710,9 +1770,7 @@ class SupplierOrderDetailView(
 # SUPPLIER - UPDATE ITEM STATUS
 # ==========================================================
 
-class SupplierOrderItemStatusUpdateView(
-    APIView
-):
+class SupplierOrderItemStatusUpdateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -1755,7 +1813,7 @@ class SupplierOrderItemStatusUpdateView(
         order = order_item.order
 
         # --------------------------------------------------
-        # PENDING ORDER
+        # ADMIN MUST ACCEPT FIRST
         # --------------------------------------------------
 
         if (
@@ -1825,7 +1883,9 @@ class SupplierOrderItemStatusUpdateView(
         )
 
         # --------------------------------------------------
-        # VALID TRANSITIONS
+        # SUPPLIER WORKFLOW
+        #
+        # Pending → Processing → Ready
         # --------------------------------------------------
 
         transitions = {
@@ -1844,6 +1904,8 @@ class SupplierOrderItemStatusUpdateView(
                 OrderItem.STATUS_READY,
             ],
 
+            # Legacy states are not part of the
+            # active supplier workflow.
             OrderItem.STATUS_DELIVERED: [
                 OrderItem.STATUS_DELIVERED,
             ],
@@ -1885,6 +1947,7 @@ class SupplierOrderItemStatusUpdateView(
                 {
                     "message":
                         "Order item status is already set.",
+
                     "supplier_status":
                         old_status,
                 },
@@ -1906,7 +1969,7 @@ class SupplierOrderItemStatusUpdateView(
         )
 
         # --------------------------------------------------
-        # PARENT ORDER
+        # FIRST ITEM PROCESSING
         #
         # Accepted → Processing
         # --------------------------------------------------
@@ -1930,7 +1993,7 @@ class SupplierOrderItemStatusUpdateView(
             )
 
         # --------------------------------------------------
-        # ALL ITEMS READY
+        # CHECK ALL ITEMS READY
         #
         # Processing → Ready
         # --------------------------------------------------
@@ -1953,11 +2016,7 @@ class SupplierOrderItemStatusUpdateView(
                 )
             )
 
-            if (
-                all_ready
-                and order.status
-                == Order.STATUS_PROCESSING
-            ):
+            if all_ready:
 
                 order.status = (
                     Order.STATUS_READY
@@ -1968,6 +2027,19 @@ class SupplierOrderItemStatusUpdateView(
                         "status",
                         "updated_at",
                     ]
+                )
+
+                notify_customer(
+                    customer=order.customer,
+                    title="Order Ready",
+                    message=(
+                        f"All items in Order #{order.id} "
+                        "are ready. The bakery will now "
+                        "assign a delivery rider."
+                    ),
+                    notification_type=(
+                        Notification.TYPE_INFO
+                    ),
                 )
 
         # --------------------------------------------------
@@ -1994,6 +2066,7 @@ class SupplierOrderItemStatusUpdateView(
         elif (
             new_status
             == OrderItem.STATUS_READY
+            and order.status != Order.STATUS_READY
         ):
 
             notify_customer(
@@ -2033,9 +2106,7 @@ class SupplierOrderItemStatusUpdateView(
 # SUPPLIER DASHBOARD
 # ==========================================================
 
-class SupplierDashboardView(
-    APIView
-):
+class SupplierDashboardView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2105,14 +2176,12 @@ class SupplierDashboardView(
             ),
         ).count()
 
-        amount_expression = (
-            ExpressionWrapper(
-                F("price") * F("quantity"),
-                output_field=DecimalField(
-                    max_digits=12,
-                    decimal_places=2,
-                ),
-            )
+        amount_expression = ExpressionWrapper(
+            F("price") * F("quantity"),
+            output_field=DecimalField(
+                max_digits=12,
+                decimal_places=2,
+            ),
         )
 
         total_sales = (
@@ -2159,9 +2228,7 @@ class SupplierDashboardView(
 # SUPPLIER SALES ANALYTICS
 # ==========================================================
 
-class SupplierSalesAnalyticsView(
-    APIView
-):
+class SupplierSalesAnalyticsView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2301,9 +2368,7 @@ class SupplierSalesAnalyticsView(
 # SUPPLIER PRODUCT PERFORMANCE
 # ==========================================================
 
-class SupplierProductPerformanceView(
-    APIView
-):
+class SupplierProductPerformanceView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2376,9 +2441,7 @@ class SupplierProductPerformanceView(
 # ADMIN - DELIVERY RIDER LIST
 # ==========================================================
 
-class AdminDeliveryRiderListView(
-    APIView
-):
+class AdminDeliveryRiderListView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2402,7 +2465,11 @@ class AdminDeliveryRiderListView(
         riders = (
             User.objects
             .filter(
-                role=User.ROLE_DELIVERY,
+                role=getattr(
+                    User,
+                    "ROLE_DELIVERY",
+                    "Delivery",
+                ),
             )
             .order_by(
                 "-date_joined",
@@ -2431,7 +2498,11 @@ class AdminDeliveryRiderListView(
                         rider.last_name,
 
                     "phone":
-                        rider.phone,
+                        getattr(
+                            rider,
+                            "phone",
+                            "",
+                        ),
 
                     "role":
                         rider.role,
@@ -2451,9 +2522,7 @@ class AdminDeliveryRiderListView(
 # ADMIN - CREATE DELIVERY RIDER
 # ==========================================================
 
-class AdminCreateDeliveryRiderView(
-    APIView
-):
+class AdminCreateDeliveryRiderView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2498,10 +2567,6 @@ class AdminCreateDeliveryRiderView(
             .strip()
         )
 
-        # --------------------------------------------------
-        # EMAIL
-        # --------------------------------------------------
-
         if User.objects.filter(
             email=email,
         ).exists():
@@ -2514,10 +2579,6 @@ class AdminCreateDeliveryRiderView(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # --------------------------------------------------
-        # USERNAME
-        # --------------------------------------------------
-
         if User.objects.filter(
             username=username,
         ).exists():
@@ -2529,12 +2590,6 @@ class AdminCreateDeliveryRiderView(
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # --------------------------------------------------
-        # CREATE RIDER
-        #
-        # create_user() hashes password.
-        # --------------------------------------------------
 
         rider = User.objects.create_user(
             username=username,
@@ -2554,8 +2609,10 @@ class AdminCreateDeliveryRiderView(
             ),
         )
 
-        rider.role = (
-            User.ROLE_DELIVERY
+        rider.role = getattr(
+            User,
+            "ROLE_DELIVERY",
+            "Delivery",
         )
 
         rider.is_active = True
@@ -2583,7 +2640,11 @@ class AdminCreateDeliveryRiderView(
                         rider.email,
 
                     "phone":
-                        rider.phone,
+                        getattr(
+                            rider,
+                            "phone",
+                            "",
+                        ),
 
                     "role":
                         rider.role,
@@ -2600,9 +2661,7 @@ class AdminCreateDeliveryRiderView(
 # ADMIN - UPDATE DELIVERY RIDER
 # ==========================================================
 
-class AdminUpdateDeliveryRiderView(
-    APIView
-):
+class AdminUpdateDeliveryRiderView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2628,8 +2687,19 @@ class AdminUpdateDeliveryRiderView(
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role=User.ROLE_DELIVERY,
         )
+
+        if not is_delivery_rider_user(
+            rider
+        ):
+
+            return Response(
+                {
+                    "detail":
+                        "The selected user is not a delivery rider.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         serializer = (
             DeliveryRiderUpdateSerializer(
@@ -2643,98 +2713,28 @@ class AdminUpdateDeliveryRiderView(
 
         data = serializer.validated_data
 
-        # --------------------------------------------------
-        # EMAIL
-        # --------------------------------------------------
-
-        if "email" in data:
-
-            email = (
-                data["email"]
-                .lower()
-                .strip()
-            )
-
-            if (
-                User.objects
-                .filter(
-                    email=email,
-                )
-                .exclude(
-                    id=rider.id,
-                )
-                .exists()
-            ):
-
-                return Response(
-                    {
-                        "detail":
-                            "This email is already in use.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            rider.email = email
-
-        # --------------------------------------------------
-        # USERNAME
-        # --------------------------------------------------
-
-        if "username" in data:
-
-            username = (
-                data["username"]
-                .strip()
-            )
-
-            if (
-                User.objects
-                .filter(
-                    username=username,
-                )
-                .exclude(
-                    id=rider.id,
-                )
-                .exists()
-            ):
-
-                return Response(
-                    {
-                        "detail":
-                            "This username is already in use.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            rider.username = username
-
-        # --------------------------------------------------
-        # OTHER FIELDS
-        # --------------------------------------------------
-
         if "first_name" in data:
+
             rider.first_name = (
                 data["first_name"]
             )
 
         if "last_name" in data:
+
             rider.last_name = (
                 data["last_name"]
             )
 
         if "phone" in data:
+
             rider.phone = (
                 data["phone"]
             )
 
-        # --------------------------------------------------
-        # PASSWORD
-        # --------------------------------------------------
+        if "is_active" in data:
 
-        if "password" in data:
-
-            rider.set_password(
-                data["password"]
+            rider.is_active = (
+                data["is_active"]
             )
 
         rider.save()
@@ -2761,7 +2761,11 @@ class AdminUpdateDeliveryRiderView(
                         rider.last_name,
 
                     "phone":
-                        rider.phone,
+                        getattr(
+                            rider,
+                            "phone",
+                            "",
+                        ),
 
                     "role":
                         rider.role,
@@ -2778,9 +2782,7 @@ class AdminUpdateDeliveryRiderView(
 # ADMIN - TOGGLE RIDER STATUS
 # ==========================================================
 
-class AdminToggleDeliveryRiderStatusView(
-    APIView
-):
+class AdminToggleDeliveryRiderStatusView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2806,8 +2808,19 @@ class AdminToggleDeliveryRiderStatusView(
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role=User.ROLE_DELIVERY,
         )
+
+        if not is_delivery_rider_user(
+            rider
+        ):
+
+            return Response(
+                {
+                    "detail":
+                        "The selected user is not a delivery rider.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         is_active = request.data.get(
             "is_active"
@@ -2870,9 +2883,7 @@ class AdminToggleDeliveryRiderStatusView(
 # ADMIN - ASSIGN DELIVERY RIDER
 # ==========================================================
 
-class AdminAssignDeliveryView(
-    APIView
-):
+class AdminAssignDeliveryView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -2905,9 +2916,7 @@ class AdminAssignDeliveryView(
         )
 
         # --------------------------------------------------
-        # ORDER MUST BE READY
-        #
-        # All suppliers must finish first.
+        # ONLY READY ORDERS
         # --------------------------------------------------
 
         if (
@@ -2927,6 +2936,10 @@ class AdminAssignDeliveryView(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # --------------------------------------------------
+        # ALL ITEMS MUST BE READY
+        # --------------------------------------------------
+
         items = list(
             order.items.all()
         )
@@ -2940,10 +2953,6 @@ class AdminAssignDeliveryView(
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # --------------------------------------------------
-        # CHECK SUPPLIER ITEMS
-        # --------------------------------------------------
 
         not_ready_items = [
             item
@@ -2980,7 +2989,7 @@ class AdminAssignDeliveryView(
             )
 
         # --------------------------------------------------
-        # RIDER
+        # RIDER ID
         # --------------------------------------------------
 
         rider_id = request.data.get(
@@ -2997,20 +3006,52 @@ class AdminAssignDeliveryView(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # --------------------------------------------------
+        # SELECT ACTIVE RIDER
+        # --------------------------------------------------
+
         rider = get_object_or_404(
             User,
             id=rider_id,
-            role=User.ROLE_DELIVERY,
-            is_active=True,
+        )
+
+        if not is_delivery_rider_user(
+            rider
+        ):
+
+            return Response(
+                {
+                    "detail":
+                        "The selected user is not an active delivery rider.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --------------------------------------------------
+        # DELIVERY NOTE
+        # --------------------------------------------------
+
+        delivery_note = (
+            request.data.get(
+                "delivery_note",
+                "",
+            )
         )
 
         # --------------------------------------------------
         # EXISTING DELIVERY
         # --------------------------------------------------
 
-        try:
+        delivery = (
+            Delivery.objects
+            .select_for_update()
+            .filter(
+                order=order,
+            )
+            .first()
+        )
 
-            delivery = order.orders_delivery
+        if delivery:
 
             if (
                 delivery.status
@@ -3025,24 +3066,66 @@ class AdminAssignDeliveryView(
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            if delivery.status in [
+                Delivery.STATUS_ACCEPTED,
+                Delivery.STATUS_PICKED_UP,
+                Delivery.STATUS_OUT_FOR_DELIVERY,
+            ]:
+
+                return Response(
+                    {
+                        "detail": (
+                            "The rider cannot be changed "
+                            "after the delivery has been accepted."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            old_rider = delivery.rider
+
             delivery.rider = rider
 
             delivery.status = (
                 Delivery.STATUS_ASSIGNED
             )
 
+            delivery.delivery_note = (
+                delivery_note
+            )
+
             delivery.assigned_at = (
                 timezone.now()
             )
 
-            delivery.accepted_at = None
-            delivery.picked_up_at = None
-            delivery.out_for_delivery_at = None
-            delivery.delivered_at = None
+            delivery.save(
+                update_fields=[
+                    "rider",
+                    "status",
+                    "delivery_note",
+                    "assigned_at",
+                    "updated_at",
+                ]
+            )
 
-            delivery.save()
+            if (
+                old_rider
+                and old_rider.id != rider.id
+            ):
 
-        except Delivery.DoesNotExist:
+                notify_user(
+                    recipient=old_rider,
+                    title="Delivery Assignment Changed",
+                    message=(
+                        f"Delivery for Order #{order.id} "
+                        "has been reassigned."
+                    ),
+                    notification_type=(
+                        Notification.TYPE_INFO
+                    ),
+                )
+
+        else:
 
             delivery = Delivery.objects.create(
                 order=order,
@@ -3050,13 +3133,11 @@ class AdminAssignDeliveryView(
                 status=(
                     Delivery.STATUS_ASSIGNED
                 ),
-                assigned_at=timezone.now(),
+                delivery_note=delivery_note,
             )
 
         # --------------------------------------------------
-        # ORDER STATUS
-        #
-        # Ready → Assigned
+        # READY → ASSIGNED
         # --------------------------------------------------
 
         order.status = (
@@ -3074,7 +3155,7 @@ class AdminAssignDeliveryView(
         # RIDER NOTIFICATION
         # --------------------------------------------------
 
-        Notification.objects.create(
+        notify_user(
             recipient=rider,
             title="New Delivery Assigned",
             message=(
@@ -3106,13 +3187,11 @@ class AdminAssignDeliveryView(
         # RESPONSE
         # --------------------------------------------------
 
-        serializer = (
-            DeliveryOrderSerializer(
-                delivery,
-                context={
-                    "request": request,
-                },
-            )
+        serializer = DeliveryOrderSerializer(
+            delivery,
+            context={
+                "request": request,
+            },
         )
 
         return Response(
@@ -3131,9 +3210,7 @@ class AdminAssignDeliveryView(
 # DELIVERY RIDER - DASHBOARD
 # ==========================================================
 
-class DeliveryDashboardView(
-    APIView
-):
+class DeliveryDashboardView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3152,80 +3229,52 @@ class DeliveryDashboardView(
             )
         )
 
-        total_deliveries = (
-            deliveries.count()
-        )
-
-        assigned_deliveries = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_ASSIGNED
-                ),
-            ).count()
-        )
-
-        accepted_deliveries = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_ACCEPTED
-                ),
-            ).count()
-        )
-
-        picked_up_deliveries = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_PICKED_UP
-                ),
-            ).count()
-        )
-
-        out_for_delivery = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_OUT_FOR_DELIVERY
-                ),
-            ).count()
-        )
-
-        completed_deliveries = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_DELIVERED
-                ),
-            ).count()
-        )
-
-        cancelled_deliveries = (
-            deliveries.filter(
-                status=(
-                    Delivery.STATUS_CANCELLED
-                ),
-            ).count()
-        )
-
         return Response(
             {
                 "total_deliveries":
-                    total_deliveries,
+                    deliveries.count(),
 
                 "assigned_deliveries":
-                    assigned_deliveries,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_ASSIGNED
+                        ),
+                    ).count(),
 
                 "accepted_deliveries":
-                    accepted_deliveries,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_ACCEPTED
+                        ),
+                    ).count(),
 
                 "picked_up_deliveries":
-                    picked_up_deliveries,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_PICKED_UP
+                        ),
+                    ).count(),
 
                 "out_for_delivery":
-                    out_for_delivery,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_OUT_FOR_DELIVERY
+                        ),
+                    ).count(),
 
                 "completed_deliveries":
-                    completed_deliveries,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_DELIVERED
+                        ),
+                    ).count(),
 
                 "cancelled_deliveries":
-                    cancelled_deliveries,
+                    deliveries.filter(
+                        status=(
+                            Delivery.STATUS_CANCELLED
+                        ),
+                    ).count(),
             },
             status=status.HTTP_200_OK,
         )
@@ -3235,9 +3284,7 @@ class DeliveryDashboardView(
 # DELIVERY RIDER - DELIVERY LIST
 # ==========================================================
 
-class DeliveryListView(
-    APIView
-):
+class DeliveryListView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3267,14 +3314,12 @@ class DeliveryListView(
             )
         )
 
-        serializer = (
-            DeliveryOrderSerializer(
-                deliveries,
-                many=True,
-                context={
-                    "request": request,
-                },
-            )
+        serializer = DeliveryOrderSerializer(
+            deliveries,
+            many=True,
+            context={
+                "request": request,
+            },
         )
 
         return Response(
@@ -3287,9 +3332,7 @@ class DeliveryListView(
 # DELIVERY RIDER - DELIVERY DETAIL
 # ==========================================================
 
-class DeliveryDetailView(
-    APIView
-):
+class DeliveryDetailView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3316,13 +3359,11 @@ class DeliveryDetailView(
             rider=request.user,
         )
 
-        serializer = (
-            DeliveryOrderSerializer(
-                delivery,
-                context={
-                    "request": request,
-                },
-            )
+        serializer = DeliveryOrderSerializer(
+            delivery,
+            context={
+                "request": request,
+            },
         )
 
         return Response(
@@ -3335,9 +3376,7 @@ class DeliveryDetailView(
 # DELIVERY RIDER - UPDATE DELIVERY STATUS
 # ==========================================================
 
-class DeliveryStatusUpdateView(
-    APIView
-):
+class DeliveryStatusUpdateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3403,8 +3442,10 @@ class DeliveryStatusUpdateView(
         # VALIDATE
         # --------------------------------------------------
 
-        serializer = DeliveryStatusSerializer(
-            data=request.data,
+        serializer = (
+            DeliveryStatusUpdateSerializer(
+                data=request.data,
+            )
         )
 
         serializer.is_valid(
@@ -3426,7 +3467,7 @@ class DeliveryStatusUpdateView(
         old_status = delivery.status
 
         # --------------------------------------------------
-        # VALID TRANSITIONS
+        # VALID DELIVERY TRANSITIONS
         # --------------------------------------------------
 
         transitions = {
@@ -3470,6 +3511,7 @@ class DeliveryStatusUpdateView(
                         f"'{old_status}' "
                         f"to '{new_status}'."
                     ),
+
                     "allowed_next_statuses":
                         allowed_next,
                 },
@@ -3548,10 +3590,6 @@ class DeliveryStatusUpdateView(
 
             delivery.out_for_delivery_at = now
 
-            # ------------------------------------------------
-            # Order → Out for Delivery
-            # ------------------------------------------------
-
             order.status = (
                 Order.STATUS_OUT_FOR_DELIVERY
             )
@@ -3587,7 +3625,10 @@ class DeliveryStatusUpdateView(
             delivery.delivered_at = now
 
             # ------------------------------------------------
-            # ORDER → DELIVERED
+            # DELIVERY COMPLETION
+            #
+            # Rider controls this.
+            # Admin does not manually set Delivered.
             # ------------------------------------------------
 
             order.status = (
@@ -3601,21 +3642,14 @@ class DeliveryStatusUpdateView(
                 ]
             )
 
-            # ------------------------------------------------
-            # SUPPLIER ITEMS
+            # IMPORTANT:
             #
-            # Supplier does NOT perform this action.
-            # System records completion after rider
-            # completes delivery.
-            # ------------------------------------------------
-
-            OrderItem.objects.filter(
-                order=order,
-            ).update(
-                supplier_status=(
-                    OrderItem.STATUS_DELIVERED
-                )
-            )
+            # DO NOT change OrderItem.supplier_status
+            # from Ready to Delivered.
+            #
+            # Supplier workflow ends at Ready.
+            # Delivery workflow is represented by
+            # Delivery.status and Order.status.
 
             notify_customer(
                 customer=order.customer,
@@ -3629,14 +3663,8 @@ class DeliveryStatusUpdateView(
                 ),
             )
 
-            # ------------------------------------------------
-            # SUPPLIER NOTIFICATION
-            # ------------------------------------------------
-
-            suppliers = (
-                get_order_suppliers(
-                    order,
-                )
+            suppliers = get_order_suppliers(
+                order,
             )
 
             for supplier in suppliers:
@@ -3745,9 +3773,7 @@ class DeliveryStatusUpdateView(
 # CUSTOMER - REFUND REQUEST
 # ==========================================================
 
-class CustomerRefundRequestView(
-    APIView
-):
+class CustomerRefundRequestView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3776,10 +3802,6 @@ class CustomerRefundRequestView(
             "order"
         ]
 
-        # --------------------------------------------------
-        # PREVENT DUPLICATE ACTIVE REFUND
-        # --------------------------------------------------
-
         existing = (
             Refund.objects
             .filter(
@@ -3798,6 +3820,7 @@ class CustomerRefundRequestView(
                 {
                     "detail":
                         "A refund request already exists for this order.",
+
                     "refund_id":
                         existing.id,
                 },
@@ -3818,10 +3841,6 @@ class CustomerRefundRequestView(
             status=Refund.STATUS_PENDING,
         )
 
-        # --------------------------------------------------
-        # ADMIN NOTIFICATION
-        # --------------------------------------------------
-
         admins = User.objects.filter(
             is_staff=True,
             is_active=True,
@@ -3829,7 +3848,7 @@ class CustomerRefundRequestView(
 
         for admin in admins:
 
-            Notification.objects.create(
+            notify_user(
                 recipient=admin,
                 title="New Refund Request",
                 message=(
@@ -3841,16 +3860,15 @@ class CustomerRefundRequestView(
                 ),
             )
 
-        response_serializer = (
-            RefundSerializer(
-                refund,
-            )
+        response_serializer = RefundSerializer(
+            refund,
         )
 
         return Response(
             {
                 "message":
                     "Refund request submitted successfully.",
+
                 "refund":
                     response_serializer.data,
             },
@@ -3862,9 +3880,7 @@ class CustomerRefundRequestView(
 # ADMIN - REFUND LIST
 # ==========================================================
 
-class AdminRefundListView(
-    APIView
-):
+class AdminRefundListView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -3912,9 +3928,7 @@ class AdminRefundListView(
 # ADMIN - UPDATE REFUND
 # ==========================================================
 
-class AdminRefundUpdateView(
-    APIView
-):
+class AdminRefundUpdateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
@@ -4001,6 +4015,7 @@ class AdminRefundUpdateView(
                         f"'{old_status}' "
                         f"to '{new_status}'."
                     ),
+
                     "allowed_next_statuses":
                         allowed_next,
                 },
@@ -4070,10 +4085,6 @@ class AdminRefundUpdateView(
             update_fields=update_fields,
         )
 
-        # --------------------------------------------------
-        # CUSTOMER NOTIFICATION
-        # --------------------------------------------------
-
         if (
             new_status
             == Refund.STATUS_APPROVED
@@ -4113,18 +4124,18 @@ class AdminRefundUpdateView(
             ),
         )
 
-        response_serializer = (
-            RefundSerializer(
-                refund,
-            )
+        response_serializer = RefundSerializer(
+            refund,
         )
 
         return Response(
             {
                 "message":
                     "Refund status updated successfully.",
+
                 "refund":
                     response_serializer.data,
             },
             status=status.HTTP_200_OK,
         )
+        

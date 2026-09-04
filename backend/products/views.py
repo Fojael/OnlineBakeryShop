@@ -1,7 +1,9 @@
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import ValidationError
 
 from accounts.permissions import IsAdmin
+from suppliers.models import Supplier
 
 from .models import Product
 from .serializers import ProductSerializer
@@ -9,15 +11,11 @@ from .serializers import ProductSerializer
 
 # ==========================================================
 # PRODUCT LIST + CREATE
-#
-# GET  -> Anyone can browse available products
-# POST -> Admin only
 # ==========================================================
 
 class ProductListCreateView(
     generics.ListCreateAPIView
 ):
-
     serializer_class = ProductSerializer
 
     def get_queryset(self):
@@ -30,10 +28,18 @@ class ProductListCreateView(
                 None,
             ) == "ADMIN"
         ):
-            return Product.objects.all()
+            return (
+                Product.objects
+                .select_related("supplier")
+                .all()
+            )
 
-        return Product.objects.filter(
-            is_available=True
+        return (
+            Product.objects
+            .select_related("supplier")
+            .filter(
+                is_available=True,
+            )
         )
 
     def get_permissions(self):
@@ -49,20 +55,44 @@ class ProductListCreateView(
             "request": self.request,
         }
 
+    # ======================================================
+    # CREATE PRODUCT
+    # ======================================================
+
+    def perform_create(
+        self,
+        serializer,
+    ):
+        supplier = serializer.validated_data.get(
+            "supplier"
+        )
+
+        if supplier is None:
+            raise ValidationError(
+                {
+                    "supplier":
+                    "Supplier is required."
+                }
+            )
+
+        serializer.save(
+            supplier=supplier,
+        )
+
 
 # ==========================================================
-# PRODUCT DETAILS
-#
-# GET             -> Anyone
-# PUT / PATCH     -> Admin
-# DELETE          -> Admin
+# PRODUCT DETAIL
 # ==========================================================
 
 class ProductRetrieveUpdateDeleteView(
     generics.RetrieveUpdateDestroyAPIView
 ):
 
-    queryset = Product.objects.all()
+    queryset = (
+        Product.objects
+        .select_related("supplier")
+        .all()
+    )
 
     serializer_class = ProductSerializer
 

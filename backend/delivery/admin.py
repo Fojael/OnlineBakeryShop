@@ -40,3 +40,4 @@ class DeliveryAdmin(
         "created_at",
         "updated_at",
     ]
+    

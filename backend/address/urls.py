@@ -18,3 +18,4 @@ urlpatterns = [
         name="address-detail",
     ),
 ]
+

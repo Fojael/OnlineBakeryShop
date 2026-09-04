@@ -3,9 +3,7 @@ from django.urls import path
 from .views import (
     AdminCreateDeliveryView,
     DeliveryDashboardView,
-    DeliveryAvailableListView,
     MyDeliveryListView,
-    AcceptDeliveryView,
     DeliveryDetailView,
     DeliveryStatusUpdateView,
 )
@@ -18,6 +16,7 @@ urlpatterns = [
 
     # ======================================================
     # ADMIN
+    # Assign a specific rider to a Ready order
     # ======================================================
 
     path(
@@ -37,33 +36,13 @@ urlpatterns = [
     ),
 
     # ======================================================
-    # AVAILABLE DELIVERIES
-    # ======================================================
-
-    path(
-        "available/",
-        DeliveryAvailableListView.as_view(),
-        name="delivery-available",
-    ),
-
-    # ======================================================
-    # MY DELIVERIES
+    # RIDER'S ASSIGNED DELIVERIES
     # ======================================================
 
     path(
         "my/",
         MyDeliveryListView.as_view(),
         name="my-deliveries",
-    ),
-
-    # ======================================================
-    # ACCEPT DELIVERY
-    # ======================================================
-
-    path(
-        "<int:delivery_id>/accept/",
-        AcceptDeliveryView.as_view(),
-        name="accept-delivery",
     ),
 
     # ======================================================
@@ -77,7 +56,7 @@ urlpatterns = [
     ),
 
     # ======================================================
-    # UPDATE DELIVERY STATUS
+    # RIDER STATUS UPDATE
     # ======================================================
 
     path(
@@ -86,4 +65,3 @@ urlpatterns = [
         name="delivery-status-update",
     ),
 ]
-

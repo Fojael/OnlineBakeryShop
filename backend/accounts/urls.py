@@ -81,3 +81,4 @@ urlpatterns = [
         name="admin_dashboard",
     ),
 ]
+

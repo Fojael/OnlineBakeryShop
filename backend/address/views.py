@@ -32,3 +32,4 @@ class AddressDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Address.objects.filter(
             customer=self.request.user
         )
+        
