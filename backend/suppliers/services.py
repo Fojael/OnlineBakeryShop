@@ -330,3 +330,4 @@ class SupplierDashboardService:
             })
 
         return activities
+    

@@ -67,8 +67,10 @@ class Delivery(models.Model):
 
     rider = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="delivery_rides",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deliveries",
     )
 
     # ======================================================
@@ -86,7 +88,8 @@ class Delivery(models.Model):
     # ======================================================
 
     assigned_at = models.DateTimeField(
-        auto_now_add=True,
+        null=True,
+        blank=True
     )
 
     accepted_at = models.DateTimeField(

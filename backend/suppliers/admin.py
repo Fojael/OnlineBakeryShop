@@ -275,3 +275,4 @@ class SupplierAdmin(admin.ModelAdmin):
         ),
 
     )
+    

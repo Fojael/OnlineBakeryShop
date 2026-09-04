@@ -378,3 +378,4 @@ class DeliveryRiderUpdateSerializer(
     is_active = serializers.BooleanField(
         required=False
     )
+    

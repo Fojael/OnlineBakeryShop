@@ -768,3 +768,4 @@ class DeliveryStatusUpdateView(APIView):
             ).data,
             status=status.HTTP_200_OK,
         )
+        
