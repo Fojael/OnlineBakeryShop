@@ -156,12 +156,9 @@ import DeliveryRiders
 // ADMIN ORDER PAGES
 // ============================================================
 
-import AdminOrders
-    from "../pages/Admin/Orders/AdminOrders";
+import AdminOrders from "../pages/Admin/Orders/AdminOrders";
 
-import UpdateOrder
-    from "../pages/Admin/Orders/UpdateOrder";
-
+import UpdateOrder from "../pages/Admin/Orders/UpdateOrder";
 // ============================================================
 // ADMIN CUSTOMER PAGES
 // ============================================================

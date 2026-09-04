@@ -1,4 +1,4 @@
-
+```jsx
 import {
     useCallback,
     useEffect,
@@ -19,85 +19,254 @@ import {
 } from "../../../services/orderService";
 
 
+// =========================================================
+// ORDER STATUS TABS
+// =========================================================
+
+const ORDER_TABS = [
+    "All",
+    "Pending",
+    "Accepted",
+    "Processing",
+    "Ready",
+    "Assigned",
+    "Out for Delivery",
+    "Delivered",
+    "Cancelled",
+];
+
+
+// =========================================================
+// GET ORDER NUMBER
+// =========================================================
+// Example:
+// 1    -> ORD-0001
+// 15   -> ORD-0015
+// 100  -> ORD-0100
+// 1250 -> ORD-1250
+// =========================================================
+
+const getOrderNumber = (id) => {
+    return "ORD-" + String(id || "").padStart(4, "0");
+};
+
+
+// =========================================================
+// ADMIN ORDERS
+// =========================================================
+
 const AdminOrders = () => {
     const navigate = useNavigate();
 
+    // =====================================================
+    // STATE
+    // =====================================================
+
     const [orders, setOrders] = useState([]);
     const [riders, setRiders] = useState([]);
+
     const [loading, setLoading] = useState(true);
+
     const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState("All");
-    const [assigningOrderId, setAssigningOrderId] = useState(null);
-    const [acceptingOrderId, setAcceptingOrderId] = useState(null);
-    const [selectedRiders, setSelectedRiders] = useState({});
+    const [activeTab, setActiveTab] = useState("All");
+
+    const [acceptingOrderId, setAcceptingOrderId] =
+        useState(null);
+
+    const [assigningOrderId, setAssigningOrderId] =
+        useState(null);
+
+    const [selectedRiders, setSelectedRiders] =
+        useState({});
 
 
-    // =========================================================
+    // =====================================================
+    // GET ERROR MESSAGE
+    // =====================================================
+
+    const getErrorMessage = (error, defaultMessage) => {
+        if (
+            error &&
+            error.response &&
+            error.response.data
+        ) {
+            const responseData =
+                error.response.data;
+
+            if (responseData.detail) {
+                return responseData.detail;
+            }
+
+            if (responseData.message) {
+                return responseData.message;
+            }
+
+            if (typeof responseData === "string") {
+                return responseData;
+            }
+        }
+
+        if (error && error.message) {
+            return error.message;
+        }
+
+        return defaultMessage;
+    };
+
+
+    // =====================================================
+    // NORMALIZE API DATA
+    // =====================================================
+
+    const normalizeResponseData = (response) => {
+        let data = response;
+
+        // Axios response
+        if (
+            response &&
+            response.data !== undefined
+        ) {
+            data = response.data;
+        }
+
+        // Direct array
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        // Django REST Framework pagination
+        if (
+            data &&
+            Array.isArray(data.results)
+        ) {
+            return data.results;
+        }
+
+        return [];
+    };
+
+
+    // =====================================================
     // FETCH ORDERS
-    // =========================================================
+    // =====================================================
 
     const fetchOrders = useCallback(async () => {
         try {
-            setLoading(true);
+            const response =
+                await getAdminOrders();
 
-            const response = await getAdminOrders();
+            const data =
+                normalizeResponseData(response);
 
-            const data = response?.data;
+            setOrders(data);
 
-            setOrders(
-                Array.isArray(data)
-                    ? data
-                    : []
-            );
-
+            return data;
         } catch (error) {
             console.error(
-                "Failed to load admin orders:",
+                "Failed to fetch orders:",
                 error
             );
 
             const message =
-                error?.response?.data?.detail ||
-                "Failed to load orders.";
+                getErrorMessage(
+                    error,
+                    "Failed to load orders."
+                );
 
             toast.error(message);
 
             setOrders([]);
 
-        } finally {
-            setLoading(false);
+            return [];
         }
     }, []);
 
 
-    // =========================================================
-    // LOAD ORDERS
-    // =========================================================
+    // =====================================================
+    // FETCH DELIVERY RIDERS
+    // =====================================================
 
     const fetchRiders = useCallback(async () => {
         try {
-            const response = await getDeliveryRiders();
-            setRiders(response?.data?.results || []);
+            const response =
+                await getDeliveryRiders();
+
+            const data =
+                normalizeResponseData(response);
+
+            setRiders(data);
+
+            return data;
         } catch (error) {
-            console.error("Failed to load delivery riders:", error);
+            console.error(
+                "Failed to fetch delivery riders:",
+                error
+            );
+
+            setRiders([]);
+
+            return [];
         }
     }, []);
 
+
+    // =====================================================
+    // INITIAL LOAD
+    // =====================================================
+
     useEffect(() => {
-        const timer = window.setTimeout(() => {
-            void fetchOrders();
-            void fetchRiders();
-        }, 0);
+        let mounted = true;
+
+        const loadInitialData = async () => {
+            setLoading(true);
+
+            await Promise.all([
+                fetchOrders(),
+                fetchRiders(),
+            ]);
+
+            if (mounted) {
+                setLoading(false);
+            }
+        };
+
+        loadInitialData();
 
         return () => {
-            window.clearTimeout(timer);
+            mounted = false;
         };
-    }, [fetchOrders, fetchRiders]);
+    }, [
+        fetchOrders,
+        fetchRiders,
+    ]);
 
 
-    // =========================================================
+    // =====================================================
+    // TAB COUNTS
+    // =====================================================
+
+    const tabCounts = useMemo(() => {
+        const counts = {};
+
+        ORDER_TABS.forEach((tab) => {
+            if (tab === "All") {
+                counts[tab] = orders.length;
+                return;
+            }
+
+            counts[tab] = orders.filter(
+                (order) =>
+                    order.status === tab
+            ).length;
+        });
+
+        return counts;
+    }, [orders]);
+
+
+    // =====================================================
     // FILTER ORDERS
-    // =========================================================
+    // =====================================================
 
     const filteredOrders = useMemo(() => {
         const keyword = search
@@ -105,134 +274,129 @@ const AdminOrders = () => {
             .toLowerCase();
 
         return orders.filter((order) => {
-
-            const orderId =
-                String(order.id || "");
+            const orderId = String(
+                order.id || ""
+            ).toLowerCase();
 
             const orderNumber =
-                `ORD${String(order.id).padStart(3, "0")}`;
+                getOrderNumber(order.id)
+                    .toLowerCase();
 
-            const customerName =
-                String(
-                    order.customer_name || ""
-                ).toLowerCase();
+            const customerName = String(
+                order.customer_name || ""
+            ).toLowerCase();
 
-            const customerEmail =
-                String(
-                    order.customer_email || ""
-                ).toLowerCase();
-
-            const status =
-                String(
-                    order.status || ""
-                ).toLowerCase();
-
-            const paymentMethod =
-                String(
-                    order.payment_method || ""
-                ).toLowerCase();
-
+            const customerEmail = String(
+                order.customer_email || ""
+            ).toLowerCase();
 
             const matchesSearch =
-                !keyword ||
+                keyword === "" ||
                 orderId.includes(keyword) ||
-                orderNumber
-                    .toLowerCase()
-                    .includes(keyword) ||
+                orderNumber.includes(keyword) ||
                 customerName.includes(keyword) ||
-                customerEmail.includes(keyword) ||
-                status.includes(keyword) ||
-                paymentMethod.includes(keyword);
-
+                customerEmail.includes(keyword);
 
             const matchesStatus =
-                statusFilter === "All" ||
-                order.status === statusFilter;
-
+                activeTab === "All" ||
+                order.status === activeTab;
 
             return (
                 matchesSearch &&
                 matchesStatus
             );
         });
-
     }, [
         orders,
         search,
-        statusFilter,
+        activeTab,
     ]);
 
 
-    // =========================================================
+    // =====================================================
     // STATUS BADGE
-    // =========================================================
+    // =====================================================
 
     const getStatusBadge = (status) => {
+        switch (status) {
+            case "Pending":
+                return "badge bg-warning text-dark";
 
-    switch (status) {
+            case "Accepted":
+                return "badge bg-primary";
 
-        case "Pending":
-            return "badge bg-warning text-dark";
+            case "Processing":
+                return "badge bg-info text-dark";
 
-        case "Accepted":
-            return "badge bg-primary";
+            case "Ready":
+                return "badge bg-success";
 
-        case "Processing":
-            return "badge bg-info";
+            case "Assigned":
+                return "badge bg-secondary";
 
-        case "Ready":
-            return "badge bg-success";
+            case "Out for Delivery":
+                return "badge bg-dark";
 
-        case "Assigned":
-            return "badge bg-secondary";
+            case "Delivered":
+                return "badge bg-success";
 
-        case "Out for Delivery":
-            return "badge bg-dark";
+            case "Cancelled":
+                return "badge bg-danger";
 
-        case "Delivered":
-            return "badge bg-success";
-
-        case "Cancelled":
-            return "badge bg-danger";
-
-        default:
-            return "badge bg-light text-dark";
-    }
-};
-
-
-    // =========================================================
-    // PAYMENT METHOD
-    // =========================================================
-
-    const getPaymentMethod = (order) => {
-
-        return (
-            order.payment_method ||
-            "N/A"
-        );
+            default:
+                return "badge bg-light text-dark";
+        }
     };
 
 
-    // =========================================================
-    // FORMAT DATE
-    // =========================================================
+    // =====================================================
+    // PAYMENT METHOD
+    // =====================================================
 
-    const formatDate = (date) => {
-
-        if (!date) {
-            return "N/A";
+    const getPaymentMethod = (order) => {
+        if (
+            order &&
+            order.payment_method
+        ) {
+            return order.payment_method;
         }
 
-        const parsedDate =
-            new Date(date);
+        if (
+            order &&
+            order.paymentMethod
+        ) {
+            return order.paymentMethod;
+        }
+
+        if (
+            order &&
+            order.payment &&
+            order.payment.method
+        ) {
+            return order.payment.method;
+        }
+
+        return "N/A";
+    };
+
+
+    // =====================================================
+    // FORMAT DATE
+    // =====================================================
+
+    const formatDate = (date) => {
+        if (!date) {
+            return "-";
+        }
+
+        const parsedDate = new Date(date);
 
         if (
             Number.isNaN(
                 parsedDate.getTime()
             )
         ) {
-            return "N/A";
+            return "-";
         }
 
         return parsedDate.toLocaleDateString(
@@ -246,133 +410,240 @@ const AdminOrders = () => {
     };
 
 
-    // =========================================================
+    // =====================================================
     // FORMAT AMOUNT
-    // =========================================================
+    // =====================================================
 
     const formatAmount = (amount) => {
-
-        const value =
+        const numericAmount =
             Number(amount);
 
         if (
-            Number.isNaN(value)
+            Number.isNaN(
+                numericAmount
+            )
         ) {
             return "0.00";
         }
 
-        return value.toFixed(2);
+        return numericAmount.toFixed(2);
     };
 
 
-    // =========================================================
+    // =====================================================
+    // GET ITEM COUNT
+    // =====================================================
+
+    const getItemCount = (order) => {
+        if (
+            order &&
+            order.item_count !== undefined &&
+            order.item_count !== null
+        ) {
+            return order.item_count;
+        }
+
+        if (
+            order &&
+            order.items_count !== undefined &&
+            order.items_count !== null
+        ) {
+            return order.items_count;
+        }
+
+        if (
+            order &&
+            Array.isArray(order.items)
+        ) {
+            return order.items.length;
+        }
+
+        return 0;
+    };
+
+
+    // =====================================================
     // UPDATE ORDER
-    // =========================================================
+    // =====================================================
 
-    const handleUpdateOrder = (id) => {
-
+    const handleUpdateOrder = (orderId) => {
         navigate(
-            `/admin/orders/update/${id}`
-        );
-    };
-
-    // =========================================================
-// ACCEPT ORDER
-// =========================================================
-
-const handleAcceptOrder = async (orderId) => {
-
-    if (!orderId) {
-        return;
-    }
-
-    try {
-
-        setAcceptingOrderId(orderId);
-
-        const response = await acceptAdminOrder(
+            "/admin/orders/update/" +
             orderId
         );
+    };
 
-        toast.success(
-            response?.data?.message ||
-            "Order accepted successfully."
-        );
 
-        await fetchOrders();
+    // =====================================================
+    // ACCEPT ORDER
+    // =====================================================
 
-    } catch (error) {
+    const handleAcceptOrder = async (
+        orderId
+    ) => {
+        try {
+            setAcceptingOrderId(orderId);
 
-        console.error(
-            "Failed to accept order:",
-            error
-        );
+            await acceptAdminOrder(
+                orderId
+            );
 
-        toast.error(
-            error?.response?.data?.detail ||
-            error?.response?.data?.message ||
-            "Failed to accept order."
-        );
+            toast.success(
+                "Order accepted successfully."
+            );
 
-    } finally {
+            await fetchOrders();
+        } catch (error) {
+            console.error(
+                "Accept order error:",
+                error
+            );
 
-        setAcceptingOrderId(null);
+            const message =
+                getErrorMessage(
+                    error,
+                    "Failed to accept order."
+                );
 
-    }
-};
-    const handleAssignDelivery = async (orderId) => {
-        const riderId = selectedRiders[orderId];
+            toast.error(message);
+        } finally {
+            setAcceptingOrderId(null);
+        }
+    };
+
+
+    // =====================================================
+    // ASSIGN DELIVERY RIDER
+    // =====================================================
+
+    const handleAssignDelivery = async (
+        orderId
+    ) => {
+        const riderId =
+            selectedRiders[orderId];
 
         if (!riderId) {
-            toast.warning("Please select a delivery rider first.");
+            toast.warning(
+                "Please select a delivery rider."
+            );
+
             return;
         }
 
         try {
             setAssigningOrderId(orderId);
-            await assignDeliveryRider(orderId, riderId);
-            toast.success("Delivery rider assigned successfully.");
-            setSelectedRiders((previous) => ({
-                ...previous,
-                [orderId]: "",
-            }));
+
+            await assignDeliveryRider(
+                orderId,
+                riderId
+            );
+
+            toast.success(
+                "Delivery rider assigned successfully."
+            );
+
+            setSelectedRiders(
+                (previous) => {
+                    const updated = {
+                        ...previous,
+                    };
+
+                    delete updated[orderId];
+
+                    return updated;
+                }
+            );
+
             await fetchOrders();
         } catch (error) {
-            console.error("Failed to assign rider:", error);
-            const detail =
-                error?.response?.data?.detail ||
-                error?.response?.data?.not_ready_items ||
-                "Failed to assign delivery rider.";
-            toast.error(typeof detail === "string" ? detail : "Failed to assign delivery rider.");
+            console.error(
+                "Assign rider error:",
+                error
+            );
+
+            const message =
+                getErrorMessage(
+                    error,
+                    "Failed to assign delivery rider."
+                );
+
+            toast.error(message);
         } finally {
             setAssigningOrderId(null);
         }
     };
 
 
-    // =========================================================
-    // LOADING
-    // =========================================================
+    // =====================================================
+    // REFRESH
+    // =====================================================
+
+    const handleRefresh = async () => {
+        try {
+            setLoading(true);
+
+            await Promise.all([
+                fetchOrders(),
+                fetchRiders(),
+            ]);
+
+            toast.success(
+                "Orders refreshed successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Refresh error:",
+                error
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
+    // =====================================================
+    // CHANGE RIDER
+    // =====================================================
+
+    const handleRiderChange = (
+        orderId,
+        riderId
+    ) => {
+        setSelectedRiders(
+            (previous) => ({
+                ...previous,
+                [orderId]: riderId,
+            })
+        );
+    };
+
+
+    // =====================================================
+    // LOADING SCREEN
+    // =====================================================
 
     if (loading) {
-
         return (
             <DashboardLayout>
 
-                <div className="container-fluid py-5 text-center">
+                <div className="container-fluid py-5">
 
-                    <div
-                        className="spinner-border text-primary"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
+                    <div className="text-center">
+
+                        <div
+                            className="spinner-border text-primary"
+                            role="status"
+                        >
+                            <span className="visually-hidden">
+                                Loading...
+                            </span>
+                        </div>
+
+                        <h5 className="mt-3">
+                            Loading Orders...
+                        </h5>
+
                     </div>
-
-                    <h5 className="mt-3">
-                        Loading Orders...
-                    </h5>
 
                 </div>
 
@@ -381,9 +652,9 @@ const handleAcceptOrder = async (orderId) => {
     }
 
 
-    // =========================================================
-    // PAGE
-    // =========================================================
+    // =====================================================
+    // MAIN RETURN
+    // =====================================================
 
     return (
         <DashboardLayout>
@@ -391,20 +662,19 @@ const handleAcceptOrder = async (orderId) => {
             <div className="container-fluid py-4">
 
                 {/* =================================================
-                    HEADER
+                    PAGE HEADER
                 ================================================= */}
 
-                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-4">
 
                     <div>
 
-                        <h2 className="mb-1">
+                        <h2 className="fw-bold mb-1">
                             Order Management
                         </h2>
 
                         <p className="text-muted mb-0">
-                            Manage customer orders
-                            from the database.
+                            Manage all customer orders from one place.
                         </p>
 
                     </div>
@@ -413,40 +683,110 @@ const handleAcceptOrder = async (orderId) => {
                     <button
                         type="button"
                         className="btn btn-primary"
-                        onClick={fetchOrders}
+                        onClick={handleRefresh}
+                        disabled={
+                            loading ||
+                            acceptingOrderId ||
+                            assigningOrderId
+                        }
                     >
-                        Refresh Orders
+                        Refresh
                     </button>
 
                 </div>
 
 
                 {/* =================================================
-                    FILTERS
+                    STATUS TABS
                 ================================================= */}
 
                 <div className="card shadow-sm mb-4">
 
                     <div className="card-body">
 
-                        <div className="row g-3">
+                        <ul className="nav nav-tabs flex-wrap">
 
-                            {/* SEARCH */}
+                            {ORDER_TABS.map(
+                                (tab) => {
 
-                            <div className="col-md-7">
+                                    const isActive =
+                                        activeTab ===
+                                        tab;
+
+                                    return (
+                                        <li
+                                            className="nav-item"
+                                            key={tab}
+                                        >
+
+                                            <button
+                                                type="button"
+                                                className={
+                                                    isActive
+                                                        ? "nav-link active"
+                                                        : "nav-link"
+                                                }
+                                                onClick={() =>
+                                                    setActiveTab(
+                                                        tab
+                                                    )
+                                                }
+                                            >
+
+                                                {tab}
+
+                                                <span
+                                                    className={
+                                                        isActive
+                                                            ? "badge bg-primary ms-2"
+                                                            : "badge bg-secondary ms-2"
+                                                    }
+                                                >
+                                                    {
+                                                        tabCounts[
+                                                            tab
+                                                        ]
+                                                    }
+                                                </span>
+
+                                            </button>
+
+                                        </li>
+                                    );
+                                }
+                            )}
+
+                        </ul>
+
+                    </div>
+
+                </div>
+
+
+                {/* =================================================
+                    SEARCH
+                ================================================= */}
+
+                <div className="card shadow-sm mb-4">
+
+                    <div className="card-body">
+
+                        <div className="row g-3 align-items-end">
+
+                            <div className="col-lg-6">
 
                                 <label
-                                    htmlFor="order-search"
+                                    htmlFor="orderSearch"
                                     className="form-label fw-semibold"
                                 >
                                     Search Orders
                                 </label>
 
                                 <input
-                                    id="order-search"
+                                    id="orderSearch"
                                     type="text"
                                     className="form-control"
-                                    placeholder="Search by order ID, customer, email, status..."
+                                    placeholder="Search Order ID, Customer Name, Email..."
                                     value={search}
                                     onChange={(event) =>
                                         setSearch(
@@ -458,61 +798,25 @@ const handleAcceptOrder = async (orderId) => {
                             </div>
 
 
-                            {/* STATUS FILTER */}
+                            <div className="col-lg-6">
 
-                            <div className="col-md-5">
+                                <div className="text-lg-end">
 
-                                <label
-                                    htmlFor="status-filter"
-                                    className="form-label fw-semibold"
-                                >
-                                    Filter by Status
-                                </label>
+                                    <span className="text-muted">
+                                        Showing
+                                    </span>
 
-                                <select
-                                    id="status-filter"
-                                    className="form-select"
-                                    value={statusFilter}
-                                    onChange={(event) =>
-                                        setStatusFilter(
-                                            event.target.value
-                                        )
-                                    }
-                                >
+                                    <strong className="text-primary mx-2">
+                                        {
+                                            filteredOrders.length
+                                        }
+                                    </strong>
 
-<option value="Pending">
-    Pending
-</option>
+                                    <span>
+                                        Orders
+                                    </span>
 
-<option value="Accepted">
-    Accepted
-</option>
-
-<option value="Processing">
-    Processing
-</option>
-
-<option value="Ready">
-    Ready
-</option>
-
-<option value="Assigned">
-    Assigned
-</option>
-
-<option value="Out for Delivery">
-    Out for Delivery
-</option>
-
-<option value="Delivered">
-    Delivered
-</option>
-
-<option value="Cancelled">
-    Cancelled
-</option>
-
-                                </select>
+                                </div>
 
                             </div>
 
@@ -524,30 +828,15 @@ const handleAcceptOrder = async (orderId) => {
 
 
                 {/* =================================================
-                    ORDER COUNT
-                ================================================= */}
-
-                <div className="mb-3">
-
-                    <strong>
-                        Total Orders:
-                    </strong>{" "}
-
-                    {filteredOrders.length}
-
-                </div>
-
-
-                {/* =================================================
                     ORDERS TABLE
                 ================================================= */}
 
-                <div className="card shadow">
+                <div className="card shadow-sm">
 
-                    <div className="card-header bg-primary text-white">
+                    <div className="card-header bg-white py-3">
 
-                        <h5 className="mb-0">
-                            Customer Orders
+                        <h5 className="mb-0 fw-bold">
+                            Orders
                         </h5>
 
                     </div>
@@ -557,9 +846,9 @@ const handleAcceptOrder = async (orderId) => {
 
                         <div className="table-responsive">
 
-                            <table className="table table-bordered table-hover align-middle mb-0">
+                            <table className="table table-hover align-middle mb-0">
 
-                                <thead className="table-dark">
+                                <thead className="table-light">
 
                                     <tr>
 
@@ -575,7 +864,7 @@ const handleAcceptOrder = async (orderId) => {
                                             Date
                                         </th>
 
-                                        <th>
+                                        <th className="text-center">
                                             Items
                                         </th>
 
@@ -592,7 +881,7 @@ const handleAcceptOrder = async (orderId) => {
                                         </th>
 
                                         <th>
-                                            Action
+                                            Actions
                                         </th>
 
                                     </tr>
@@ -602,32 +891,105 @@ const handleAcceptOrder = async (orderId) => {
 
                                 <tbody>
 
-                                    {filteredOrders.length > 0 ? (
+                                    {filteredOrders.length ===
+                                        0 && (
+                                            <tr>
 
+                                                <td
+                                                    colSpan="8"
+                                                    className="text-center py-5"
+                                                >
+
+                                                    <h5 className="mb-2">
+                                                        No Orders Found
+                                                    </h5>
+
+                                                    <p className="text-muted mb-0">
+                                                        There are no orders in this category.
+                                                    </p>
+
+                                                </td>
+
+                                            </tr>
+                                        )}
+
+
+                                    {filteredOrders.length >
+                                        0 &&
                                         filteredOrders.map(
                                             (order) => {
 
+                                                // =================================================
+                                                // ORDER DATA
+                                                // =================================================
+
                                                 const orderNumber =
-                                                    `ORD${String(
+                                                    getOrderNumber(
                                                         order.id
-                                                    ).padStart(
-                                                        3,
-                                                        "0"
-                                                    )}`;
+                                                    );
+
+                                                const itemCount =
+                                                    getItemCount(
+                                                        order
+                                                    );
+
+                                                const paymentMethod =
+                                                    getPaymentMethod(
+                                                        order
+                                                    );
+
+                                                const statusBadge =
+                                                    getStatusBadge(
+                                                        order.status
+                                                    );
+
+                                                const customerName =
+                                                    order.customer_name ||
+                                                    "Unknown Customer";
+
+                                                const customerEmail =
+                                                    order.customer_email ||
+                                                    "-";
+
+                                                const totalAmount =
+                                                    formatAmount(
+                                                        order.total_amount
+                                                    );
+
+                                                const createdDate =
+                                                    formatDate(
+                                                        order.created_at
+                                                    );
+
+                                                const isAccepting =
+                                                    acceptingOrderId ===
+                                                    order.id;
+
+                                                const isAssigning =
+                                                    assigningOrderId ===
+                                                    order.id;
+
+                                                const selectedRider =
+                                                    selectedRiders[
+                                                        order.id
+                                                    ] ||
+                                                    "";
+
 
                                                 return (
-
                                                     <tr
                                                         key={
                                                             order.id
                                                         }
                                                     >
 
-                                                        {/* ORDER */}
+                                                        {/* =================================================
+                                                            ORDER ID
+                                                        ================================================= */}
 
                                                         <td>
 
-                                                            <strong>
+                                                            <strong className="text-primary">
                                                                 {
                                                                     orderNumber
                                                                 }
@@ -636,280 +998,257 @@ const handleAcceptOrder = async (orderId) => {
                                                         </td>
 
 
-                                                        {/* CUSTOMER */}
+                                                        {/* =================================================
+                                                            CUSTOMER
+                                                        ================================================= */}
 
                                                         <td>
 
-                                                            <div>
-                                                                <strong>
-                                                                    {
-                                                                        order.customer_name ||
-                                                                        "Unknown Customer"
-                                                                    }
-                                                                </strong>
+                                                            <div className="fw-semibold">
+                                                                {
+                                                                    customerName
+                                                                }
                                                             </div>
 
                                                             <small className="text-muted">
                                                                 {
-                                                                    order.customer_email ||
-                                                                    "N/A"
+                                                                    customerEmail
                                                                 }
                                                             </small>
 
                                                         </td>
 
 
-                                                        {/* DATE */}
+                                                        {/* =================================================
+                                                            DATE
+                                                        ================================================= */}
 
                                                         <td>
-
                                                             {
-                                                                formatDate(
-                                                                    order.created_at
-                                                                )
+                                                                createdDate
                                                             }
-
                                                         </td>
 
 
-                                                        {/* ITEMS */}
+                                                        {/* =================================================
+                                                            ITEMS
+                                                        ================================================= */}
 
-                                                        <td>
+                                                        <td className="text-center">
 
-                                                            {
-                                                                order.item_count ??
-                                                                0
-                                                            }
-
-                                                        </td>
-
-
-                                                        {/* TOTAL */}
-
-                                                        <td>
-
-                                                            <strong>
-                                                                ৳
+                                                            <span className="badge bg-light text-dark border">
                                                                 {
-                                                                    formatAmount(
-                                                                        order.total_amount
-                                                                    )
-                                                                }
-                                                            </strong>
-
-                                                        </td>
-
-
-                                                        {/* PAYMENT */}
-
-                                                        <td>
-
-                                                            {
-                                                                getPaymentMethod(
-                                                                    order
-                                                                )
-                                                            }
-
-                                                        </td>
-
-
-                                                        {/* STATUS */}
-
-                                                        <td>
-
-                                                            <span
-                                                                className={getStatusBadge(
-                                                                    order.status
-                                                                )}
-                                                            >
-                                                                {
-                                                                    order.status ||
-                                                                    "N/A"
+                                                                    itemCount
                                                                 }
                                                             </span>
 
                                                         </td>
 
 
-                                                        {/* ACTION */}
+                                                        {/* =================================================
+                                                            TOTAL
+                                                        ================================================= */}
 
-<td>
+                                                        <td>
 
-    <div className="d-flex flex-column gap-2">
+                                                            <strong className="text-success">
+                                                                ৳{" "}
+                                                                {
+                                                                    totalAmount
+                                                                }
+                                                            </strong>
 
-        {/* =================================================
-            ACCEPT ORDER
-        ================================================= */}
-
-        {order.status === "Pending" && (
-
-            <button
-                type="button"
-                className="btn btn-success btn-sm"
-                onClick={() =>
-                    handleAcceptOrder(
-                        order.id
-                    )
-                }
-                disabled={
-                    acceptingOrderId ===
-                    order.id
-                }
-            >
-
-                {acceptingOrderId === order.id ? (
-
-                    <>
-                        <span
-                            className="spinner-border spinner-border-sm me-1"
-                            role="status"
-                            aria-hidden="true"
-                        />
-
-                        Accepting...
-                    </>
-
-                ) : (
-
-                    "Accept Order"
-
-                )}
-
-            </button>
-
-        )}
+                                                        </td>
 
 
-        {/* =================================================
-            DELIVERY RIDER ASSIGNMENT
-        ================================================= */}
+                                                        {/* =================================================
+                                                            PAYMENT
+                                                        ================================================= */}
 
-       {order.status === "Ready" && (
+                                                        <td>
 
-    <div className="d-flex gap-2 align-items-center">
+                                                            <span className="badge bg-secondary">
+                                                                {
+                                                                    paymentMethod
+                                                                }
+                                                            </span>
 
-        <select
-            className="form-select form-select-sm"
-            value={
-                selectedRiders[
-                    order.id
-                ] || ""
-            }
-            onChange={(event) =>
-                setSelectedRiders(
-                    (previous) => ({
-                        ...previous,
-                        [order.id]:
-                            event.target.value,
-                    })
-                )
-            }
-        >
+                                                        </td>
 
-            <option value="">
-                Select rider
-            </option>
 
-            {riders
-                .filter(
-                    (rider) =>
-                        rider.is_active
-                )
-                .map(
-                    (rider) => (
-                        <option
-                            key={rider.id}
-                            value={rider.id}
-                        >
-                            {rider.username}
-                        </option>
-                    )
-                )}
+                                                        {/* =================================================
+                                                            STATUS
+                                                        ================================================= */}
 
-        </select>
+                                                        <td>
 
-        <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() =>
-                handleAssignDelivery(
-                    order.id
-                )
-            }
-            disabled={
-                assigningOrderId ===
-                order.id
-            }
-        >
+                                                            <span
+                                                                className={
+                                                                    statusBadge
+                                                                }
+                                                            >
+                                                                {
+                                                                    order.status ||
+                                                                    "Unknown"
+                                                                }
+                                                            </span>
 
-            {assigningOrderId === order.id
-                ? "Assigning..."
-                : "Assign"}
+                                                        </td>
 
-        </button>
 
-    </div>
+                                                        {/* =================================================
+                                                            ACTIONS
+                                                        ================================================= */}
 
-)}
+                                                        <td>
 
-        {/* =================================================
-            UPDATE ORDER
-        ================================================= */}
+                                                            <div className="d-flex flex-wrap gap-2">
 
-       {(
-    order.status === "Pending" ||
-    order.status === "Ready"
-) && (
+                                                                {/* =========================================
+                                                                    ACCEPT
+                                                                ========================================= */}
 
-    <button
-        type="button"
-        className="btn btn-warning btn-sm"
-        onClick={() =>
-            handleUpdateOrder(order.id)
-        }
-    >
-        Update
-    </button>
+                                                                {order.status ===
+                                                                    "Pending" && (
+                                                                        <button
+                                                                            type="button"
+                                                                            className="btn btn-success btn-sm"
+                                                                            onClick={() =>
+                                                                                handleAcceptOrder(
+                                                                                    order.id
+                                                                                )
+                                                                            }
+                                                                            disabled={
+                                                                                isAccepting
+                                                                            }
+                                                                        >
+                                                                            {isAccepting
+                                                                                ? "Accepting..."
+                                                                                : "Accept"}
+                                                                        </button>
+                                                                    )}
 
-)}
 
-    </div>
+                                                                {/* =========================================
+                                                                    UPDATE
+                                                                ========================================= */}
 
-</td>
+                                                                {(
+                                                                    order.status ===
+                                                                        "Pending" ||
+                                                                    order.status ===
+                                                                        "Ready"
+                                                                ) && (
+                                                                        <button
+                                                                            type="button"
+                                                                            className="btn btn-warning btn-sm"
+                                                                            onClick={() =>
+                                                                                handleUpdateOrder(
+                                                                                    order.id
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            Update
+                                                                        </button>
+                                                                    )}
+
+
+                                                                {/* =========================================
+                                                                    ASSIGN RIDER
+                                                                ========================================= */}
+
+                                                                {order.status ===
+                                                                    "Ready" && (
+                                                                        <div className="d-flex gap-2">
+
+                                                                            <select
+                                                                                className="form-select form-select-sm"
+                                                                                value={
+                                                                                    selectedRider
+                                                                                }
+                                                                                onChange={(
+                                                                                    event
+                                                                                ) =>
+                                                                                    handleRiderChange(
+                                                                                        order.id,
+                                                                                        event
+                                                                                            .target
+                                                                                            .value
+                                                                                    )
+                                                                                }
+                                                                            >
+
+                                                                                <option value="">
+                                                                                    Select Rider
+                                                                                </option>
+
+
+                                                                                {riders
+                                                                                    .filter(
+                                                                                        (
+                                                                                            rider
+                                                                                        ) =>
+                                                                                            rider.is_active
+                                                                                    )
+                                                                                    .map(
+                                                                                        (
+                                                                                            rider
+                                                                                        ) => {
+
+                                                                                            const riderName =
+                                                                                                rider.username ||
+                                                                                                rider.name ||
+                                                                                                rider.email ||
+                                                                                                "Rider";
+
+                                                                                            return (
+                                                                                                <option
+                                                                                                    key={
+                                                                                                        rider.id
+                                                                                                    }
+                                                                                                    value={
+                                                                                                        rider.id
+                                                                                                    }
+                                                                                                >
+                                                                                                    {
+                                                                                                        riderName
+                                                                                                    }
+                                                                                                </option>
+                                                                                            );
+                                                                                        }
+                                                                                    )}
+
+                                                                            </select>
+
+
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn btn-primary btn-sm"
+                                                                                onClick={() =>
+                                                                                    handleAssignDelivery(
+                                                                                        order.id
+                                                                                    )
+                                                                                }
+                                                                                disabled={
+                                                                                    isAssigning
+                                                                                }
+                                                                            >
+                                                                                {isAssigning
+                                                                                    ? "Assigning..."
+                                                                                    : "Assign"}
+                                                                            </button>
+
+                                                                        </div>
+                                                                    )}
+
+                                                            </div>
+
+                                                        </td>
 
                                                     </tr>
-
                                                 );
                                             }
-                                        )
-
-                                    ) : (
-
-                                        <tr>
-
-                                            <td
-                                                colSpan="8"
-                                                className="text-center py-5"
-                                            >
-
-                                                <h5>
-                                                    No Orders Found
-                                                </h5>
-
-                                                <p className="text-muted mb-0">
-
-                                                    {search ||
-                                                    statusFilter !== "All"
-                                                        ? "No orders match your search or filter."
-                                                        : "There are no orders yet."}
-
-                                                </p>
-
-                                            </td>
-
-                                        </tr>
-
-                                    )}
+                                        )}
 
                                 </tbody>
 
@@ -928,4 +1267,9 @@ const handleAcceptOrder = async (orderId) => {
 };
 
 
+// =========================================================
+// EXPORT
+// =========================================================
+
 export default AdminOrders;
+```

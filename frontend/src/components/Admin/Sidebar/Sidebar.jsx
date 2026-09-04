@@ -1,144 +1,164 @@
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 
 const Sidebar = () => {
+    const linkClass = ({ isActive }) =>
+        `nav-link ${isActive ? "active bg-primary text-white rounded" : "text-white"}`;
+
     return (
         <div
             className="bg-dark text-white p-3"
             style={{
-                width: "250px",
+                width: "260px",
                 minHeight: "100vh",
             }}
         >
-            <h4>Admin Dashboard</h4>
-            <hr />
+            <h4 className="mb-3 fw-bold">
+                Admin Dashboard
+            </h4>
+
+            <hr className="border-secondary" />
 
             <ul className="nav flex-column">
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/dashboard">
+
+                {/* Dashboard */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/dashboard"
+                        className={linkClass}
+                    >
                         Dashboard
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/categories">
+                {/* Products */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/categories"
+                        className={linkClass}
+                    >
                         Category Management
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/products">
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/products"
+                        className={linkClass}
+                    >
                         Product Management
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/inventory">
-                        Inventory / Stock
-                    </Link>
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/inventory"
+                        className={linkClass}
+                    >
+                        Inventory
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/suppliers">
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/suppliers"
+                        className={linkClass}
+                    >
                         Supplier Management
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/customers">
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/customers"
+                        className={linkClass}
+                    >
                         Customer Management
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item mt-2">
-                    <div className="text-uppercase text-secondary small fw-bold">Order Management</div>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/orders">
-                        Pending Orders
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/orders">
-                        Accepted Orders
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/orders">
-                        Processing Orders
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/orders">
-                        Ready Orders
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/orders">
-                        Completed Orders
-                    </Link>
+                <hr className="border-secondary my-3" />
+
+                {/* Order */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/orders"
+                        className={linkClass}
+                    >
+                        Order Management
+                    </NavLink>
                 </li>
 
-                <li className="nav-item mt-2">
-                    <div className="text-uppercase text-secondary small fw-bold">Delivery Management</div>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Assign Rider
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Active Deliveries
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Delivery History
-                    </Link>
+                {/* Delivery */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/delivery-management"
+                        className={linkClass}
+                    >
+                        Delivery Management
+                    </NavLink>
                 </li>
 
-                <li className="nav-item mt-2">
-                    <div className="text-uppercase text-secondary small fw-bold">Rider Management</div>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Add Rider
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Rider List
-                    </Link>
-                </li>
-                <li className="nav-item">
-                    <Link className="nav-link text-white ms-3" to="/admin/delivery-riders">
-                        Rider Status
-                    </Link>
+                {/* Riders */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/riders"
+                        className={linkClass}
+                    >
+                        Rider Management
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/payments">
+                <hr className="border-secondary my-3" />
+
+                {/* Payments */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/payments"
+                        className={linkClass}
+                    >
                         Payment Management
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/reports">
+                {/* Reports */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/reports"
+                        className={linkClass}
+                    >
                         Sales Reports
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/ai-prediction">
+                {/* AI */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/ai-prediction"
+                        className={linkClass}
+                    >
                         AI Prediction
-                    </Link>
+                    </NavLink>
                 </li>
 
-                <li className="nav-item">
-                    <Link className="nav-link text-white" to="/admin/notifications">
+                {/* Notifications */}
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/notifications"
+                        className={linkClass}
+                    >
                         Notifications
-                    </Link>
+                    </NavLink>
                 </li>
+
             </ul>
         </div>
     );

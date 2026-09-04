@@ -20,7 +20,6 @@ from .serializers import (
     DeliveryStatusUpdateSerializer,
 )
 
-
 User = get_user_model()
 
 
@@ -28,86 +27,57 @@ User = get_user_model()
 # HELPER FUNCTIONS
 # ==========================================================
 
+
 def is_delivery_rider_user(user):
     """
-    Check whether a user is an active delivery rider.
-
-    Supports both possible role constants:
-        ROLE_DELIVERY_RIDER
-        ROLE_DELIVERY
+    Check whether the logged-in user is a delivery rider.
     """
 
-    if not user or not user.is_active:
-        return False
-
-    user_role = getattr(user, "role", None)
-
-    allowed_roles = set()
-
-    role_delivery_rider = getattr(
-        User,
-        "ROLE_DELIVERY_RIDER",
-        None,
-    )
-
-    role_delivery = getattr(
-        User,
-        "ROLE_DELIVERY",
-        None,
-    )
-
-    if role_delivery_rider:
-        allowed_roles.add(role_delivery_rider)
-
-    if role_delivery:
-        allowed_roles.add(role_delivery)
-
-    # Fallback values in case the model uses these strings directly.
-    allowed_roles.update(
-        {
+    return (
+        getattr(user, "role", None)
+        == getattr(
+            User,
+            "ROLE_DELIVERY",
             "Delivery Rider",
-            "Delivery",
-            "delivery_rider",
-            "delivery",
-        }
+        )
     )
-
-    return user_role in allowed_roles
 
 
 def notify_user(
-    recipient,
+    user,
     title,
     message,
-    notification_type="delivery",
+    notification_type="Delivery",
 ):
     """
-    Safely create a notification.
+    Create a notification safely.
 
-    Notification creation should never break
-    the main delivery operation.
+    Notification creation should never break the
+    main delivery operation.
     """
 
     try:
         Notification.objects.create(
-            recipient=recipient,
+            recipient=user,
             title=title,
             message=message,
             notification_type=notification_type,
         )
     except Exception:
-        # Notification failure should not cancel
-        # the delivery operation.
+        # Notification failure should not stop
+        # order/delivery processing.
         pass
 
 
 def order_is_ready_for_delivery(order):
     """
-    A delivery can only be assigned when:
+    Check whether an order is completely ready
+    for rider assignment.
 
-    1. Parent order status is Ready.
-    2. Order contains at least one item.
-    3. Every OrderItem supplier_status is Ready.
+    Conditions:
+    1. Parent order status must be Ready.
+    2. Order must contain at least one item.
+    3. Every order item must have supplier_status = Ready.
     """
 
     if order.status != Order.STATUS_READY:
@@ -125,22 +95,29 @@ def order_is_ready_for_delivery(order):
 
 # ==========================================================
 # ADMIN
-# ASSIGN DELIVERY TO SPECIFIC RIDER
+# ASSIGN SPECIFIC RIDER
 # ==========================================================
+
 
 class AdminCreateDeliveryView(APIView):
     """
     Admin assigns a specific delivery rider to a Ready order.
 
+    POST:
+        /api/delivery/admin/orders/<order_id>/create/
+
+    Request body:
+        {
+            "rider_id": 5
+        }
+
     Workflow:
 
         Ready
           ↓
-        Admin selects rider
-          ↓
-        Delivery = Assigned
-          ↓
-        Order = Assigned
+        Assigned
+
+    This endpoint does NOT allow rider self-assignment.
     """
 
     permission_classes = [
@@ -150,6 +127,18 @@ class AdminCreateDeliveryView(APIView):
 
     @transaction.atomic
     def post(self, request, order_id):
+        # ------------------------------------------------------
+        # Get order
+        # ------------------------------------------------------
+
+        order = get_object_or_404(
+            Order.objects.select_for_update(),
+            id=order_id,
+        )
+
+        # ------------------------------------------------------
+        # Validate assignment request
+        # ------------------------------------------------------
 
         serializer = DeliveryAssignmentSerializer(
             data=request.data
@@ -159,108 +148,79 @@ class AdminCreateDeliveryView(APIView):
 
         rider_id = serializer.validated_data["rider_id"]
 
-        delivery_note = serializer.validated_data.get(
-            "delivery_note",
-            "",
-        )
-
-        # --------------------------------------------------
-        # LOCK ORDER
-        # --------------------------------------------------
-
-        order = get_object_or_404(
-            Order.objects.select_for_update(),
-            id=order_id,
-        )
-
-        # --------------------------------------------------
-        # ORDER STATUS VALIDATION
-        # --------------------------------------------------
-
-        if order.status == Order.STATUS_CANCELLED:
-            return Response(
-                {
-                    "detail": (
-                        "Cancelled orders cannot be assigned "
-                        "for delivery."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if order.status == Order.STATUS_DELIVERED:
-            return Response(
-                {
-                    "detail": (
-                        "Delivered orders cannot be assigned "
-                        "for delivery."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if order.status != Order.STATUS_READY:
-            return Response(
-                {
-                    "detail": (
-                        "Delivery can only be assigned when "
-                        "the order status is Ready."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # --------------------------------------------------
-        # CHECK ALL SUPPLIER ITEMS ARE READY
-        # --------------------------------------------------
-
-        if not order_is_ready_for_delivery(order):
-            return Response(
-                {
-                    "detail": (
-                        "All order items must be Ready before "
-                        "assigning a delivery rider."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # --------------------------------------------------
-        # GET SELECTED RIDER
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Get selected rider
+        # ------------------------------------------------------
 
         rider = get_object_or_404(
-            User.objects.select_for_update(),
+            User,
             id=rider_id,
         )
 
-        # --------------------------------------------------
-        # RIDER VALIDATION
-        # --------------------------------------------------
-
-        if not rider.is_active:
-            return Response(
-                {
-                    "detail": (
-                        "The selected delivery rider is inactive."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # ------------------------------------------------------
+        # Validate rider role
+        # ------------------------------------------------------
 
         if not is_delivery_rider_user(rider):
             return Response(
                 {
                     "detail": (
-                        "The selected user is not a delivery rider."
+                        "The selected user is not a "
+                        "delivery rider."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # --------------------------------------------------
-        # CHECK EXISTING DELIVERY
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Validate rider account
+        # ------------------------------------------------------
+
+        if not rider.is_active:
+            return Response(
+                {
+                    "detail": (
+                        "The selected delivery rider "
+                        "is inactive."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ------------------------------------------------------
+        # Order must be Ready
+        # ------------------------------------------------------
+
+        if order.status != Order.STATUS_READY:
+            return Response(
+                {
+                    "detail": (
+                        f"Only Ready orders can be assigned "
+                        f"to a delivery rider. "
+                        f"Current status: {order.status}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ------------------------------------------------------
+        # All supplier items must be Ready
+        # ------------------------------------------------------
+
+        if not order_is_ready_for_delivery(order):
+            return Response(
+                {
+                    "detail": (
+                        "All order items must be Ready "
+                        "before assigning a delivery rider."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ------------------------------------------------------
+        # Get existing delivery
+        # ------------------------------------------------------
 
         delivery = (
             Delivery.objects
@@ -269,111 +229,74 @@ class AdminCreateDeliveryView(APIView):
             .first()
         )
 
-        created = False
+        # ------------------------------------------------------
+        # Existing delivery handling
+        # ------------------------------------------------------
 
         if delivery:
 
-            # ----------------------------------------------
-            # DELIVERED DELIVERY CANNOT BE REASSIGNED
-            # ----------------------------------------------
-
-            if delivery.status == Delivery.STATUS_DELIVERED:
+            # Once rider has accepted the delivery,
+            # admin cannot change the rider through
+            # this endpoint.
+            if delivery.status != Delivery.STATUS_ASSIGNED:
                 return Response(
                     {
                         "detail": (
-                            "This order has already been delivered."
+                            "This delivery has already "
+                            "started and cannot be reassigned."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ----------------------------------------------
-            # CANCELLED DELIVERY CANNOT BE REUSED
-            # ----------------------------------------------
-
-            if delivery.status == Delivery.STATUS_CANCELLED:
-                return Response(
-                    {
-                        "detail": (
-                            "This delivery was cancelled and "
-                            "cannot be reused."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+            # If already assigned to the same rider,
+            # return the existing assignment.
+            if delivery.rider_id == rider.id:
+                order.status = Order.STATUS_ASSIGNED
+                order.save(
+                    update_fields=[
+                        "status",
+                        "updated_at",
+                    ]
                 )
 
-            # ----------------------------------------------
-            # DO NOT CHANGE RIDER AFTER ACCEPTANCE
-            # ----------------------------------------------
-
-            if delivery.status in [
-                Delivery.STATUS_ACCEPTED,
-                Delivery.STATUS_PICKED_UP,
-                Delivery.STATUS_OUT_FOR_DELIVERY,
-            ]:
                 return Response(
-                    {
-                        "detail": (
-                            "The rider cannot be changed after "
-                            "the delivery has been accepted."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                    DeliverySerializer(
+                        delivery
+                    ).data,
+                    status=status.HTTP_200_OK,
                 )
 
-            # ----------------------------------------------
-            # REASSIGN WHILE STILL ASSIGNED
-            # ----------------------------------------------
-
-            old_rider = delivery.rider
-
+            # Change assigned rider before acceptance.
             delivery.rider = rider
             delivery.status = Delivery.STATUS_ASSIGNED
-
-            if delivery_note:
-                delivery.delivery_note = delivery_note
-
-            delivery.assigned_at = timezone.now()
+            delivery.delivery_note = (
+                delivery.delivery_note or ""
+            )
 
             delivery.save(
                 update_fields=[
                     "rider",
                     "status",
                     "delivery_note",
-                    "assigned_at",
                     "updated_at",
                 ]
             )
 
-            if old_rider and old_rider.id != rider.id:
-                notify_user(
-                    recipient=old_rider,
-                    title="Delivery Assignment Changed",
-                    message=(
-                        f"Delivery for Order #{order.id} "
-                        "has been reassigned to another rider."
-                    ),
-                    notification_type="delivery",
-                )
-
         else:
-
-            # ----------------------------------------------
-            # CREATE NEW DELIVERY
-            # ----------------------------------------------
+            # --------------------------------------------------
+            # Create new delivery
+            # --------------------------------------------------
 
             delivery = Delivery.objects.create(
                 order=order,
                 rider=rider,
                 status=Delivery.STATUS_ASSIGNED,
-                delivery_note=delivery_note,
             )
 
-            created = True
-
-        # --------------------------------------------------
-        # UPDATE PARENT ORDER
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Update parent order
+        # ------------------------------------------------------
 
         order.status = Order.STATUS_ASSIGNED
 
@@ -384,69 +307,57 @@ class AdminCreateDeliveryView(APIView):
             ]
         )
 
-        # --------------------------------------------------
-        # NOTIFY CUSTOMER
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Notify rider
+        # ------------------------------------------------------
 
         notify_user(
-            recipient=order.customer,
-            title="Delivery Assigned",
-            message=(
-                f"Your Order #{order.id} has been assigned "
-                "to a delivery rider."
+            rider,
+            "New Delivery Assigned",
+            (
+                f"Order #{order.id} has been assigned "
+                f"to you for delivery."
             ),
-            notification_type="delivery",
+            "Delivery",
         )
 
-        # --------------------------------------------------
-        # NOTIFY RIDER
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Notify customer
+        # ------------------------------------------------------
 
         notify_user(
-            recipient=rider,
-            title="New Delivery Assigned",
-            message=(
-                f"Order #{order.id} has been assigned to you "
-                "for delivery."
+            order.customer,
+            "Delivery Rider Assigned",
+            (
+                f"A delivery rider has been assigned "
+                f"to your Order #{order.id}."
             ),
-            notification_type="delivery",
+            "Delivery",
         )
 
-        # --------------------------------------------------
-        # RESPONSE
-        # --------------------------------------------------
-
-        response_serializer = DeliverySerializer(
-            delivery,
-            context={
-                "request": request,
-            },
-        )
+        # ------------------------------------------------------
+        # Response
+        # ------------------------------------------------------
 
         return Response(
-            {
-                "message": (
-                    "Delivery assigned successfully."
-                    if created
-                    else "Delivery rider updated successfully."
-                ),
-                "delivery": response_serializer.data,
-            },
-            status=(
-                status.HTTP_201_CREATED
-                if created
-                else status.HTTP_200_OK
-            ),
+            DeliverySerializer(
+                delivery
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
 # ==========================================================
-# DELIVERY RIDER DASHBOARD
+# RIDER DASHBOARD
 # ==========================================================
+
 
 class DeliveryDashboardView(APIView):
     """
-    Dashboard for the currently logged-in delivery rider.
+    Delivery rider dashboard.
+
+    Shows statistics only for the logged-in rider's
+    own assigned deliveries.
     """
 
     permission_classes = [
@@ -456,79 +367,53 @@ class DeliveryDashboardView(APIView):
 
     def get(self, request):
 
-        deliveries = (
-            Delivery.objects
-            .filter(rider=request.user)
-            .select_related(
-                "order",
-                "order__customer",
-                "rider",
-            )
-            .prefetch_related(
-                "order__items",
-            )
-        )
-
-        total = deliveries.count()
-
-        assigned = deliveries.filter(
-            status=Delivery.STATUS_ASSIGNED
-        ).count()
-
-        accepted = deliveries.filter(
-            status=Delivery.STATUS_ACCEPTED
-        ).count()
-
-        picked_up = deliveries.filter(
-            status=Delivery.STATUS_PICKED_UP
-        ).count()
-
-        out_for_delivery = deliveries.filter(
-            status=Delivery.STATUS_OUT_FOR_DELIVERY
-        ).count()
-
-        delivered = deliveries.filter(
-            status=Delivery.STATUS_DELIVERED
-        ).count()
-
-        cancelled = deliveries.filter(
-            status=Delivery.STATUS_CANCELLED
-        ).count()
-
-        recent_deliveries = deliveries[:10]
-
-        serializer = DeliverySerializer(
-            recent_deliveries,
-            many=True,
-            context={
-                "request": request,
-            },
+        deliveries = Delivery.objects.filter(
+            rider=request.user
         )
 
         return Response(
             {
-                "total_deliveries": total,
-                "assigned": assigned,
-                "accepted": accepted,
-                "picked_up": picked_up,
-                "out_for_delivery": out_for_delivery,
-                "delivered": delivered,
-                "cancelled": cancelled,
-                "recent_deliveries": serializer.data,
+                "total_deliveries": deliveries.count(),
+
+                "assigned": deliveries.filter(
+                    status=Delivery.STATUS_ASSIGNED
+                ).count(),
+
+                "accepted": deliveries.filter(
+                    status=Delivery.STATUS_ACCEPTED
+                ).count(),
+
+                "picked_up": deliveries.filter(
+                    status=Delivery.STATUS_PICKED_UP
+                ).count(),
+
+                "out_for_delivery": deliveries.filter(
+                    status=Delivery.STATUS_OUT_FOR_DELIVERY
+                ).count(),
+
+                "delivered": deliveries.filter(
+                    status=Delivery.STATUS_DELIVERED
+                ).count(),
+
+                "cancelled": deliveries.filter(
+                    status=Delivery.STATUS_CANCELLED
+                ).count(),
             },
             status=status.HTTP_200_OK,
         )
 
 
 # ==========================================================
-# MY DELIVERIES
+# RIDER'S OWN DELIVERY LIST
 # ==========================================================
+
 
 class MyDeliveryListView(APIView):
     """
-    Return only deliveries assigned to the logged-in rider.
+    Return only deliveries assigned to the
+    currently logged-in rider.
 
-    There is NO available-delivery pool.
+    A rider cannot see another rider's deliveries.
     """
 
     permission_classes = [
@@ -555,9 +440,6 @@ class MyDeliveryListView(APIView):
         serializer = DeliverySerializer(
             deliveries,
             many=True,
-            context={
-                "request": request,
-            },
         )
 
         return Response(
@@ -570,10 +452,13 @@ class MyDeliveryListView(APIView):
 # DELIVERY DETAIL
 # ==========================================================
 
+
 class DeliveryDetailView(APIView):
     """
-    Rider can view details only for a delivery
-    assigned to that rider.
+    Show a single delivery.
+
+    Only the rider assigned to the delivery
+    can access it.
     """
 
     permission_classes = [
@@ -598,11 +483,8 @@ class DeliveryDetailView(APIView):
             rider=request.user,
         )
 
-        serializer = DeliveryOrderSerializer(
-            delivery,
-            context={
-                "request": request,
-            },
+        serializer = DeliverySerializer(
+            delivery
         )
 
         return Response(
@@ -612,12 +494,13 @@ class DeliveryDetailView(APIView):
 
 
 # ==========================================================
-# DELIVERY STATUS UPDATE
+# RIDER STATUS UPDATE
 # ==========================================================
+
 
 class DeliveryStatusUpdateView(APIView):
     """
-    Rider updates the status of an assigned delivery.
+    Rider updates the status of their assigned delivery.
 
     Allowed workflow:
 
@@ -630,6 +513,11 @@ class DeliveryStatusUpdateView(APIView):
         Out for Delivery
             ↓
         Delivered
+
+    No skipping statuses is allowed.
+
+    The rider can update ONLY deliveries assigned
+    to the logged-in rider.
     """
 
     permission_classes = [
@@ -640,21 +528,9 @@ class DeliveryStatusUpdateView(APIView):
     @transaction.atomic
     def patch(self, request, delivery_id):
 
-        serializer = DeliveryStatusUpdateSerializer(
-            data=request.data
-        )
-
-        serializer.is_valid(raise_exception=True)
-
-        new_status = serializer.validated_data["status"]
-
-        delivery_note = serializer.validated_data.get(
-            "delivery_note"
-        )
-
-        # --------------------------------------------------
-        # LOCK DELIVERY
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Get delivery belonging to current rider
+        # ------------------------------------------------------
 
         delivery = get_object_or_404(
             Delivery.objects.select_for_update(),
@@ -662,41 +538,27 @@ class DeliveryStatusUpdateView(APIView):
             rider=request.user,
         )
 
-        order = (
-            Order.objects
-            .select_for_update()
-            .get(id=delivery.order_id)
+        # ------------------------------------------------------
+        # Validate request
+        # ------------------------------------------------------
+
+        serializer = DeliveryStatusUpdateSerializer(
+            data=request.data
         )
 
-        old_status = delivery.status
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-        # --------------------------------------------------
-        # CANNOT UPDATE FINISHED DELIVERY
-        # --------------------------------------------------
+        new_status = serializer.validated_data[
+            "status"
+        ]
 
-        if old_status == Delivery.STATUS_DELIVERED:
-            return Response(
-                {
-                    "detail": (
-                        "This delivery has already been delivered."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        current_status = delivery.status
 
-        if old_status == Delivery.STATUS_CANCELLED:
-            return Response(
-                {
-                    "detail": (
-                        "Cancelled deliveries cannot be updated."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # --------------------------------------------------
-        # VALID STATUS TRANSITIONS
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Allowed status transitions
+        # ------------------------------------------------------
 
         allowed_transitions = {
             Delivery.STATUS_ASSIGNED: [
@@ -714,87 +576,131 @@ class DeliveryStatusUpdateView(APIView):
         }
 
         allowed_next_statuses = allowed_transitions.get(
-            old_status,
+            current_status,
             [],
         )
+
+        # ------------------------------------------------------
+        # Prevent invalid transitions
+        # ------------------------------------------------------
 
         if new_status not in allowed_next_statuses:
             return Response(
                 {
                     "detail": (
                         f"Invalid delivery status transition: "
-                        f"{old_status} → {new_status}."
+                        f"{current_status} → {new_status}."
                     ),
-                    "current_status": old_status,
-                    "allowed_statuses": (
+                    "current_status": current_status,
+                    "allowed_next_statuses": (
                         allowed_next_statuses
                     ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # --------------------------------------------------
-        # UPDATE DELIVERY STATUS
-        # --------------------------------------------------
+        # ------------------------------------------------------
+        # Get parent order
+        # ------------------------------------------------------
 
-        delivery.status = new_status
-
-        if delivery_note is not None:
-            delivery.delivery_note = delivery_note
-
-        now = timezone.now()
-
-        if new_status == Delivery.STATUS_ACCEPTED:
-            delivery.accepted_at = now
-
-        elif new_status == Delivery.STATUS_PICKED_UP:
-            delivery.picked_up_at = now
-
-        elif new_status == Delivery.STATUS_OUT_FOR_DELIVERY:
-            delivery.out_for_delivery_at = now
-
-        elif new_status == Delivery.STATUS_DELIVERED:
-            delivery.delivered_at = now
-
-        delivery.save(
-            update_fields=[
-                "status",
-                "delivery_note",
-                "accepted_at",
-                "picked_up_at",
-                "out_for_delivery_at",
-                "delivered_at",
-                "updated_at",
-            ]
+        order = (
+            Order.objects
+            .select_for_update()
+            .get(
+                id=delivery.order_id
+            )
         )
 
-        # --------------------------------------------------
-        # UPDATE PARENT ORDER STATUS
-        # --------------------------------------------------
+        # ======================================================
+        # ASSIGNED → ACCEPTED
+        # ======================================================
 
-        order_status_changed = False
+        if new_status == Delivery.STATUS_ACCEPTED:
 
-        if (
+            delivery.status = (
+                Delivery.STATUS_ACCEPTED
+            )
+
+            delivery.accepted_at = timezone.now()
+
+            delivery.save(
+                update_fields=[
+                    "status",
+                    "accepted_at",
+                    "updated_at",
+                ]
+            )
+
+            notify_user(
+                order.customer,
+                "Delivery Accepted",
+                (
+                    f"The delivery rider has accepted "
+                    f"your Order #{order.id}."
+                ),
+                "Delivery",
+            )
+
+        # ======================================================
+        # ACCEPTED → PICKED UP
+        # ======================================================
+
+        elif new_status == Delivery.STATUS_PICKED_UP:
+
+            delivery.status = (
+                Delivery.STATUS_PICKED_UP
+            )
+
+            delivery.picked_up_at = timezone.now()
+
+            delivery.save(
+                update_fields=[
+                    "status",
+                    "picked_up_at",
+                    "updated_at",
+                ]
+            )
+
+            notify_user(
+                order.customer,
+                "Order Picked Up",
+                (
+                    f"Your Order #{order.id} has been "
+                    f"picked up by the delivery rider."
+                ),
+                "Delivery",
+            )
+
+        # ======================================================
+        # PICKED UP → OUT FOR DELIVERY
+        # ======================================================
+
+        elif (
             new_status
             == Delivery.STATUS_OUT_FOR_DELIVERY
         ):
-            if order.status != Order.STATUS_OUT_FOR_DELIVERY:
 
-                order.status = (
-                    Order.STATUS_OUT_FOR_DELIVERY
-                )
+            delivery.status = (
+                Delivery.STATUS_OUT_FOR_DELIVERY
+            )
 
-                order_status_changed = True
+            delivery.out_for_delivery_at = (
+                timezone.now()
+            )
 
-        elif new_status == Delivery.STATUS_DELIVERED:
+            delivery.save(
+                update_fields=[
+                    "status",
+                    "out_for_delivery_at",
+                    "updated_at",
+                ]
+            )
 
-            if order.status != Order.STATUS_DELIVERED:
+            # Parent order becomes Out for Delivery.
+            order.status = (
+                Order.STATUS_OUT_FOR_DELIVERY
+            )
 
-                order.status = Order.STATUS_DELIVERED
-
-                order_status_changed = True
-
-        if order_status_changed:
             order.save(
                 update_fields=[
                     "status",
@@ -802,74 +708,63 @@ class DeliveryStatusUpdateView(APIView):
                 ]
             )
 
-        # --------------------------------------------------
-        # IMPORTANT:
-        # DO NOT CHANGE SUPPLIER ITEM STATUS TO DELIVERED
-        # --------------------------------------------------
-        #
-        # Supplier workflow ends at:
-        #
-        # Pending → Processing → Ready
-        #
-        # Delivery workflow is controlled by Delivery.status
-        # and Order.status.
-        #
-        # Therefore OrderItem.supplier_status remains Ready.
-        # --------------------------------------------------
+            notify_user(
+                order.customer,
+                "Order Out for Delivery",
+                (
+                    f"Your Order #{order.id} is now "
+                    f"out for delivery."
+                ),
+                "Delivery",
+            )
 
-        # --------------------------------------------------
-        # CUSTOMER NOTIFICATION
-        # --------------------------------------------------
+        # ======================================================
+        # OUT FOR DELIVERY → DELIVERED
+        # ======================================================
 
-        status_messages = {
-            Delivery.STATUS_ACCEPTED: (
-                f"Your delivery for Order #{order.id} "
-                "has been accepted by the rider."
-            ),
-            Delivery.STATUS_PICKED_UP: (
-                f"Your Order #{order.id} "
-                "has been picked up by the rider."
-            ),
-            Delivery.STATUS_OUT_FOR_DELIVERY: (
-                f"Your Order #{order.id} "
-                "is now out for delivery."
-            ),
-            Delivery.STATUS_DELIVERED: (
-                f"Your Order #{order.id} "
-                "has been delivered successfully."
-            ),
-        }
+        elif new_status == Delivery.STATUS_DELIVERED:
 
-        notify_user(
-            recipient=order.customer,
-            title=f"Order #{order.id} Delivery Update",
-            message=status_messages.get(
-                new_status,
-                f"Order status changed to {new_status}.",
-            ),
-            notification_type="delivery",
-        )
+            delivery.status = (
+                Delivery.STATUS_DELIVERED
+            )
 
-        # --------------------------------------------------
-        # RESPONSE
-        # --------------------------------------------------
+            delivery.delivered_at = timezone.now()
 
-        response_serializer = DeliveryOrderSerializer(
-            delivery,
-            context={
-                "request": request,
-            },
-        )
+            delivery.save(
+                update_fields=[
+                    "status",
+                    "delivered_at",
+                    "updated_at",
+                ]
+            )
+
+            # Parent order becomes Delivered.
+            order.status = Order.STATUS_DELIVERED
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
+
+            notify_user(
+                order.customer,
+                "Order Delivered",
+                (
+                    f"Your Order #{order.id} has been "
+                    f"delivered successfully."
+                ),
+                "Delivery",
+            )
+
+        # ------------------------------------------------------
+        # Response
+        # ------------------------------------------------------
 
         return Response(
-            {
-                "message": (
-                    "Delivery status updated successfully."
-                ),
-                "previous_status": old_status,
-                "current_status": new_status,
-                "delivery": response_serializer.data,
-            },
+            DeliverySerializer(
+                delivery
+            ).data,
             status=status.HTTP_200_OK,
         )
-        

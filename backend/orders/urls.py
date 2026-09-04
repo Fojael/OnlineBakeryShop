@@ -1,19 +1,30 @@
-
 from django.urls import path
 
 from .views import (
-    # ADMIN
+    # ======================================================
+    # ADMIN ORDER VIEWS
+    # ======================================================
     AdminOrderListView,
     AdminOrderDetailView,
     AdminOrderUpdateView,
     AdminAcceptOrderView,
+
+    # ======================================================
+    # ADMIN DELIVERY RIDER MANAGEMENT
+    # ======================================================
     AdminDeliveryRiderListView,
     AdminCreateDeliveryRiderView,
     AdminUpdateDeliveryRiderView,
     AdminToggleDeliveryRiderStatusView,
+
+    # ======================================================
+    # ADMIN DELIVERY ASSIGNMENT
+    # ======================================================
     AdminAssignDeliveryView,
 
-    # SUPPLIER
+    # ======================================================
+    # SUPPLIER VIEWS
+    # ======================================================
     SupplierOrderListView,
     SupplierOrderDetailView,
     SupplierOrderItemStatusUpdateView,
@@ -21,19 +32,19 @@ from .views import (
     SupplierSalesAnalyticsView,
     SupplierProductPerformanceView,
 
-    # CUSTOMER
+    # ======================================================
+    # CUSTOMER ORDER VIEWS
+    # ======================================================
     OrderListCreateView,
     OrderDetailView,
     CancelOrderView,
+
+    # ======================================================
+    # REFUND VIEWS
+    # ======================================================
     CustomerRefundRequestView,
     AdminRefundListView,
     AdminRefundUpdateView,
-
-    # DELIVERY
-    DeliveryDashboardView,
-    DeliveryListView,
-    DeliveryDetailView,
-    DeliveryStatusUpdateView,
 )
 
 
@@ -43,7 +54,7 @@ app_name = "orders"
 urlpatterns = [
 
     # ======================================================
-    # ADMIN
+    # ADMIN ORDER MANAGEMENT
     # ======================================================
 
     path(
@@ -63,20 +74,22 @@ urlpatterns = [
         AdminOrderUpdateView.as_view(),
         name="admin-order-update",
     ),
+
     path(
         "admin/<int:order_id>/accept/",
         AdminAcceptOrderView.as_view(),
-        name="admin-order-accept",
+        name="admin-accept-order",
     ),
 
+
     # ======================================================
-    # ADMIN - DELIVERY RIDERS
+    # ADMIN DELIVERY RIDER MANAGEMENT
     # ======================================================
 
     path(
         "admin/delivery-riders/",
         AdminDeliveryRiderListView.as_view(),
-        name="admin-delivery-riders-list",
+        name="admin-delivery-rider-list",
     ),
 
     path(
@@ -97,14 +110,38 @@ urlpatterns = [
         name="admin-toggle-delivery-rider-status",
     ),
 
+
+    # ======================================================
+    # ADMIN ASSIGN DELIVERY
+    # ======================================================
+    #
+    # Workflow:
+    #
+    # Customer Order
+    #       ↓
+    # Pending
+    #       ↓ Admin Accept
+    # Accepted
+    #       ↓ Supplier Processing
+    # Processing
+    #       ↓ All Supplier Items Ready
+    # Ready
+    #       ↓ Admin selects a specific rider
+    # Assigned
+    #
+    # The rider does NOT claim an available delivery.
+    # Admin explicitly assigns the rider.
+    # ======================================================
+
     path(
         "admin/<int:order_id>/assign-delivery/",
         AdminAssignDeliveryView.as_view(),
         name="admin-assign-delivery",
     ),
 
+
     # ======================================================
-    # SUPPLIER
+    # SUPPLIER ORDER MANAGEMENT
     # ======================================================
 
     path(
@@ -122,8 +159,13 @@ urlpatterns = [
     path(
         "supplier/items/<int:item_id>/update/",
         SupplierOrderItemStatusUpdateView.as_view(),
-        name="supplier-order-item-update",
+        name="supplier-order-item-status-update",
     ),
+
+
+    # ======================================================
+    # SUPPLIER DASHBOARD
+    # ======================================================
 
     path(
         "supplier/dashboard/",
@@ -134,7 +176,7 @@ urlpatterns = [
     path(
         "supplier/analytics/",
         SupplierSalesAnalyticsView.as_view(),
-        name="supplier-sales-analytics",
+        name="supplier-analytics",
     ),
 
     path(
@@ -143,49 +185,37 @@ urlpatterns = [
         name="supplier-product-performance",
     ),
 
-    # ======================================================
-    # DELIVERY RIDER
-    # ======================================================
-
-    path(
-        "delivery/dashboard/",
-        DeliveryDashboardView.as_view(),
-        name="delivery-dashboard",
-    ),
-
-    path(
-        "delivery/",
-        DeliveryListView.as_view(),
-        name="delivery-list",
-    ),
-
-    path(
-        "delivery/<int:delivery_id>/",
-        DeliveryDetailView.as_view(),
-        name="delivery-detail",
-    ),
-
-    path(
-        "delivery/<int:delivery_id>/status/",
-        DeliveryStatusUpdateView.as_view(),
-        name="delivery-status-update",
-    ),
 
     # ======================================================
-    # CUSTOMER
+    # CUSTOMER ORDER MANAGEMENT
     # ======================================================
 
+    # GET  -> Customer's orders
+    # POST -> Create a new order
     path(
         "",
         OrderListCreateView.as_view(),
         name="order-list-create",
     ),
 
+    # GET -> Customer's specific order
     path(
         "<int:order_id>/",
         OrderDetailView.as_view(),
         name="order-detail",
     ),
+
+    # POST/PATCH -> Cancel customer's order
+    path(
+        "<int:order_id>/cancel/",
+        CancelOrderView.as_view(),
+        name="cancel-order",
+    ),
+
+
+    # ======================================================
+    # CUSTOMER REFUND
+    # ======================================================
 
     path(
         "refunds/request/",
@@ -193,22 +223,21 @@ urlpatterns = [
         name="customer-refund-request",
     ),
 
+
+    # ======================================================
+    # ADMIN REFUND MANAGEMENT
+    # ======================================================
+
     path(
         "refunds/admin/",
         AdminRefundListView.as_view(),
-        name="admin-refunds-list",
+        name="admin-refund-list",
     ),
 
     path(
         "refunds/admin/<int:refund_id>/update/",
         AdminRefundUpdateView.as_view(),
-        name="admin-update-refund",
-    ),
-
-    path(
-        "<int:order_id>/cancel/",
-        CancelOrderView.as_view(),
-        name="cancel-order",
+        name="admin-refund-update",
     ),
 ]
 
