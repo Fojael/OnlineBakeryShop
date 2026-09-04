@@ -1,4 +1,3 @@
-
 import api from "./api";
 
 
@@ -7,11 +6,7 @@ import api from "./api";
 // ============================================================
 
 export const getOrders = async () => {
-
-    return await api.get(
-        "/orders/"
-    );
-
+    return api.get("/orders/");
 };
 
 
@@ -19,14 +14,8 @@ export const getOrders = async () => {
 // CUSTOMER - GET SINGLE ORDER
 // ============================================================
 
-export const getOrder = async (
-    orderId
-) => {
-
-    return await api.get(
-        `/orders/${orderId}/`
-    );
-
+export const getOrder = async (orderId) => {
+    return api.get(`/orders/${orderId}/`);
 };
 
 
@@ -34,49 +23,11 @@ export const getOrder = async (
 // CUSTOMER - CREATE ORDER
 // ============================================================
 
-export const createOrder = async (
-    orderData
-) => {
-
-    try {
-
-        console.log(
-            "Creating order:",
-            orderData
-        );
-
-        const response = await api.post(
-            "/orders/",
-            orderData
-        );
-
-        console.log(
-            "Order created:",
-            response.data
-        );
-
-        return response;
-
-    } catch (error) {
-
-        console.error(
-            "Order creation API error:",
-            error
-        );
-
-        console.error(
-            "Backend response:",
-            error.response?.data
-        );
-
-        console.error(
-            "Backend status:",
-            error.response?.status
-        );
-
-        throw error;
-    }
-
+export const createOrder = async (orderData) => {
+    return api.post(
+        "/orders/",
+        orderData
+    );
 };
 
 
@@ -84,14 +35,10 @@ export const createOrder = async (
 // CUSTOMER - CANCEL ORDER
 // ============================================================
 
-export const cancelOrder = async (
-    orderId
-) => {
-
-    return await api.post(
+export const cancelOrder = async (orderId) => {
+    return api.post(
         `/orders/${orderId}/cancel/`
     );
-
 };
 
 
@@ -100,11 +47,9 @@ export const cancelOrder = async (
 // ============================================================
 
 export const getAdminOrders = async () => {
-
-    return await api.get(
+    return api.get(
         "/orders/admin/"
     );
-
 };
 
 
@@ -112,14 +57,10 @@ export const getAdminOrders = async () => {
 // ADMIN - GET SINGLE ORDER
 // ============================================================
 
-export const getAdminOrder = async (
-    orderId
-) => {
-
-    return await api.get(
+export const getAdminOrder = async (orderId) => {
+    return api.get(
         `/orders/admin/${orderId}/`
     );
-
 };
 
 
@@ -127,27 +68,27 @@ export const getAdminOrder = async (
 // ADMIN - UPDATE ORDER STATUS
 // ============================================================
 
-export const updateAdminOrderStatus = async (orderId, status) => {
-    return await api.post(
+export const updateAdminOrderStatus = async (
+    orderId,
+    status
+) => {
+    return api.post(
         `/orders/admin/${orderId}/update/`,
         {
-            status: status,
+            status,
         }
     );
 };
+
 
 // ============================================================
 // ADMIN - ACCEPT ORDER
 // ============================================================
 
-export const acceptAdminOrder = async (
-    orderId
-) => {
-
-    return await api.post(
+export const acceptAdminOrder = async (orderId) => {
+    return api.post(
         `/orders/admin/${orderId}/accept/`
     );
-
 };
 
 
@@ -156,11 +97,9 @@ export const acceptAdminOrder = async (
 // ============================================================
 
 export const getDeliveryRiders = async () => {
-
-    return await api.get(
+    return api.get(
         "/orders/admin/delivery-riders/"
     );
-
 };
 
 
@@ -172,12 +111,10 @@ export const updateDeliveryRider = async (
     riderId,
     payload
 ) => {
-
-    return await api.patch(
+    return api.patch(
         `/orders/admin/delivery-riders/${riderId}/update/`,
         payload
     );
-
 };
 
 
@@ -189,14 +126,12 @@ export const toggleDeliveryRiderStatus = async (
     riderId,
     isActive
 ) => {
-
-    return await api.post(
+    return api.post(
         `/orders/admin/delivery-riders/${riderId}/toggle-status/`,
         {
             is_active: isActive,
         }
     );
-
 };
 
 
@@ -208,14 +143,12 @@ export const assignDeliveryRider = async (
     orderId,
     riderId
 ) => {
-
-    return await api.post(
+    return api.post(
         `/orders/admin/${orderId}/assign-delivery/`,
         {
             rider_id: riderId,
         }
     );
-
 };
 
 
@@ -224,8 +157,7 @@ export const assignDeliveryRider = async (
 // ============================================================
 
 export const getSupplierOrders = async () => {
-
-    return await api.get(
+    return api.get(
         "/orders/supplier/"
     );
 };
@@ -238,8 +170,7 @@ export const getSupplierOrders = async () => {
 export const getSupplierOrder = async (
     orderId
 ) => {
-
-    return await api.get(
+    return api.get(
         `/orders/supplier/${orderId}/`
     );
 };
@@ -253,12 +184,10 @@ export const updateSupplierOrderItemStatus = async (
     itemId,
     supplierStatus
 ) => {
-
-    return await api.patch(
+    return api.patch(
         `/orders/supplier/items/${itemId}/update/`,
         {
             supplier_status: supplierStatus,
         }
     );
 };
-

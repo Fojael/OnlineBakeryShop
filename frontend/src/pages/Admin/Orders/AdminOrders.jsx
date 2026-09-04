@@ -1,4 +1,4 @@
-```jsx
+
 import {
     useCallback,
     useEffect,
@@ -1272,4 +1272,4 @@ const AdminOrders = () => {
 // =========================================================
 
 export default AdminOrders;
-```
+
