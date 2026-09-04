@@ -1,22 +1,14 @@
-import {
-    useState,
-} from "react";
 
-import {
-    useNavigate,
-} from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
-import {
-    toast,
-} from "react-toastify";
+import { createOrder } from "../../services/orderService";
+import { createPayment } from "../../services/paymentService";
 
-import {
-    createOrder,
-} from "../../services/orderService";
-
-import {
-    createPayment,
-} from "../../services/paymentService";
+// ============================================================
+// INITIAL ADDRESS
+// ============================================================
 
 const initialAddress = {
     full_name: "",
@@ -31,6 +23,11 @@ const initialAddress = {
     delivery_note: "",
 };
 
+
+// ============================================================
+// CHECKOUT
+// ============================================================
+
 const Checkout = () => {
 
     const navigate = useNavigate();
@@ -39,40 +36,51 @@ const Checkout = () => {
     // STATE
     // ========================================================
 
-    const [
-        shippingAddress,
-        setShippingAddress,
-    ] = useState("");
+    const [shippingAddress, setShippingAddress] = useState("");
 
-    const [
-        addressForm,
-        setAddressForm,
-    ] = useState(initialAddress);
+    const [addressForm, setAddressForm] = useState(
+        initialAddress
+    );
 
-    const [
-        paymentMethod,
-        setPaymentMethod,
-    ] = useState("Cash on Delivery");
+    // IMPORTANT:
+    // Backend values are:
+    // COD
+    // SSLCommerz
+    const [paymentMethod, setPaymentMethod] = useState("COD");
 
-    const [
-        loading,
-        setLoading,
-    ] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+
+    // ========================================================
+    // ADDRESS FIELD CHANGE
+    // ========================================================
 
     const handleAddressFieldChange = (event) => {
-        const { name, value } = event.target;
+
+        const {
+            name,
+            value,
+        } = event.target;
 
         setAddressForm((previous) => ({
             ...previous,
             [name]: value,
         }));
 
+        // Clear legacy address when structured address
+        // is being used.
         if (shippingAddress) {
             setShippingAddress("");
         }
     };
 
+
+    // ========================================================
+    // VALIDATE ADDRESS
+    // ========================================================
+
     const validateAddress = () => {
+
         const requiredFields = [
             "full_name",
             "phone",
@@ -86,26 +94,97 @@ const Checkout = () => {
         ];
 
         for (const field of requiredFields) {
-            if (!String(addressForm[field] || "").trim()) {
+
+            if (
+                !String(
+                    addressForm[field] || ""
+                ).trim()
+            ) {
+
+                const fieldName = field
+                    .replace(/_/g, " ");
+
                 toast.error(
-                    `Please enter your ${field.replace("_", " ")}.`
+                    `Please enter your ${fieldName}.`
                 );
+
                 return false;
             }
         }
 
-        if (!/^01[3-9]\d{8}$/.test(addressForm.phone.trim())) {
-            toast.error("Please enter a valid Bangladeshi phone number.");
+
+        // ====================================================
+        // BANGLADESHI PHONE VALIDATION
+        // ====================================================
+
+        if (
+            !/^01[3-9]\d{8}$/.test(
+                addressForm.phone.trim()
+            )
+        ) {
+
+            toast.error(
+                "Please enter a valid Bangladeshi phone number."
+            );
+
             return false;
         }
 
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addressForm.email.trim())) {
-            toast.error("Please enter a valid email address.");
+
+        // ====================================================
+        // EMAIL VALIDATION
+        // ====================================================
+
+        if (
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                addressForm.email.trim()
+            )
+        ) {
+
+            toast.error(
+                "Please enter a valid email address."
+            );
+
             return false;
         }
+
 
         return true;
     };
+
+
+    // ========================================================
+    // BUILD SHIPPING ADDRESS
+    // ========================================================
+
+    const buildShippingAddress = () => {
+
+        const addressParts = [
+            `Name: ${addressForm.full_name.trim()}`,
+            `Phone: ${addressForm.phone.trim()}`,
+            `Email: ${addressForm.email.trim()}`,
+            `Division: ${addressForm.division.trim()}`,
+            `District: ${addressForm.district.trim()}`,
+            `City: ${addressForm.city.trim()}`,
+            `Area: ${addressForm.area.trim()}`,
+            `Street Address: ${addressForm.street_address.trim()}`,
+            `Postal Code: ${addressForm.postal_code.trim()}`,
+        ];
+
+
+        if (
+            addressForm.delivery_note.trim()
+        ) {
+
+            addressParts.push(
+                `Delivery Note: ${addressForm.delivery_note.trim()}`
+            );
+        }
+
+
+        return addressParts.join(", ");
+    };
+
 
     // ========================================================
     // PLACE ORDER
@@ -113,50 +192,93 @@ const Checkout = () => {
 
     const handlePlaceOrder = async () => {
 
-        const hasStructuredAddress = Object.values(addressForm).some(
-            (value) => String(value || "").trim()
-        );
-
-        if (!hasStructuredAddress && !shippingAddress.trim()) {
-            toast.error(
-                "Please enter your shipping address details."
-            );
-            return;
-        }
-
-        if (hasStructuredAddress && !validateAddress()) {
-            return;
-        }
-
         if (loading) {
             return;
         }
 
+
+        // ====================================================
+        // DETERMINE ADDRESS TYPE
+        // ====================================================
+
+        const hasStructuredAddress =
+            Object.values(addressForm).some(
+                (value) =>
+                    String(value || "").trim()
+            );
+
+
+        // ====================================================
+        // NO ADDRESS
+        // ====================================================
+
+        if (
+            !hasStructuredAddress &&
+            !shippingAddress.trim()
+        ) {
+
+            toast.error(
+                "Please enter your shipping address details."
+            );
+
+            return;
+        }
+
+
+        // ====================================================
+        // VALIDATE STRUCTURED ADDRESS
+        // ====================================================
+
+        if (
+            hasStructuredAddress &&
+            !validateAddress()
+        ) {
+
+            return;
+        }
+
+
         setLoading(true);
+
 
         try {
 
+            // =================================================
+            // BUILD SHIPPING ADDRESS
+            // =================================================
+
+            const finalShippingAddress =
+                hasStructuredAddress
+                    ? buildShippingAddress()
+                    : shippingAddress.trim();
+
+
+            // =================================================
+            // CREATE ORDER PAYLOAD
+            // =================================================
+
             const orderData = {
-                payment_method: paymentMethod,
-                ...(hasStructuredAddress
-                    ? addressForm
-                    : {
-                        shipping_address: shippingAddress.trim(),
-                    }),
+                shipping_address:
+                    finalShippingAddress,
+
+                payment_method:
+                    paymentMethod,
             };
+
 
             console.log(
                 "Sending order data:",
                 orderData
             );
 
+
             // =================================================
             // CREATE ORDER
             // =================================================
 
-            const response = await createOrder(
-                orderData
-            );
+            const response =
+                await createOrder(orderData);
+
 
             console.log(
                 "Complete order response:",
@@ -168,6 +290,7 @@ const Checkout = () => {
                 response.data
             );
 
+
             // =================================================
             // GET ORDER
             // =================================================
@@ -176,10 +299,12 @@ const Checkout = () => {
                 response.data?.order ||
                 response.data;
 
+
             const orderId =
                 order?.id ||
                 response.data?.order_id ||
                 response.data?.id;
+
 
             // =================================================
             // CHECK ORDER ID
@@ -197,18 +322,19 @@ const Checkout = () => {
                 );
             }
 
+
             console.log(
                 "Created Order ID:",
                 orderId
             );
+
 
             // =================================================
             // CASH ON DELIVERY
             // =================================================
 
             if (
-                paymentMethod
-                === "Cash on Delivery"
+                paymentMethod === "COD"
             ) {
 
                 toast.success(
@@ -222,13 +348,13 @@ const Checkout = () => {
                 return;
             }
 
+
             // =================================================
             // SSL COMMERZ
             // =================================================
 
             if (
-                paymentMethod
-                === "SSLCommerz"
+                paymentMethod === "SSLCommerz"
             ) {
 
                 console.log(
@@ -236,15 +362,18 @@ const Checkout = () => {
                     orderId
                 );
 
+
                 const paymentResponse =
                     await createPayment(
                         orderId
                     );
 
+
                 console.log(
                     "Payment response:",
                     paymentResponse
                 );
+
 
                 // =================================================
                 // GET GATEWAY URL
@@ -253,6 +382,7 @@ const Checkout = () => {
                 const gatewayUrl =
                     paymentResponse?.gateway_url ||
                     paymentResponse?.data?.gateway_url;
+
 
                 if (!gatewayUrl) {
 
@@ -266,9 +396,11 @@ const Checkout = () => {
                     );
                 }
 
+
                 toast.info(
                     "Redirecting to SSLCommerz..."
                 );
+
 
                 // =================================================
                 // REDIRECT TO SSL COMMERZ
@@ -279,6 +411,7 @@ const Checkout = () => {
 
                 return;
             }
+
 
             // =================================================
             // UNSUPPORTED PAYMENT METHOD
@@ -300,11 +433,66 @@ const Checkout = () => {
                 error?.response?.data
             );
 
-            const backendMessage =
-                error?.response?.data?.detail ||
-                error?.response?.data?.message ||
+
+            const backendError =
+                error?.response?.data;
+
+
+            let backendMessage =
+                backendError?.detail ||
+                backendError?.message ||
                 error?.message ||
                 "Could not place order.";
+
+
+            // =================================================
+            // HANDLE FIELD VALIDATION ERRORS
+            // =================================================
+
+            if (
+                backendError &&
+                typeof backendError === "object"
+            ) {
+
+                const validationMessages = [];
+
+                Object.entries(
+                    backendError
+                ).forEach(
+                    ([field, messages]) => {
+
+                        if (Array.isArray(messages)) {
+
+                            messages.forEach(
+                                (message) => {
+
+                                    validationMessages.push(
+                                        `${field}: ${message}`
+                                    );
+                                }
+                            );
+
+                        } else if (
+                            typeof messages === "string"
+                        ) {
+
+                            validationMessages.push(
+                                `${field}: ${messages}`
+                            );
+                        }
+                    }
+                );
+
+
+                if (
+                    validationMessages.length > 0
+                ) {
+
+                    backendMessage =
+                        validationMessages.join(" ");
+                }
+            }
+
 
             toast.error(
                 backendMessage
@@ -337,179 +525,325 @@ const Checkout = () => {
                                 Checkout
                             </h2>
 
-                            {/* ==================================
+
+                            {/* ==================================================
                                 SHIPPING ADDRESS
-                            ================================== */}
+                            ================================================== */}
 
                             <div className="mb-4">
 
                                 <div className="d-flex justify-content-between align-items-center mb-3">
-                                    <h5 className="mb-0">Shipping Address</h5>
-                                    <small className="text-muted">Required for delivery</small>
+
+                                    <h5 className="mb-0">
+                                        Shipping Address
+                                    </h5>
+
+                                    <small className="text-muted">
+                                        Required for delivery
+                                    </small>
+
                                 </div>
 
+
                                 <div className="row g-3">
+
+
+                                    {/* FULL NAME */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Full Name</label>
+
+                                        <label className="form-label">
+                                            Full Name
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="full_name"
                                             className="form-control"
-                                            value={addressForm.full_name}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.full_name
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Enter full name"
                                         />
+
                                     </div>
 
+
+                                    {/* PHONE */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Phone</label>
+
+                                        <label className="form-label">
+                                            Phone
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="phone"
                                             className="form-control"
-                                            value={addressForm.phone}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.phone
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="01XXXXXXXXX"
                                         />
+
                                     </div>
 
+
+                                    {/* EMAIL */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Email</label>
+
+                                        <label className="form-label">
+                                            Email
+                                        </label>
+
                                         <input
                                             type="email"
                                             name="email"
                                             className="form-control"
-                                            value={addressForm.email}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.email
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="name@example.com"
                                         />
+
                                     </div>
 
+
+                                    {/* DIVISION */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Division</label>
+
+                                        <label className="form-label">
+                                            Division
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="division"
                                             className="form-control"
-                                            value={addressForm.division}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.division
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Dhaka"
                                         />
+
                                     </div>
 
+
+                                    {/* DISTRICT */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">District</label>
+
+                                        <label className="form-label">
+                                            District
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="district"
                                             className="form-control"
-                                            value={addressForm.district}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.district
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Dhaka"
                                         />
+
                                     </div>
 
+
+                                    {/* CITY */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">City</label>
+
+                                        <label className="form-label">
+                                            City
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="city"
                                             className="form-control"
-                                            value={addressForm.city}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.city
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Dhaka"
                                         />
+
                                     </div>
 
+
+                                    {/* AREA */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Area</label>
+
+                                        <label className="form-label">
+                                            Area
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="area"
                                             className="form-control"
-                                            value={addressForm.area}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.area
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Dhanmondi"
                                         />
+
                                     </div>
 
+
+                                    {/* POSTAL CODE */}
+
                                     <div className="col-md-6">
-                                        <label className="form-label">Postal Code</label>
+
+                                        <label className="form-label">
+                                            Postal Code
+                                        </label>
+
                                         <input
                                             type="text"
                                             name="postal_code"
                                             className="form-control"
-                                            value={addressForm.postal_code}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.postal_code
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="1205"
                                         />
+
                                     </div>
 
+
+                                    {/* STREET ADDRESS */}
+
                                     <div className="col-12">
-                                        <label className="form-label">Street Address</label>
+
+                                        <label className="form-label">
+                                            Street Address
+                                        </label>
+
                                         <textarea
                                             name="street_address"
                                             className="form-control"
                                             rows="3"
-                                            value={addressForm.street_address}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.street_address
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="House 12, Road 7"
                                         />
+
                                     </div>
 
+
+                                    {/* DELIVERY NOTE */}
+
                                     <div className="col-12">
-                                        <label className="form-label">Delivery Note (Optional)</label>
+
+                                        <label className="form-label">
+                                            Delivery Note (Optional)
+                                        </label>
+
                                         <textarea
                                             name="delivery_note"
                                             className="form-control"
                                             rows="2"
-                                            value={addressForm.delivery_note}
-                                            onChange={handleAddressFieldChange}
+                                            value={
+                                                addressForm.delivery_note
+                                            }
+                                            onChange={
+                                                handleAddressFieldChange
+                                            }
                                             disabled={loading}
                                             placeholder="Leave at gate / call before delivery"
                                         />
+
                                     </div>
+
                                 </div>
 
+
+                                {/* ==================================================
+                                    LEGACY ADDRESS
+                                ================================================== */}
+
                                 <div className="mt-3">
-                                    <label className="form-label">Legacy Address (Optional backup)</label>
+
+                                    <label className="form-label">
+                                        Legacy Address (Optional Backup)
+                                    </label>
+
                                     <textarea
                                         className="form-control"
                                         rows="3"
-                                        value={shippingAddress}
-                                        onChange={(event) => setShippingAddress(event.target.value)}
-                                        placeholder="Optional complete shipping address if you prefer legacy text entry"
+                                        value={
+                                            shippingAddress
+                                        }
+                                        onChange={(event) =>
+                                            setShippingAddress(
+                                                event.target.value
+                                            )
+                                        }
+                                        placeholder="Optional complete shipping address"
                                         disabled={loading}
                                     />
+
                                 </div>
 
                             </div>
 
 
-                            {/* ==================================
+                            {/* ==================================================
                                 PAYMENT METHOD
-                            ================================== */}
+                            ================================================== */}
 
                             <div className="mb-4">
 
-                                <label
-                                    className="form-label"
-                                >
+                                <label className="form-label">
                                     Payment Method
                                 </label>
 
-                                {/* ==============================
-                                    COD
-                                ============================== */}
+
+                                {/* ==================================================
+                                    CASH ON DELIVERY
+                                ================================================== */}
 
                                 <div className="form-check mb-2">
 
@@ -518,15 +852,11 @@ const Checkout = () => {
                                         type="radio"
                                         name="paymentMethod"
                                         id="cod"
-                                        value="Cash on Delivery"
+                                        value="COD"
                                         checked={
-                                            paymentMethod
-                                            ===
-                                            "Cash on Delivery"
+                                            paymentMethod === "COD"
                                         }
-                                        onChange={(
-                                            event
-                                        ) =>
+                                        onChange={(event) =>
                                             setPaymentMethod(
                                                 event.target.value
                                             )
@@ -544,9 +874,9 @@ const Checkout = () => {
                                 </div>
 
 
-                                {/* ==============================
-                                    SSL COMMERZ
-                                ============================== */}
+                                {/* ==================================================
+                                    SSLCOMMERZ
+                                ================================================== */}
 
                                 <div className="form-check">
 
@@ -557,13 +887,10 @@ const Checkout = () => {
                                         id="sslcommerz"
                                         value="SSLCommerz"
                                         checked={
-                                            paymentMethod
-                                            ===
+                                            paymentMethod ===
                                             "SSLCommerz"
                                         }
-                                        onChange={(
-                                            event
-                                        ) =>
+                                        onChange={(event) =>
                                             setPaymentMethod(
                                                 event.target.value
                                             )
@@ -583,9 +910,9 @@ const Checkout = () => {
                             </div>
 
 
-                            {/* ==================================
-                                PLACE ORDER BUTTON
-                            ================================== */}
+                            {/* ==================================================
+                                PLACE ORDER
+                            ================================================== */}
 
                             <button
                                 type="button"
