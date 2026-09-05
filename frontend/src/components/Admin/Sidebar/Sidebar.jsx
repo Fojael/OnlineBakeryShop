@@ -1,8 +1,12 @@
-import { Link, NavLink } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 const Sidebar = () => {
     const linkClass = ({ isActive }) =>
-        `nav-link ${isActive ? "active bg-primary text-white rounded" : "text-white"}`;
+        `nav-link ${
+            isActive
+                ? "active bg-primary text-white rounded"
+                : "text-white"
+        }`;
 
     return (
         <div
@@ -80,7 +84,7 @@ const Sidebar = () => {
 
                 <hr className="border-secondary my-3" />
 
-                {/* Order */}
+                {/* Orders */}
 
                 <li className="nav-item mb-1">
                     <NavLink

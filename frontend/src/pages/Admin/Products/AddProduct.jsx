@@ -11,7 +11,10 @@ import {
 } from "react-toastify";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
-import { createProduct } from "../../../services/productService";
+
+import {
+    createProduct,
+} from "../../../services/productService";
 
 
 const AddProduct = () => {
@@ -77,18 +80,13 @@ const AddProduct = () => {
             checked,
         } = event.target;
 
-
         setFormData((previous) => ({
-
             ...previous,
-
             [name]:
                 type === "checkbox"
                     ? checked
                     : value,
-
         }));
-
     };
 
 
@@ -101,9 +99,7 @@ const AddProduct = () => {
         const file =
             event.target.files?.[0] || null;
 
-
         setImage(file);
-
     };
 
 
@@ -123,14 +119,11 @@ const AddProduct = () => {
         const productName =
             formData.name.trim();
 
-
         const description =
             formData.description.trim();
 
-
         const price =
             Number(formData.price);
-
 
         const stockQuantity =
             Number(formData.stock_quantity);
@@ -211,30 +204,25 @@ const AddProduct = () => {
             productName
         );
 
-
         productData.append(
             "category",
             formData.category
         );
-
 
         productData.append(
             "description",
             description
         );
 
-
         productData.append(
             "price",
             price.toString()
         );
 
-
         productData.append(
             "stock_quantity",
             stockQuantity.toString()
         );
-
 
         productData.append(
             "is_available",
@@ -242,7 +230,6 @@ const AddProduct = () => {
                 ? "true"
                 : "false"
         );
-
 
         productData.append(
             "featured",
@@ -262,7 +249,6 @@ const AddProduct = () => {
                 "image",
                 image
             );
-
         }
 
 
@@ -274,28 +260,23 @@ const AddProduct = () => {
 
             setSaving(true);
 
-
             const response =
                 await createProduct(
                     productData
                 );
-
 
             console.log(
                 "Created product:",
                 response.data
             );
 
-
             toast.success(
                 "Product added successfully."
             );
 
-
             navigate(
                 "/admin/products"
             );
-
 
         } catch (error) {
 
@@ -304,12 +285,10 @@ const AddProduct = () => {
                 error
             );
 
-
             console.error(
                 "Response:",
                 error?.response?.data
             );
-
 
             const responseData =
                 error?.response?.data;
@@ -326,7 +305,6 @@ const AddProduct = () => {
 
                 const messages = [];
 
-
                 Object.entries(
                     responseData
                 ).forEach(
@@ -342,18 +320,15 @@ const AddProduct = () => {
                                     messages.push(
                                         `${field}: ${message}`
                                     );
-
                                 }
                             );
 
-                        } else {
+                        } else if (errors) {
 
                             messages.push(
                                 `${field}: ${errors}`
                             );
-
                         }
-
                     }
                 );
 
@@ -368,7 +343,6 @@ const AddProduct = () => {
                             toast.error(
                                 message
                             );
-
                         }
                     );
 
@@ -377,7 +351,6 @@ const AddProduct = () => {
                     toast.error(
                         "Failed to add product."
                     );
-
                 }
 
             } else {
@@ -385,15 +358,12 @@ const AddProduct = () => {
                 toast.error(
                     "Failed to add product."
                 );
-
             }
 
         } finally {
 
             setSaving(false);
-
         }
-
     };
 
 
@@ -408,7 +378,6 @@ const AddProduct = () => {
             <div className="container-fluid py-4">
 
                 <div className="card shadow">
-
 
                     {/* HEADER */}
 
@@ -429,7 +398,6 @@ const AddProduct = () => {
                             onSubmit={handleSubmit}
                         >
 
-
                             {/* PRODUCT NAME */}
 
                             <div className="mb-4">
@@ -440,7 +408,6 @@ const AddProduct = () => {
                                 >
                                     Product Name
                                 </label>
-
 
                                 <input
                                     id="product-name"
@@ -471,7 +438,6 @@ const AddProduct = () => {
                                     Category
                                 </label>
 
-
                                 <select
                                     id="product-category"
                                     name="category"
@@ -488,7 +454,6 @@ const AddProduct = () => {
                                     <option value="">
                                         Select Category
                                     </option>
-
 
                                     {categories.map(
                                         (category) => (
@@ -525,7 +490,6 @@ const AddProduct = () => {
                                     Description
                                 </label>
 
-
                                 <textarea
                                     id="product-description"
                                     name="description"
@@ -554,7 +518,6 @@ const AddProduct = () => {
                                 >
                                     Price (৳)
                                 </label>
-
 
                                 <input
                                     id="product-price"
@@ -587,7 +550,6 @@ const AddProduct = () => {
                                     Stock Quantity
                                 </label>
 
-
                                 <input
                                     id="product-stock"
                                     type="number"
@@ -619,7 +581,6 @@ const AddProduct = () => {
                                     Product Image
                                 </label>
 
-
                                 <input
                                     id="product-image"
                                     type="file"
@@ -631,9 +592,7 @@ const AddProduct = () => {
                                     }
                                 />
 
-
                                 {image && (
-
                                     <div className="mt-2">
 
                                         <small className="text-muted">
@@ -647,7 +606,6 @@ const AddProduct = () => {
                                         </small>
 
                                     </div>
-
                                 )}
 
                             </div>
@@ -669,7 +627,6 @@ const AddProduct = () => {
                                         handleChange
                                     }
                                 />
-
 
                                 <label
                                     htmlFor="product-available"
@@ -698,7 +655,6 @@ const AddProduct = () => {
                                     }
                                 />
 
-
                                 <label
                                     htmlFor="product-featured"
                                     className="form-check-label"
@@ -716,13 +672,13 @@ const AddProduct = () => {
                                 <button
                                     type="submit"
                                     className="btn btn-success"
-                                    disabled={saving}
+                                    disabled={
+                                        saving
+                                    }
                                 >
 
                                     {saving ? (
-
                                         <>
-
                                             <span
                                                 className="spinner-border spinner-border-sm me-2"
                                                 role="status"
@@ -730,13 +686,9 @@ const AddProduct = () => {
                                             />
 
                                             Saving Product...
-
                                         </>
-
                                     ) : (
-
                                         "Add Product"
-
                                     )}
 
                                 </button>
@@ -745,7 +697,9 @@ const AddProduct = () => {
                                 <button
                                     type="button"
                                     className="btn btn-secondary"
-                                    disabled={saving}
+                                    disabled={
+                                        saving
+                                    }
                                     onClick={() =>
                                         navigate(
                                             "/admin/products"
@@ -766,7 +720,6 @@ const AddProduct = () => {
             </div>
 
         </DashboardLayout>
-
     );
 };
 

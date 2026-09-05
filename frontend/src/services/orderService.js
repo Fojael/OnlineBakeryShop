@@ -136,7 +136,24 @@ export const toggleDeliveryRiderStatus = async (
 
 
 // ============================================================
-// ADMIN - ASSIGN DELIVERY RIDER TO ORDER
+// ADMIN - ASSIGN SPECIFIC DELIVERY RIDER
+// ============================================================
+//
+// IMPORTANT:
+// Delivery assignment is handled by the DELIVERY app.
+//
+// Workflow:
+//
+// Order Ready
+//      ↓
+// Admin selects specific rider
+//      ↓
+// POST /delivery/admin/orders/<orderId>/create/
+//      ↓
+// Delivery created with ASSIGNED status
+//      ↓
+// Order becomes Assigned
+//
 // ============================================================
 
 export const assignDeliveryRider = async (
@@ -144,7 +161,7 @@ export const assignDeliveryRider = async (
     riderId
 ) => {
     return api.post(
-        `/orders/admin/${orderId}/assign-delivery/`,
+        `/delivery/admin/orders/${orderId}/create/`,
         {
             rider_id: riderId,
         }
@@ -179,6 +196,19 @@ export const getSupplierOrder = async (
 // ============================================================
 // SUPPLIER - UPDATE ORDER ITEM STATUS
 // ============================================================
+//
+// Allowed workflow:
+//
+// Pending
+//    ↓
+// Processing
+//    ↓
+// Ready
+//
+// There is intentionally NO Delivered status here.
+// Delivery is handled by the rider.
+//
+// ============================================================
 
 export const updateSupplierOrderItemStatus = async (
     itemId,
@@ -191,4 +221,3 @@ export const updateSupplierOrderItemStatus = async (
         }
     );
 };
-

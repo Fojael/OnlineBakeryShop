@@ -25,7 +25,8 @@ import {
 // BACKEND BASE URL
 // ============================================================
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL =
+    "http://127.0.0.1:8000";
 
 
 // ============================================================
@@ -55,7 +56,8 @@ const AdminProducts = () => {
             return null;
         }
 
-        const image = String(product.image);
+        const image =
+            String(product.image);
 
         // Already a complete URL
         if (
@@ -74,97 +76,98 @@ const AdminProducts = () => {
     // FETCH PRODUCTS
     // =========================================================
 
-    const fetchProducts = useCallback(async () => {
+    const fetchProducts =
+        useCallback(async () => {
 
-        try {
+            try {
 
-            const response = await getProducts();
+                const response =
+                    await getProducts();
 
-            console.log(
-                "Admin Products API Response:",
-                response.data
-            );
+                console.log(
+                    "Admin Products API Response:",
+                    response.data
+                );
 
-            const data = response.data;
+                const data =
+                    response.data;
 
 
-            // -------------------------------------------------
-            // Normal DRF response
-            // -------------------------------------------------
+                // -------------------------------------------------
+                // Normal DRF response
+                // -------------------------------------------------
 
-            if (Array.isArray(data)) {
+                if (Array.isArray(data)) {
 
-                setProducts(data);
+                    setProducts(data);
 
-                return;
+                    return;
+                }
+
+
+                // -------------------------------------------------
+                // DRF paginated response
+                // -------------------------------------------------
+
+                if (
+                    data &&
+                    Array.isArray(data.results)
+                ) {
+
+                    setProducts(
+                        data.results
+                    );
+
+                    return;
+                }
+
+
+                // -------------------------------------------------
+                // Invalid response
+                // -------------------------------------------------
+
+                console.error(
+                    "Invalid product response:",
+                    data
+                );
+
+                setProducts([]);
+
+                toast.error(
+                    "Invalid product data received."
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "Failed to load products:",
+                    error
+                );
+
+                console.error(
+                    "Request URL:",
+                    error?.config?.url
+                );
+
+                console.error(
+                    "Response:",
+                    error?.response?.data
+                );
+
+                toast.error(
+                    error?.response?.data?.detail ||
+                    "Unable to load products."
+                );
+
+                setProducts([]);
+
             }
 
-
-            // -------------------------------------------------
-            // DRF paginated response
-            // -------------------------------------------------
-
-            if (
-                data &&
-                Array.isArray(data.results)
-            ) {
-
-                setProducts(data.results);
-
-                return;
-            }
-
-
-            // -------------------------------------------------
-            // Invalid response
-            // -------------------------------------------------
-
-            console.error(
-                "Invalid product response:",
-                data
-            );
-
-            setProducts([]);
-
-            toast.error(
-                "Invalid product data received."
-            );
-
-        } catch (error) {
-
-            console.error(
-                "Failed to load products:",
-                error
-            );
-
-            console.error(
-                "Request URL:",
-                error?.config?.url
-            );
-
-            console.error(
-                "Response:",
-                error?.response?.data
-            );
-
-            toast.error(
-                error?.response?.data?.detail ||
-                "Unable to load products."
-            );
-
-            setProducts([]);
-
-        }
-
-    }, []);
+        }, []);
 
 
     // =========================================================
     // INITIAL LOAD
-    // IMPORTANT:
-    // Do not call fetchProducts() directly from the effect
-    // because the React Hooks ESLint rule detects synchronous
-    // setState calls inside the effect.
     // =========================================================
 
     useEffect(() => {
@@ -175,14 +178,16 @@ const AdminProducts = () => {
 
             try {
 
-                const response = await getProducts();
+                const response =
+                    await getProducts();
 
                 console.log(
                     "Initial Products API Response:",
                     response.data
                 );
 
-                const data = response.data;
+                const data =
+                    response.data;
 
                 if (cancelled) {
                     return;
@@ -210,7 +215,9 @@ const AdminProducts = () => {
                     Array.isArray(data.results)
                 ) {
 
-                    setProducts(data.results);
+                    setProducts(
+                        data.results
+                    );
 
                     return;
                 }
@@ -270,7 +277,7 @@ const AdminProducts = () => {
         };
 
 
-        loadProducts();
+        void loadProducts();
 
 
         return () => {
@@ -288,9 +295,10 @@ const AdminProducts = () => {
 
     const handleDelete = async (id) => {
 
-        const confirmed = window.confirm(
-            "Are you sure you want to delete this product?"
-        );
+        const confirmed =
+            window.confirm(
+                "Are you sure you want to delete this product?"
+            );
 
         if (!confirmed) {
             return;
@@ -335,56 +343,75 @@ const AdminProducts = () => {
     // SEARCH PRODUCTS
     // =========================================================
 
-    const filteredProducts = useMemo(() => {
+    const filteredProducts =
+        useMemo(() => {
 
-        const keyword = search
-            .trim()
-            .toLowerCase();
-
-
-        if (!keyword) {
-            return products;
-        }
+            const keyword =
+                search
+                    .trim()
+                    .toLowerCase();
 
 
-        return products.filter((product) => {
-
-            const name = String(
-                product?.name || ""
-            ).toLowerCase();
+            if (!keyword) {
+                return products;
+            }
 
 
-            const category = String(
-                product?.category ||
-                product?.category_name ||
-                product?.category?.name ||
-                ""
-            ).toLowerCase();
+            return products.filter(
+                (product) => {
+
+                    const name =
+                        String(
+                            product?.name ||
+                            ""
+                        ).toLowerCase();
 
 
-            const price = String(
-                product?.price || ""
-            ).toLowerCase();
+                    const category =
+                        String(
+                            product?.category ||
+                            product?.category_name ||
+                            product?.category?.name ||
+                            ""
+                        ).toLowerCase();
 
 
-            const description = String(
-                product?.description || ""
-            ).toLowerCase();
+                    const price =
+                        String(
+                            product?.price ||
+                            ""
+                        ).toLowerCase();
 
 
-            return (
-                name.includes(keyword) ||
-                category.includes(keyword) ||
-                price.includes(keyword) ||
-                description.includes(keyword)
+                    const description =
+                        String(
+                            product?.description ||
+                            ""
+                        ).toLowerCase();
+
+
+                    return (
+                        name.includes(
+                            keyword
+                        ) ||
+                        category.includes(
+                            keyword
+                        ) ||
+                        price.includes(
+                            keyword
+                        ) ||
+                        description.includes(
+                            keyword
+                        )
+                    );
+
+                }
             );
 
-        });
-
-    }, [
-        products,
-        search,
-    ]);
+        }, [
+            products,
+            search,
+        ]);
 
 
     // =========================================================
@@ -393,9 +420,12 @@ const AdminProducts = () => {
 
     const formatPrice = (price) => {
 
-        const value = Number(price);
+        const value =
+            Number(price);
 
-        if (Number.isNaN(value)) {
+        if (
+            Number.isNaN(value)
+        ) {
             return "0.00";
         }
 
@@ -484,7 +514,9 @@ const AdminProducts = () => {
                         <button
                             type="button"
                             className="btn btn-primary"
-                            onClick={fetchProducts}
+                            onClick={
+                                fetchProducts
+                            }
                         >
                             Refresh Products
                         </button>
@@ -527,10 +559,16 @@ const AdminProducts = () => {
                                     type="text"
                                     className="form-control"
                                     placeholder="Search by product name, category or price..."
-                                    value={search}
-                                    onChange={(event) =>
+                                    value={
+                                        search
+                                    }
+                                    onChange={(
+                                        event
+                                    ) =>
                                         setSearch(
-                                            event.target.value
+                                            event
+                                                .target
+                                                .value
                                         )
                                     }
                                 />

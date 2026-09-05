@@ -1,4 +1,3 @@
-
 import {
     useCallback,
     useEffect,
@@ -6,8 +5,13 @@ import {
     useState,
 } from "react";
 
-import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
+import {
+    useNavigate,
+} from "react-router-dom";
+
+import {
+    toast,
+} from "react-toastify";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 
@@ -38,12 +42,6 @@ const ORDER_TABS = [
 
 // =========================================================
 // GET ORDER NUMBER
-// =========================================================
-// Example:
-// 1    -> ORD-0001
-// 15   -> ORD-0015
-// 100  -> ORD-0100
-// 1250 -> ORD-1250
 // =========================================================
 
 const getOrderNumber = (id) => {
@@ -104,6 +102,30 @@ const AdminOrders = () => {
             if (typeof responseData === "string") {
                 return responseData;
             }
+
+            if (typeof responseData === "object") {
+                const messages = [];
+
+                Object.entries(responseData).forEach(
+                    ([field, errors]) => {
+                        if (Array.isArray(errors)) {
+                            errors.forEach((message) => {
+                                messages.push(
+                                    `${field}: ${message}`
+                                );
+                            });
+                        } else if (errors) {
+                            messages.push(
+                                `${field}: ${errors}`
+                            );
+                        }
+                    }
+                );
+
+                if (messages.length > 0) {
+                    return messages.join(" ");
+                }
+            }
         }
 
         if (error && error.message) {
@@ -121,7 +143,6 @@ const AdminOrders = () => {
     const normalizeResponseData = (response) => {
         let data = response;
 
-        // Axios response
         if (
             response &&
             response.data !== undefined
@@ -129,12 +150,10 @@ const AdminOrders = () => {
             data = response.data;
         }
 
-        // Direct array
         if (Array.isArray(data)) {
             return data;
         }
 
-        // Django REST Framework pagination
         if (
             data &&
             Array.isArray(data.results)
@@ -161,6 +180,7 @@ const AdminOrders = () => {
             setOrders(data);
 
             return data;
+
         } catch (error) {
             console.error(
                 "Failed to fetch orders:",
@@ -197,6 +217,7 @@ const AdminOrders = () => {
             setRiders(data);
 
             return data;
+
         } catch (error) {
             console.error(
                 "Failed to fetch delivery riders:",
@@ -230,7 +251,7 @@ const AdminOrders = () => {
             }
         };
 
-        loadInitialData();
+        void loadInitialData();
 
         return () => {
             mounted = false;
@@ -269,26 +290,27 @@ const AdminOrders = () => {
     // =====================================================
 
     const filteredOrders = useMemo(() => {
-        const keyword = search
-            .trim()
-            .toLowerCase();
+        const keyword =
+            search.trim().toLowerCase();
 
         return orders.filter((order) => {
-            const orderId = String(
-                order.id || ""
-            ).toLowerCase();
+            const orderId =
+                String(order.id || "")
+                    .toLowerCase();
 
             const orderNumber =
                 getOrderNumber(order.id)
                     .toLowerCase();
 
-            const customerName = String(
-                order.customer_name || ""
-            ).toLowerCase();
+            const customerName =
+                String(
+                    order.customer_name || ""
+                ).toLowerCase();
 
-            const customerEmail = String(
-                order.customer_email || ""
-            ).toLowerCase();
+            const customerEmail =
+                String(
+                    order.customer_email || ""
+                ).toLowerCase();
 
             const matchesSearch =
                 keyword === "" ||
@@ -319,6 +341,7 @@ const AdminOrders = () => {
 
     const getStatusBadge = (status) => {
         switch (status) {
+
             case "Pending":
                 return "badge bg-warning text-dark";
 
@@ -389,7 +412,8 @@ const AdminOrders = () => {
             return "-";
         }
 
-        const parsedDate = new Date(date);
+        const parsedDate =
+            new Date(date);
 
         if (
             Number.isNaN(
@@ -463,7 +487,53 @@ const AdminOrders = () => {
 
 
     // =====================================================
-    // UPDATE ORDER
+    // CHECK WHETHER ALL ITEMS ARE READY
+    // =====================================================
+
+    const areAllItemsReady = (order) => {
+        if (
+            !order ||
+            !Array.isArray(order.items) ||
+            order.items.length === 0
+        ) {
+            return false;
+        }
+
+        return order.items.every(
+            (item) =>
+                item.supplier_status === "Ready"
+        );
+    };
+
+
+    // =====================================================
+    // CHECK WHETHER RIDER CAN BE ASSIGNED
+    // =====================================================
+
+    const canAssignRider = (order) => {
+        return (
+            order &&
+            order.status === "Ready" &&
+            areAllItemsReady(order)
+        );
+    };
+
+
+    // =====================================================
+    // GET ACTIVE RIDERS
+    // =====================================================
+
+    const activeRiders = useMemo(() => {
+        return riders.filter(
+            (rider) =>
+                rider &&
+                rider.is_active !== false
+        );
+    }, [riders]);
+
+
+    // =====================================================
+    // UPDATE ORDER PAGE
     // =====================================================
 
     const handleUpdateOrder = (orderId) => {
@@ -493,6 +563,7 @@ const AdminOrders = () => {
             );
 
             await fetchOrders();
+
         } catch (error) {
             console.error(
                 "Accept order error:",
@@ -506,6 +577,7 @@ const AdminOrders = () => {
                 );
 
             toast.error(message);
+
         } finally {
             setAcceptingOrderId(null);
         }
@@ -519,6 +591,40 @@ const AdminOrders = () => {
     const handleAssignDelivery = async (
         orderId
     ) => {
+        const order =
+            orders.find(
+                (item) =>
+                    item.id === orderId
+            );
+
+        if (!order) {
+            toast.error(
+                "Order could not be found."
+            );
+
+            return;
+        }
+
+        // -------------------------------------------------
+        // BACKEND WORKFLOW VALIDATION
+        // -------------------------------------------------
+
+        if (order.status !== "Ready") {
+            toast.warning(
+                "A rider can only be assigned when the order is Ready."
+            );
+
+            return;
+        }
+
+        if (!areAllItemsReady(order)) {
+            toast.warning(
+                "All supplier order items must be Ready before assigning a rider."
+            );
+
+            return;
+        }
+
         const riderId =
             selectedRiders[orderId];
 
@@ -533,6 +639,18 @@ const AdminOrders = () => {
         try {
             setAssigningOrderId(orderId);
 
+            // -------------------------------------------------
+            // CANONICAL DELIVERY ASSIGNMENT API
+            //
+            // POST:
+            // /delivery/admin/orders/<order_id>/create/
+            //
+            // body:
+            // {
+            //     rider_id: <selected rider>
+            // }
+            // -------------------------------------------------
+
             await assignDeliveryRider(
                 orderId,
                 riderId
@@ -541,6 +659,10 @@ const AdminOrders = () => {
             toast.success(
                 "Delivery rider assigned successfully."
             );
+
+            // -------------------------------------------------
+            // REMOVE SELECTED RIDER FOR THIS ORDER
+            // -------------------------------------------------
 
             setSelectedRiders(
                 (previous) => {
@@ -554,7 +676,18 @@ const AdminOrders = () => {
                 }
             );
 
+            // -------------------------------------------------
+            // REFRESH ORDER LIST
+            //
+            // Backend should now return:
+            //
+            // status = Assigned
+            // delivery_status = ASSIGNED
+            // rider_name = selected rider
+            // -------------------------------------------------
+
             await fetchOrders();
+
         } catch (error) {
             console.error(
                 "Assign rider error:",
@@ -568,6 +701,7 @@ const AdminOrders = () => {
                 );
 
             toast.error(message);
+
         } finally {
             setAssigningOrderId(null);
         }
@@ -590,11 +724,13 @@ const AdminOrders = () => {
             toast.success(
                 "Orders refreshed successfully."
             );
+
         } catch (error) {
             console.error(
                 "Refresh error:",
                 error
             );
+
         } finally {
             setLoading(false);
         }
@@ -674,7 +810,7 @@ const AdminOrders = () => {
                         </h2>
 
                         <p className="text-muted mb-0">
-                            Manage all customer orders from one place.
+                            Manage customer orders and assign delivery riders.
                         </p>
 
                     </div>
@@ -686,8 +822,8 @@ const AdminOrders = () => {
                         onClick={handleRefresh}
                         disabled={
                             loading ||
-                            acceptingOrderId ||
-                            assigningOrderId
+                            acceptingOrderId !== null ||
+                            assigningOrderId !== null
                         }
                     >
                         Refresh
@@ -710,8 +846,7 @@ const AdminOrders = () => {
                                 (tab) => {
 
                                     const isActive =
-                                        activeTab ===
-                                        tab;
+                                        activeTab === tab;
 
                                     return (
                                         <li
@@ -828,6 +963,37 @@ const AdminOrders = () => {
 
 
                 {/* =================================================
+                    WORKFLOW INFORMATION
+                ================================================= */}
+
+                <div className="alert alert-info shadow-sm">
+
+                    <strong>
+                        Order workflow:
+                    </strong>
+
+                    <span className="ms-2">
+                        Pending → Accepted → Processing → Ready
+                        → Assigned → Out for Delivery → Delivered
+                    </span>
+
+                    <div className="small mt-2">
+
+                        <strong>
+                            Important:
+                        </strong>{" "}
+
+                        Suppliers control Processing and Ready.
+                        Admin selects a specific active rider only
+                        after the order becomes Ready and every
+                        supplier item is Ready.
+
+                    </div>
+
+                </div>
+
+
+                {/* =================================================
                     ORDERS TABLE
                 ================================================= */}
 
@@ -891,37 +1057,31 @@ const AdminOrders = () => {
 
                                 <tbody>
 
-                                    {filteredOrders.length ===
-                                        0 && (
-                                            <tr>
+                                    {filteredOrders.length === 0 && (
+                                        <tr>
 
-                                                <td
-                                                    colSpan="8"
-                                                    className="text-center py-5"
-                                                >
+                                            <td
+                                                colSpan="8"
+                                                className="text-center py-5"
+                                            >
 
-                                                    <h5 className="mb-2">
-                                                        No Orders Found
-                                                    </h5>
+                                                <h5 className="mb-2">
+                                                    No Orders Found
+                                                </h5>
 
-                                                    <p className="text-muted mb-0">
-                                                        There are no orders in this category.
-                                                    </p>
+                                                <p className="text-muted mb-0">
+                                                    There are no orders in this category.
+                                                </p>
 
-                                                </td>
+                                            </td>
 
-                                            </tr>
-                                        )}
+                                        </tr>
+                                    )}
 
 
-                                    {filteredOrders.length >
-                                        0 &&
+                                    {filteredOrders.length > 0 &&
                                         filteredOrders.map(
                                             (order) => {
-
-                                                // =================================================
-                                                // ORDER DATA
-                                                // =================================================
 
                                                 const orderNumber =
                                                     getOrderNumber(
@@ -972,9 +1132,17 @@ const AdminOrders = () => {
                                                 const selectedRider =
                                                     selectedRiders[
                                                         order.id
-                                                    ] ||
-                                                    "";
+                                                    ] || "";
 
+                                                const allItemsReady =
+                                                    areAllItemsReady(
+                                                        order
+                                                    );
+
+                                                const canAssign =
+                                                    canAssignRider(
+                                                        order
+                                                    );
 
                                                 return (
                                                     <tr
@@ -1093,6 +1261,19 @@ const AdminOrders = () => {
                                                                 }
                                                             </span>
 
+                                                            {/* Delivery status */}
+
+                                                            {order.status ===
+                                                                "Assigned" &&
+                                                                order.delivery_status && (
+                                                                    <div className="small text-muted mt-1">
+                                                                        Delivery:{" "}
+                                                                        {
+                                                                            order.delivery_status
+                                                                        }
+                                                                    </div>
+                                                                )}
+
                                                         </td>
 
 
@@ -1102,14 +1283,18 @@ const AdminOrders = () => {
 
                                                         <td>
 
-                                                            <div className="d-flex flex-wrap gap-2">
+                                                            <div className="d-flex flex-column gap-2">
 
-                                                                {/* =========================================
-                                                                    ACCEPT
-                                                                ========================================= */}
+                                                                {/* =================================================
+                                                                    ADMIN BASIC ACTIONS
+                                                                ================================================= */}
 
-                                                                {order.status ===
-                                                                    "Pending" && (
+                                                                <div className="d-flex flex-wrap gap-2">
+
+                                                                    {/* ACCEPT */}
+
+                                                                    {order.status ===
+                                                                        "Pending" && (
                                                                         <button
                                                                             type="button"
                                                                             className="btn btn-success btn-sm"
@@ -1119,7 +1304,8 @@ const AdminOrders = () => {
                                                                                 )
                                                                             }
                                                                             disabled={
-                                                                                isAccepting
+                                                                                isAccepting ||
+                                                                                assigningOrderId !== null
                                                                             }
                                                                         >
                                                                             {isAccepting
@@ -1129,16 +1315,10 @@ const AdminOrders = () => {
                                                                     )}
 
 
-                                                                {/* =========================================
-                                                                    UPDATE
-                                                                ========================================= */}
+                                                                    {/* UPDATE */}
 
-                                                                {(
-                                                                    order.status ===
-                                                                        "Pending" ||
-                                                                    order.status ===
-                                                                        "Ready"
-                                                                ) && (
+                                                                    {order.status ===
+                                                                        "Pending" && (
                                                                         <button
                                                                             type="button"
                                                                             className="btn btn-warning btn-sm"
@@ -1147,99 +1327,250 @@ const AdminOrders = () => {
                                                                                     order.id
                                                                                 )
                                                                             }
+                                                                            disabled={
+                                                                                isAccepting ||
+                                                                                isAssigning
+                                                                            }
                                                                         >
                                                                             Update
                                                                         </button>
                                                                     )}
 
+                                                                </div>
 
-                                                                {/* =========================================
-                                                                    ASSIGN RIDER
-                                                                ========================================= */}
+
+                                                                {/* =================================================
+                                                                    READY → RIDER ASSIGNMENT
+                                                                ================================================= */}
 
                                                                 {order.status ===
                                                                     "Ready" && (
-                                                                        <div className="d-flex gap-2">
 
-                                                                            <select
-                                                                                className="form-select form-select-sm"
-                                                                                value={
-                                                                                    selectedRider
-                                                                                }
-                                                                                onChange={(
-                                                                                    event
-                                                                                ) =>
-                                                                                    handleRiderChange(
-                                                                                        order.id,
-                                                                                        event
-                                                                                            .target
-                                                                                            .value
-                                                                                    )
-                                                                                }
-                                                                            >
+                                                                    <div className="mt-1">
 
-                                                                                <option value="">
-                                                                                    Select Rider
-                                                                                </option>
+                                                                        {/* -------------------------------------------------
+                                                                            SUPPLIER ITEMS NOT READY
+                                                                        ------------------------------------------------- */}
+
+                                                                        {!allItemsReady && (
+                                                                            <div className="small text-danger mb-2">
+
+                                                                                <strong>
+                                                                                    Waiting:
+                                                                                </strong>{" "}
+
+                                                                                All supplier items must
+                                                                                be Ready before rider
+                                                                                assignment.
+
+                                                                            </div>
+                                                                        )}
 
 
-                                                                                {riders
-                                                                                    .filter(
-                                                                                        (
-                                                                                            rider
-                                                                                        ) =>
-                                                                                            rider.is_active
-                                                                                    )
-                                                                                    .map(
-                                                                                        (
-                                                                                            rider
-                                                                                        ) => {
+                                                                        {/* -------------------------------------------------
+                                                                            RIDER ASSIGNMENT
+                                                                        ------------------------------------------------- */}
 
-                                                                                            const riderName =
-                                                                                                rider.username ||
-                                                                                                rider.name ||
-                                                                                                rider.email ||
-                                                                                                "Rider";
+                                                                        {canAssign && (
 
-                                                                                            return (
-                                                                                                <option
-                                                                                                    key={
-                                                                                                        rider.id
-                                                                                                    }
-                                                                                                    value={
-                                                                                                        rider.id
-                                                                                                    }
-                                                                                                >
-                                                                                                    {
-                                                                                                        riderName
-                                                                                                    }
-                                                                                                </option>
-                                                                                            );
+                                                                            <div>
+
+                                                                                <div className="small text-success mb-2">
+
+                                                                                    <strong>
+                                                                                        Ready for delivery assignment
+                                                                                    </strong>
+
+                                                                                </div>
+
+
+                                                                                <div className="d-flex flex-wrap gap-2">
+
+                                                                                    <select
+                                                                                        className="form-select form-select-sm"
+                                                                                        style={{
+                                                                                            minWidth: "180px",
+                                                                                        }}
+                                                                                        value={
+                                                                                            selectedRider
                                                                                         }
-                                                                                    )}
+                                                                                        onChange={(
+                                                                                            event
+                                                                                        ) =>
+                                                                                            handleRiderChange(
+                                                                                                order.id,
+                                                                                                event.target.value
+                                                                                            )
+                                                                                        }
+                                                                                        disabled={
+                                                                                            isAssigning
+                                                                                        }
+                                                                                        aria-label={`Select rider for ${getOrderNumber(
+                                                                                            order.id
+                                                                                        )}`}
+                                                                                    >
 
-                                                                            </select>
+                                                                                        <option value="">
+                                                                                            Select Rider
+                                                                                        </option>
 
 
-                                                                            <button
-                                                                                type="button"
-                                                                                className="btn btn-primary btn-sm"
-                                                                                onClick={() =>
-                                                                                    handleAssignDelivery(
-                                                                                        order.id
-                                                                                    )
+                                                                                        {activeRiders.length ===
+                                                                                            0 && (
+                                                                                            <option
+                                                                                                value=""
+                                                                                                disabled
+                                                                                            >
+                                                                                                No active riders
+                                                                                            </option>
+                                                                                        )}
+
+
+                                                                                        {activeRiders.map(
+                                                                                            (
+                                                                                                rider
+                                                                                            ) => {
+
+                                                                                                const riderName =
+                                                                                                    rider.username ||
+                                                                                                    rider.name ||
+                                                                                                    (
+                                                                                                        rider.first_name ||
+                                                                                                        rider.last_name
+                                                                                                    )
+                                                                                                        ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim()
+                                                                                                        : rider.email ||
+                                                                                                          "Rider";
+
+                                                                                                return (
+                                                                                                    <option
+                                                                                                        key={
+                                                                                                            rider.id
+                                                                                                        }
+                                                                                                        value={
+                                                                                                            rider.id
+                                                                                                        }
+                                                                                                    >
+                                                                                                        {
+                                                                                                            riderName
+                                                                                                        }
+                                                                                                    </option>
+                                                                                                );
+                                                                                            }
+                                                                                        )}
+
+                                                                                    </select>
+
+
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="btn btn-primary btn-sm"
+                                                                                        onClick={() =>
+                                                                                            handleAssignDelivery(
+                                                                                                order.id
+                                                                                            )
+                                                                                        }
+                                                                                        disabled={
+                                                                                            isAssigning ||
+                                                                                            !selectedRider ||
+                                                                                            activeRiders.length === 0
+                                                                                        }
+                                                                                    >
+
+                                                                                        {isAssigning ? (
+                                                                                            <>
+                                                                                                <span
+                                                                                                    className="spinner-border spinner-border-sm me-1"
+                                                                                                    role="status"
+                                                                                                    aria-hidden="true"
+                                                                                                />
+
+                                                                                                Assigning...
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            "Assign Delivery"
+                                                                                        )}
+
+                                                                                    </button>
+
+                                                                                </div>
+
+                                                                            </div>
+                                                                        )}
+
+                                                                    </div>
+                                                                )}
+
+
+                                                                {/* =================================================
+                                                                    ASSIGNED
+                                                                ================================================= */}
+
+                                                                {order.status ===
+                                                                    "Assigned" && (
+
+                                                                    <div>
+
+                                                                        <small className="text-success d-block">
+
+                                                                            <strong>
+                                                                                Rider Assigned
+                                                                            </strong>
+
+                                                                        </small>
+
+
+                                                                        {order.rider_name && (
+                                                                            <small className="text-muted d-block">
+                                                                                Rider:{" "}
+                                                                                {
+                                                                                    order.rider_name
                                                                                 }
-                                                                                disabled={
-                                                                                    isAssigning
-                                                                                }
-                                                                            >
-                                                                                {isAssigning
-                                                                                    ? "Assigning..."
-                                                                                    : "Assign"}
-                                                                            </button>
+                                                                            </small>
+                                                                        )}
 
-                                                                        </div>
-                                                                    )}
+                                                                    </div>
+                                                                )}
+
+
+                                                                {/* =================================================
+                                                                    OUT FOR DELIVERY
+                                                                ================================================= */}
+
+                                                                {order.status ===
+                                                                    "Out for Delivery" && (
+
+                                                                    <small className="text-muted">
+                                                                        Delivery is being handled
+                                                                        by the rider.
+                                                                    </small>
+                                                                )}
+
+
+                                                                {/* =================================================
+                                                                    DELIVERED
+                                                                ================================================= */}
+
+                                                                {order.status ===
+                                                                    "Delivered" && (
+
+                                                                    <small className="text-success">
+                                                                        Order successfully delivered.
+                                                                    </small>
+                                                                )}
+
+
+                                                                {/* =================================================
+                                                                    CANCELLED
+                                                                ================================================= */}
+
+                                                                {order.status ===
+                                                                    "Cancelled" && (
+
+                                                                    <small className="text-danger">
+                                                                        Order cancelled.
+                                                                    </small>
+                                                                )}
 
                                                             </div>
 
@@ -1272,4 +1603,3 @@ const AdminOrders = () => {
 // =========================================================
 
 export default AdminOrders;
-
