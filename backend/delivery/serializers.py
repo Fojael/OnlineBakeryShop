@@ -228,6 +228,9 @@ class DeliveryStatusUpdateSerializer(
     )
 
 
+DeliveryStatusSerializer = DeliveryStatusUpdateSerializer
+
+
 # ==========================================================
 # ADMIN DELIVERY ASSIGNMENT
 # ==========================================================
@@ -251,17 +254,11 @@ class DeliveryAssignmentSerializer(
                 "Delivery rider does not exist."
             )
 
-        role = getattr(
-            User,
-            "ROLE_DELIVERY",
-            "Delivery Rider",
-        )
-
         if getattr(
             rider,
             "role",
             None,
-        ) != role:
+        ) != User.ROLE_DELIVERY_RIDER:
             raise serializers.ValidationError(
                 "Selected user is not a delivery rider."
             )

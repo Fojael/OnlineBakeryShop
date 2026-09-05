@@ -65,6 +65,7 @@ INSTALLED_APPS = [
 'notifications',
 "wishlist",
 'ai_prediction',
+'audit_logs',
 ]
 
 # ==========================

@@ -51,6 +51,9 @@ import Checkout
 import Orders
     from "../pages/Orders/Orders";
 
+import OrderDetails
+    from "../pages/Orders/OrderDetails";
+
 import Profile
     from "../pages/Profile/Profile";
 
@@ -132,6 +135,12 @@ import Inventory
 import UpdateInventory
     from "../pages/Admin/Inventory/UpdateInventory";
 
+import InventoryTransactions
+    from "../pages/Admin/Inventory/InventoryTransactions";
+
+import ProductionBatches
+    from "../pages/Admin/Inventory/ProductionBatches";
+
 // ============================================================
 // ADMIN SUPPLIER PAGES
 // ============================================================
@@ -151,6 +160,12 @@ import EditSupplier
 
 import DeliveryRiders
     from "../pages/Admin/DeliveryRiders/DeliveryRiders";
+
+import RiderDeliveries
+    from "../pages/Admin/DeliveryRiders/RiderDeliveries";
+
+import DeliveryManagement
+    from "../pages/Admin/Delivery/DeliveryManagement";
 
 // ============================================================
 // ADMIN ORDER PAGES
@@ -178,6 +193,15 @@ import AIPrediction
 
 import Notifications
     from "../pages/Admin/Notifications/Notifications";
+
+import Payments
+    from "../pages/Admin/Payments/Payments";
+
+import Refunds
+    from "../pages/Admin/Refunds/Refunds";
+
+import AdminProfile
+    from "../pages/Admin/Profile/AdminProfile";
 
 
 /// ============================================================
@@ -279,7 +303,7 @@ const AppRoutes = () => {
             <Route
                 path="/cart"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Cart />
                     </ProtectedRoute>
                 }
@@ -288,7 +312,7 @@ const AppRoutes = () => {
             <Route
                 path="/checkout"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Checkout />
                     </ProtectedRoute>
                 }
@@ -297,8 +321,17 @@ const AppRoutes = () => {
             <Route
                 path="/orders"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Orders />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/orders/:orderId"
+                element={
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
+                        <OrderDetails />
                     </ProtectedRoute>
                 }
             />
@@ -334,7 +367,7 @@ const AppRoutes = () => {
             <Route
                 path="/checkout/success"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <PaymentSuccess />
                     </ProtectedRoute>
                 }
@@ -343,7 +376,7 @@ const AppRoutes = () => {
             <Route
                 path="/checkout/failed"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <PaymentFailed />
                     </ProtectedRoute>
                 }
@@ -352,7 +385,7 @@ const AppRoutes = () => {
             <Route
                 path="/checkout/cancelled"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <PaymentCancelled />
                     </ProtectedRoute>
                 }
@@ -366,7 +399,7 @@ const AppRoutes = () => {
             <Route
                 path="/customer/dashboard"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <CustomerDashboard />
                     </ProtectedRoute>
                 }
@@ -375,7 +408,7 @@ const AppRoutes = () => {
             <Route
                 path="/wishlist"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Wishlist />
                     </ProtectedRoute>
                 }
@@ -389,7 +422,7 @@ const AppRoutes = () => {
             <Route
                 path="/address"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Address />
                     </ProtectedRoute>
                 }
@@ -398,7 +431,7 @@ const AppRoutes = () => {
             <Route
                 path="/address/add"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <AddAddress />
                     </ProtectedRoute>
                 }
@@ -407,7 +440,7 @@ const AppRoutes = () => {
             <Route
                 path="/address/edit/:id"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <EditAddress />
                     </ProtectedRoute>
                 }
@@ -514,6 +547,24 @@ const AppRoutes = () => {
                 }
             />
 
+            <Route
+                path="/admin/inventory/transactions"
+                element={
+                    <ProtectedAdminRoute>
+                        <InventoryTransactions />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/inventory/batches"
+                element={
+                    <ProtectedAdminRoute>
+                        <ProductionBatches />
+                    </ProtectedAdminRoute>
+                }
+            />
+
 
             {/* ==================================================
                 ADMIN SUPPLIERS
@@ -559,6 +610,24 @@ const AppRoutes = () => {
                 }
             />
 
+            <Route
+                path="/admin/riders"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryRiders />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/riders/:riderId/deliveries"
+                element={
+                    <ProtectedAdminRoute>
+                        <RiderDeliveries />
+                    </ProtectedAdminRoute>
+                }
+            />
+
 
             {/* ==================================================
                 ADMIN ORDERS
@@ -578,6 +647,42 @@ const AppRoutes = () => {
                 element={
                     <ProtectedAdminRoute>
                         <UpdateOrder />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/delivery-management"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryManagement />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/delivery"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryManagement />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/delivery-management"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryManagement />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/rider-management"
+                element={
+                    <ProtectedAdminRoute>
+                        <DeliveryRiders />
                     </ProtectedAdminRoute>
                 }
             />
@@ -634,6 +739,42 @@ const AppRoutes = () => {
                 element={
                     <ProtectedAdminRoute>
                         <Notifications />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/payments"
+                element={
+                    <ProtectedAdminRoute>
+                        <Payments />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/payment-management"
+                element={
+                    <ProtectedAdminRoute>
+                        <Payments />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/refunds"
+                element={
+                    <ProtectedAdminRoute>
+                        <Refunds />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/profile"
+                element={
+                    <ProtectedAdminRoute>
+                        <AdminProfile />
                     </ProtectedAdminRoute>
                 }
             />
@@ -764,9 +905,27 @@ const AppRoutes = () => {
             />
 
             <Route
+                path="/rider/dashboard"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY_RIDER"]}>
+                        <DeliveryDashboard />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
                 path="/delivery/orders"
                 element={
                     <ProtectedRoute allowedRoles={["DELIVERY", "DELIVERY_RIDER"]}>
+                        <DeliveryOrders />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/rider/deliveries"
+                element={
+                    <ProtectedRoute allowedRoles={["DELIVERY_RIDER"]}>
                         <DeliveryOrders />
                     </ProtectedRoute>
                 }

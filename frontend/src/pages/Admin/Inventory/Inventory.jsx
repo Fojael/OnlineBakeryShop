@@ -103,6 +103,20 @@ const Inventory = () => {
                         Back to Dashboard
                     </Link>
 
+                    <Link
+                        to="/admin/inventory/transactions"
+                        className="btn btn-primary ms-2"
+                    >
+                        Stock Movements
+                    </Link>
+
+                    <Link
+                        to="/admin/inventory/batches"
+                        className="btn btn-outline-primary ms-2"
+                    >
+                        Production Batches
+                    </Link>
+
                 </div>
 
                 {/* Search */}

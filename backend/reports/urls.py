@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import AdminSalesSummaryView
+from .views import AdminReportsSummaryView, AdminSalesSummaryView
 
 app_name = "reports"
 
@@ -9,5 +9,10 @@ urlpatterns = [
         "admin/sales-summary/",
         AdminSalesSummaryView.as_view(),
         name="admin-sales-summary",
+    ),
+    path(
+        "admin/summary/",
+        AdminReportsSummaryView.as_view(),
+        name="admin-reports-summary",
     ),
 ]

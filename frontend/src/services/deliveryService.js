@@ -6,13 +6,29 @@ import api from "./api";
 
 const deliveryService = {
 
+    normalizeDelivery: (delivery) => ({
+        ...delivery.order_details,
+        ...delivery,
+        order_id: delivery.order,
+        delivery_id: delivery.id,
+    }),
+
     // ======================================================
     // GET DELIVERY DASHBOARD
     // ======================================================
 
     getDashboard: async () => {
-        const response = await api.get("orders/delivery/dashboard/");
-        return response.data;
+        const [dashboardResponse, deliveriesResponse] = await Promise.all([
+            api.get("delivery/dashboard/"),
+            api.get("delivery/my/"),
+        ]);
+
+        return {
+            stats: dashboardResponse.data,
+            deliveries: (deliveriesResponse.data || []).map(
+                deliveryService.normalizeDelivery
+            ),
+        };
     },
 
     // ======================================================
@@ -20,9 +36,13 @@ const deliveryService = {
     // ======================================================
 
     getOrders: async (status = "") => {
-        const url = status ? `orders/delivery/?status=${status}` : "orders/delivery/";
+        const url = status
+            ? `delivery/my/?status=${status}`
+            : "delivery/my/";
         const response = await api.get(url);
-        return response.data;
+        return (response.data || []).map(
+            deliveryService.normalizeDelivery
+        );
     },
 
     // ======================================================
@@ -30,8 +50,8 @@ const deliveryService = {
     // ======================================================
 
     getOrderDetails: async (orderId) => {
-        const response = await api.get(`orders/delivery/${orderId}/`);
-        return response.data;
+        const response = await api.get(`delivery/${orderId}/`);
+        return deliveryService.normalizeDelivery(response.data);
     },
 
     // ======================================================
@@ -39,7 +59,7 @@ const deliveryService = {
     // ======================================================
 
     updateStatus: async (orderId, deliveryStatus) => {
-        const response = await api.patch(`orders/delivery/${orderId}/status/`, {
+        const response = await api.patch(`delivery/${orderId}/status/`, {
             status: deliveryStatus,
         });
 

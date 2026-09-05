@@ -256,6 +256,61 @@ class OrderCreateSerializer(
     serializers.ModelSerializer
 ):
 
+    shipping_address = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+    full_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    division = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    district = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    city = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    area = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    street_address = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    postal_code = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    delivery_note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+
     class Meta:
 
         model = Order
@@ -263,32 +318,65 @@ class OrderCreateSerializer(
         fields = [
             "shipping_address",
             "payment_method",
+            "full_name",
+            "phone",
+            "email",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+            "postal_code",
+            "delivery_note",
         ]
 
     # ======================================================
     # SHIPPING ADDRESS
     # ======================================================
 
-    def validate_shipping_address(
-        self,
-        value,
-    ):
+    def validate(self, attrs):
+        shipping_address = attrs.get("shipping_address", "").strip()
 
-        value = value.strip()
+        structured_fields = [
+            "full_name",
+            "phone",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+        ]
 
-        if not value:
+        has_structured_address = all(
+            attrs.get(field, "").strip()
+            for field in structured_fields
+        )
 
+        if not shipping_address and not has_structured_address:
             raise serializers.ValidationError(
                 "Shipping address is required."
             )
 
-        if len(value) < 10:
-
+        if shipping_address and len(shipping_address) < 10:
             raise serializers.ValidationError(
                 "Please provide a complete shipping address."
             )
 
-        return value
+        if not shipping_address:
+            attrs["shipping_address"] = ", ".join(
+                attrs[field].strip()
+                for field in [
+                    "street_address",
+                    "area",
+                    "city",
+                    "district",
+                    "division",
+                    "postal_code",
+                ]
+                if attrs.get(field, "").strip()
+            )
+
+        return attrs
 
     # ======================================================
     # PAYMENT METHOD
@@ -611,12 +699,19 @@ class CustomerRefundRequestSerializer(
     serializers.ModelSerializer
 ):
 
+    order_id = serializers.PrimaryKeyRelatedField(
+        source="order",
+        queryset=Order.objects.all(),
+        write_only=True,
+        required=False,
+    )
+
     class Meta:
 
         model = Refund
 
         fields = [
-            "order",
+            "order_id",
             "reason",
             "description",
         ]

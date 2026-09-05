@@ -15,7 +15,9 @@ from rest_framework.views import APIView
 
 from cart.models import Cart, CartItem
 from orders.models import Order, OrderItem
+from inventory.services import notify_low_stock
 from accounts.permissions import IsAdmin
+from audit_logs.services import record_audit
 
 from .models import Payment
 from .serializers import PaymentSerializer
@@ -299,6 +301,8 @@ def finalize_success(payment, validation):
 
             product = item.product
 
+            previous_stock = product.stock_quantity
+
             product.stock_quantity -= item.quantity
 
             update_fields = [
@@ -318,6 +322,8 @@ def finalize_success(payment, validation):
             product.save(
                 update_fields=update_fields
             )
+
+            notify_low_stock(product, previous_stock)
 
         order.stock_deducted = True
 
@@ -431,15 +437,10 @@ def finalize_success(payment, validation):
         ]
     )
 
-    # ======================================================
-    # ORDER
-    # ======================================================
-
-    order.status = Order.STATUS_PROCESSING
-
+    # Payment success does not advance the parent order.
+    # Admin acceptance and supplier item transitions own that lifecycle.
     order.save(
         update_fields=[
-            "status",
             "stock_deducted",
             "updated_at",
         ]
@@ -980,12 +981,14 @@ class AdminPaymentStatusUpdateView(APIView):
             pk=payment_id,
         )
 
+        old_status = payment.status
         new_status = request.data.get("status")
         if new_status not in {
             Payment.STATUS_PENDING,
             Payment.STATUS_SUCCESS,
             Payment.STATUS_FAILED,
             Payment.STATUS_CANCELLED,
+            Payment.STATUS_REFUNDED,
         }:
             return Response(
                 {"detail": "Invalid payment status."},
@@ -995,20 +998,24 @@ class AdminPaymentStatusUpdateView(APIView):
         payment.status = new_status
         if new_status == Payment.STATUS_SUCCESS:
             payment.mark_success()
-            if payment.order.status not in {
-                Order.STATUS_CANCELLED,
-                Order.STATUS_DELIVERED,
-            }:
-                payment.order.status = Order.STATUS_PROCESSING
-                payment.order.save(update_fields=["status", "updated_at"])
         elif new_status == Payment.STATUS_FAILED:
             payment.mark_failed(request.data.get("failure_reason", "Payment failed"))
         elif new_status == Payment.STATUS_CANCELLED:
             payment.mark_cancelled(request.data.get("failure_reason", "Payment cancelled"))
+        elif new_status == Payment.STATUS_REFUNDED:
+            payment.mark_refunded()
         else:
             payment.mark_pending()
 
         payment.save()
+
+        record_audit(
+            actor=request.user,
+            action="payment_status_changed",
+            obj=payment,
+            old_value={"status": old_status},
+            new_value={"status": payment.status},
+        )
 
         return Response(
             {

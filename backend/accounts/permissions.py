@@ -25,6 +25,7 @@ class RolePermission(
 
         return (
             user.is_authenticated
+            and user.is_active
             and getattr(
                 user,
                 "role",
@@ -107,7 +108,6 @@ class IsDeliveryRider(
 
     allowed_roles = [
         "DELIVERY_RIDER",
-        "DELIVERY",
     ]
 
     def has_permission(

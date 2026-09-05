@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import { toast } from "react-toastify";
+import { Link } from "react-router-dom";
 
 import {
     getOrders,
@@ -594,6 +595,13 @@ const Orders = () => {
                                                         }
 
                                                     </button>
+
+                                                    <Link
+                                                        to={`/orders/${order.id}`}
+                                                        className="btn btn-outline-secondary btn-sm me-2"
+                                                    >
+                                                        Track Order
+                                                    </Link>
 
 
                                                     {/* =====================================

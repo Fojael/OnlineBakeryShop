@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     InventoryListView,
     InventoryUpdateView,
+    InventoryTransactionListCreateView,
+    ProductionBatchListCreateView,
 )
 
 from .dashboard_views import (
@@ -21,6 +23,18 @@ urlpatterns = [
         "dashboard/",
         InventoryDashboardView.as_view(),
         name="inventory-dashboard",
+    ),
+
+    path(
+        "transactions/",
+        InventoryTransactionListCreateView.as_view(),
+        name="inventory-transactions",
+    ),
+
+    path(
+        "batches/",
+        ProductionBatchListCreateView.as_view(),
+        name="production-batches",
     ),
 
     path(

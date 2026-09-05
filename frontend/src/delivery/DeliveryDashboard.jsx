@@ -135,6 +135,13 @@ const DeliveryDashboard = () => {
                     View All Deliveries
                 </Link>
 
+                <Link
+                    to="/notifications"
+                    className="delivery-header-btn"
+                >
+                    Notifications
+                </Link>
+
             </div>
 
             {/* ============================================ */}

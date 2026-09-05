@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsCustomer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -12,7 +12,7 @@ from .serializers import CartSerializer
 
 
 class CartView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
     def get_cart(self, user):
         cart, created = Cart.objects.get_or_create(
@@ -122,7 +122,7 @@ class CartView(APIView):
 
 
 class CartItemView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
     def get_cart(self, user):
         cart, created = Cart.objects.get_or_create(

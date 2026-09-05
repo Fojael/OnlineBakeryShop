@@ -99,7 +99,7 @@ const Sidebar = () => {
 
                 <li className="nav-item mb-1">
                     <NavLink
-                        to="/admin/delivery-management"
+                        to="/admin/delivery"
                         className={linkClass}
                     >
                         Delivery Management
@@ -127,6 +127,15 @@ const Sidebar = () => {
                         className={linkClass}
                     >
                         Payment Management
+                    </NavLink>
+                </li>
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/refunds"
+                        className={linkClass}
+                    >
+                        Refunds
                     </NavLink>
                 </li>
 
@@ -160,6 +169,15 @@ const Sidebar = () => {
                         className={linkClass}
                     >
                         Notifications
+                    </NavLink>
+                </li>
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/profile"
+                        className={linkClass}
+                    >
+                        Profile
                     </NavLink>
                 </li>
 

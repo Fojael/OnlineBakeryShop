@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -22,15 +23,19 @@ from payments.models import Payment
 from products.models import Product
 from suppliers.models import Supplier
 from notifications.models import Notification
+from inventory.services import notify_low_stock
 
 from accounts.permissions import (
+    IsCustomer,
     IsSupplier,
 )
+from audit_logs.services import record_audit
 
 from delivery.models import Delivery
 from delivery.serializers import (
     DeliveryRiderCreateSerializer,
     DeliveryRiderUpdateSerializer,
+    DeliverySerializer,
 )
 
 from .models import (
@@ -202,7 +207,7 @@ def get_order_suppliers(order):
 class OrderListCreateView(APIView):
 
     permission_classes = [
-        IsAuthenticated,
+        IsCustomer,
     ]
 
     # ======================================================
@@ -466,6 +471,52 @@ class OrderListCreateView(APIView):
             order_items,
         )
 
+        Payment.objects.create(
+            order=order,
+            transaction_id=(
+                f"BAKE{order.id}{uuid4().hex.upper()}"
+            )[:30],
+            amount=total_amount,
+            currency="BDT",
+            status=Payment.STATUS_PENDING,
+        )
+
+        structured_address_fields = [
+            "full_name",
+            "phone",
+            "division",
+            "district",
+            "city",
+            "area",
+            "street_address",
+        ]
+
+        if all(
+            serializer.validated_data.get(field, "").strip()
+            for field in structured_address_fields
+        ):
+            OrderAddress.objects.create(
+                order=order,
+                full_name=serializer.validated_data["full_name"],
+                phone=serializer.validated_data["phone"],
+                email=serializer.validated_data.get("email", ""),
+                division=serializer.validated_data["division"],
+                district=serializer.validated_data["district"],
+                city=serializer.validated_data["city"],
+                area=serializer.validated_data["area"],
+                street_address=serializer.validated_data[
+                    "street_address"
+                ],
+                postal_code=serializer.validated_data.get(
+                    "postal_code",
+                    "",
+                ),
+                delivery_note=serializer.validated_data.get(
+                    "delivery_note",
+                    "",
+                ),
+            )
+
         # --------------------------------------------------
         # COD
         # --------------------------------------------------
@@ -480,6 +531,8 @@ class OrderListCreateView(APIView):
                 product = products[
                     item.product_id
                 ]
+
+                previous_stock = product.stock_quantity
 
                 product.stock_quantity -= (
                     item.quantity
@@ -508,6 +561,8 @@ class OrderListCreateView(APIView):
                             "stock_quantity",
                         ]
                     )
+
+                notify_low_stock(product, previous_stock)
 
             order.stock_deducted = True
 
@@ -558,6 +613,16 @@ class OrderListCreateView(APIView):
                 ),
             )
 
+        notify_customer(
+            customer=request.user,
+            title="Order Placed",
+            message=(
+                f"Your Order #{order.id} has been placed "
+                "and is awaiting confirmation."
+            ),
+            notification_type=Notification.TYPE_INFO,
+        )
+
         # --------------------------------------------------
         # RESPONSE
         # --------------------------------------------------
@@ -593,7 +658,7 @@ class OrderListCreateView(APIView):
 class OrderDetailView(APIView):
 
     permission_classes = [
-        IsAuthenticated,
+        IsCustomer,
     ]
 
     def get(
@@ -635,7 +700,7 @@ class OrderDetailView(APIView):
 class CancelOrderView(APIView):
 
     permission_classes = [
-        IsAuthenticated,
+        IsCustomer,
     ]
 
     @transaction.atomic
@@ -944,7 +1009,7 @@ class AdminOrderListView(APIView):
         request,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -998,7 +1063,7 @@ class AdminOrderDetailView(APIView):
         order_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -1050,7 +1115,7 @@ class AdminAcceptOrderView(APIView):
         order_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -1092,6 +1157,14 @@ class AdminAcceptOrderView(APIView):
                 "status",
                 "updated_at",
             ]
+        )
+
+        record_audit(
+            actor=request.user,
+            action="order_accepted",
+            obj=order,
+            old_value={"status": Order.STATUS_PENDING},
+            new_value={"status": order.status},
         )
 
         # --------------------------------------------------
@@ -1168,7 +1241,7 @@ class AdminOrderUpdateView(APIView):
         order_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -1270,9 +1343,7 @@ class AdminOrderUpdateView(APIView):
                     Order.STATUS_CANCELLED,
                 ],
 
-                Order.STATUS_READY: [
-                    Order.STATUS_CANCELLED,
-                ],
+                Order.STATUS_READY: [],
 
                 Order.STATUS_ASSIGNED: [],
 
@@ -1457,6 +1528,14 @@ class AdminOrderUpdateView(APIView):
 
             order.save(
                 update_fields=update_fields
+            )
+
+            record_audit(
+                actor=request.user,
+                action="order_status_changed",
+                obj=order,
+                old_value={"status": old_status},
+                new_value={"status": new_status},
             )
 
             # --------------------------------------------------
@@ -2397,7 +2476,7 @@ class AdminDeliveryRiderListView(APIView):
         request,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -2410,11 +2489,7 @@ class AdminDeliveryRiderListView(APIView):
         riders = (
             User.objects
             .filter(
-                role=getattr(
-                    User,
-                    "ROLE_DELIVERY",
-                    "Delivery",
-                ),
+                role=User.ROLE_DELIVERY_RIDER,
             )
             .order_by(
                 "-date_joined",
@@ -2458,7 +2533,9 @@ class AdminDeliveryRiderListView(APIView):
             )
 
         return Response(
-            data,
+            {
+                "results": data,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -2479,7 +2556,7 @@ class AdminCreateDeliveryRiderView(APIView):
         request,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -2557,11 +2634,7 @@ class AdminCreateDeliveryRiderView(APIView):
             ),
         )
 
-        rider.role = getattr(
-            User,
-            "ROLE_DELIVERY",
-            "Delivery",
-        )
+        rider.role = User.ROLE_DELIVERY_RIDER
 
         rider.is_active = True
 
@@ -2628,7 +2701,7 @@ class AdminUpdateDeliveryRiderView(APIView):
         rider_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -2647,11 +2720,7 @@ class AdminUpdateDeliveryRiderView(APIView):
         # VERIFY RIDER ROLE
         # --------------------------------------------------
 
-        rider_role = getattr(
-            User,
-            "ROLE_DELIVERY",
-            "Delivery",
-        )
+        rider_role = User.ROLE_DELIVERY_RIDER
 
         if rider.role != rider_role:
 
@@ -2757,7 +2826,7 @@ class AdminToggleDeliveryRiderStatusView(APIView):
         rider_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -2772,11 +2841,7 @@ class AdminToggleDeliveryRiderStatusView(APIView):
             id=rider_id,
         )
 
-        rider_role = getattr(
-            User,
-            "ROLE_DELIVERY",
-            "Delivery",
-        )
+        rider_role = User.ROLE_DELIVERY_RIDER
 
         if rider.role != rider_role:
 
@@ -2812,6 +2877,7 @@ class AdminToggleDeliveryRiderStatusView(APIView):
                 not rider.is_active
             )
 
+        old_is_active = rider.is_active
         rider.is_active = bool(
             is_active
         )
@@ -2820,6 +2886,14 @@ class AdminToggleDeliveryRiderStatusView(APIView):
             update_fields=[
                 "is_active",
             ]
+        )
+
+        record_audit(
+            actor=request.user,
+            action="rider_activation_changed",
+            obj=rider,
+            old_value={"is_active": old_is_active},
+            new_value={"is_active": rider.is_active},
         )
 
         return Response(
@@ -2845,6 +2919,45 @@ class AdminToggleDeliveryRiderStatusView(APIView):
         )
 
 
+class AdminDeliveryRiderDeliveriesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, rider_id):
+        if request.user.role != User.ROLE_ADMIN:
+            return Response(
+                {"detail": "Admin permission required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rider = get_object_or_404(
+            User,
+            id=rider_id,
+            role=User.ROLE_DELIVERY_RIDER,
+        )
+
+        deliveries = (
+            Delivery.objects
+            .filter(rider=rider)
+            .select_related("order", "order__customer", "rider")
+            .prefetch_related("order__items__product")
+        )
+
+        return Response(
+            {
+                "rider": {
+                    "id": rider.id,
+                    "username": rider.username,
+                    "name": rider.get_full_name() or rider.username,
+                },
+                "results": DeliverySerializer(
+                    deliveries,
+                    many=True,
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 # ==========================================================
 # CUSTOMER - REFUND REQUEST
 # ==========================================================
@@ -2852,7 +2965,7 @@ class AdminToggleDeliveryRiderStatusView(APIView):
 class CustomerRefundRequestView(APIView):
 
     permission_classes = [
-        IsAuthenticated,
+        IsCustomer,
     ]
 
     @transaction.atomic
@@ -2918,7 +3031,7 @@ class CustomerRefundRequestView(APIView):
         )
 
         admins = User.objects.filter(
-            is_staff=True,
+            role=User.ROLE_ADMIN,
             is_active=True,
         )
 
@@ -2967,7 +3080,7 @@ class AdminRefundListView(APIView):
         request,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -3017,7 +3130,7 @@ class AdminRefundUpdateView(APIView):
         refund_id,
     ):
 
-        if not request.user.is_staff:
+        if request.user.role != User.ROLE_ADMIN:
 
             return Response(
                 {
@@ -3165,8 +3278,33 @@ class AdminRefundUpdateView(APIView):
                 "completed_at"
             )
 
+            payment = Payment.objects.filter(
+                order=refund.order,
+            ).first()
+
+            if payment:
+                payment.mark_refunded()
+                payment.save(
+                    update_fields=[
+                        "status",
+                        "failure_reason",
+                        "updated_at",
+                    ]
+                )
+
         refund.save(
             update_fields=update_fields,
+        )
+
+        record_audit(
+            actor=request.user,
+            action="refund_status_changed",
+            obj=refund,
+            old_value={"status": old_status},
+            new_value={
+                "status": new_status,
+                "refund_amount": str(refund.refund_amount),
+            },
         )
 
         # --------------------------------------------------

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
+import { Link } from "react-router-dom";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
@@ -972,6 +973,13 @@ const DeliveryRiders = () => {
                                                                 ) : (
 
                                                                     <div className="d-flex gap-2 flex-wrap">
+
+                                                                        <Link
+                                                                            to={`/admin/riders/${rider.id}/deliveries`}
+                                                                            className="btn btn-outline-info btn-sm"
+                                                                        >
+                                                                            Deliveries
+                                                                        </Link>
 
                                                                         <button
                                                                             type="button"

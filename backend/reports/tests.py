@@ -49,3 +49,34 @@ class AdminSalesReportsTests(TestCase):
         self.assertIn("total_sales", response.data)
         self.assertIn("orders_count", response.data)
         self.assertGreaterEqual(response.data["orders_count"], 1)
+
+    def test_admin_reports_support_custom_date_range(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(
+            reverse("reports:admin-reports-summary"),
+            {
+                "period": "custom",
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-30",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["period"]["name"], "custom")
+        self.assertEqual(response.data["orders"]["total"], 1)
+        self.assertEqual(response.data["sales"]["total_sales"], "230.00")
+
+    def test_admin_reports_reject_invalid_custom_range(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(
+            reverse("reports:admin-reports-summary"),
+            {
+                "period": "custom",
+                "start_date": "2026-10-01",
+                "end_date": "2026-09-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)

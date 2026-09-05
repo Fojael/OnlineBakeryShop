@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsCustomer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,7 +14,7 @@ from .serializers import WishlistSerializer
 
 class WishlistView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
     def get_wishlist(self, user):
         wishlist, created = Wishlist.objects.get_or_create(
@@ -98,7 +98,7 @@ class WishlistView(APIView):
 
 class WishlistItemView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
     def get_wishlist(self, user):
 

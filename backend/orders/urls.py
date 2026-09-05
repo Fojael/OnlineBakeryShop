@@ -16,6 +16,7 @@ from .views import (
     AdminCreateDeliveryRiderView,
     AdminUpdateDeliveryRiderView,
     AdminToggleDeliveryRiderStatusView,
+    AdminDeliveryRiderDeliveriesView,
 
     # ==========================================================
     # SUPPLIER ORDER MANAGEMENT
@@ -100,6 +101,11 @@ urlpatterns = [
         AdminDeliveryRiderListView.as_view(),
         name="admin-delivery-rider-list",
     ),
+    path(
+        "admin/delivery-riders/",
+        AdminDeliveryRiderListView.as_view(),
+        name="admin-delivery-riders-list",
+    ),
 
     # POST
     # Create a new delivery rider
@@ -123,6 +129,12 @@ urlpatterns = [
         "admin/delivery-riders/<int:rider_id>/toggle-status/",
         AdminToggleDeliveryRiderStatusView.as_view(),
         name="admin-toggle-delivery-rider-status",
+    ),
+
+    path(
+        "admin/delivery-riders/<int:rider_id>/deliveries/",
+        AdminDeliveryRiderDeliveriesView.as_view(),
+        name="admin-delivery-rider-deliveries",
     ),
 
 

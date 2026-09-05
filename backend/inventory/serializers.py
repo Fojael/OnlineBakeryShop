@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .models import Inventory
+from .models import Inventory, InventoryTransaction, ProductionBatch
+from .services import notify_low_stock
 
 
 class InventorySerializer(serializers.ModelSerializer):
@@ -138,6 +139,7 @@ class InventorySerializer(serializers.ModelSerializer):
 
         product = instance.product
 
+        previous_stock = product.stock_quantity
         product.stock_quantity = stock
 
         product.is_available = (
@@ -150,7 +152,73 @@ class InventorySerializer(serializers.ModelSerializer):
                 "is_available",
             ]
         )
+        notify_low_stock(product, previous_stock)
 
         return instance
+
+
+class InventoryTransactionSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(
+        source="inventory.product.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = InventoryTransaction
+        fields = [
+            "id",
+            "inventory",
+            "product_name",
+            "transaction_type",
+            "quantity",
+            "previous_stock",
+            "resulting_stock",
+            "reason",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "product_name",
+            "previous_stock",
+            "resulting_stock",
+            "created_by",
+            "created_at",
+        ]
+
+
+class ProductionBatchSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = ProductionBatch
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "batch_number",
+            "production_date",
+            "expiry_date",
+            "quantity",
+            "remaining_quantity",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "remaining_quantity",
+            "created_by",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        if attrs["expiry_date"] <= attrs["production_date"]:
+            raise serializers.ValidationError(
+                "Expiry date must be after production date."
+            )
+        return attrs
     
     

@@ -10,6 +10,23 @@ class PaymentSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    customer_name = serializers.CharField(
+        source="order.customer.username",
+        read_only=True,
+    )
+
+    customer_email = serializers.EmailField(
+        source="order.customer.email",
+        read_only=True,
+    )
+
+    payment_method = serializers.CharField(
+        source="order.payment_method",
+        read_only=True,
+    )
+
+    display_status = serializers.SerializerMethodField()
+
     class Meta:
 
         model = Payment
@@ -17,7 +34,11 @@ class PaymentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "order_id",
+            "customer_name",
+            "customer_email",
+            "payment_method",
             "status",
+            "display_status",
             "transaction_id",
             "session_key",
             "validation_id",
@@ -34,3 +55,8 @@ class PaymentSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = fields
+
+    def get_display_status(self, obj):
+        if obj.status == Payment.STATUS_SUCCESS:
+            return "Paid"
+        return obj.status

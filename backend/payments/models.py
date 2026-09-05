@@ -12,12 +12,14 @@ class Payment(models.Model):
     STATUS_SUCCESS = "Success"
     STATUS_FAILED = "Failed"
     STATUS_CANCELLED = "Cancelled"
+    STATUS_REFUNDED = "Refunded"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_SUCCESS, "Success"),
         (STATUS_FAILED, "Failed"),
         (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_REFUNDED, "Refunded"),
     ]
 
     # ==========================================================
@@ -179,6 +181,10 @@ class Payment(models.Model):
 
         self.status = self.STATUS_CANCELLED
         self.failure_reason = str(reason)[:255]
+
+    def mark_refunded(self):
+        self.status = self.STATUS_REFUNDED
+        self.failure_reason = ""
 
     # ==========================================================
     # STRING

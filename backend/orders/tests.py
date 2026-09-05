@@ -1,10 +1,14 @@
+from decimal import Decimal
+
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from delivery.models import Delivery
 from products.models import Product
-from .models import Order, OrderAddress, Refund
+from suppliers.models import Supplier
+from .models import Order, OrderAddress, OrderItem, Refund
 from .serializers import OrderCreateSerializer
 
 
@@ -270,4 +274,198 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
                 status=Refund.STATUS_PENDING,
             ).exists()
         )
+
+
+class CompleteOrderWorkflowTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.admin = User.objects.create_user(
+            username="workflow_admin",
+            email="workflow_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+        self.supplier_user = User.objects.create_user(
+            username="workflow_supplier",
+            email="workflow_supplier@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_SUPPLIER,
+            is_active=True,
+        )
+        self.rider = User.objects.create_user(
+            username="workflow_rider",
+            email="workflow_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=True,
+        )
+        self.supplier = Supplier.objects.create(
+            user=self.supplier_user,
+            name="Workflow Supplier",
+            company="Workflow Bakery",
+            email="workflow_supplier_business@example.com",
+            phone="01700000000",
+            is_active=True,
+            is_approved=True,
+        )
+        self.product = Product.objects.create(
+            supplier=self.supplier,
+            name="Workflow Cake",
+            category="Cake",
+            price=Decimal("250.00"),
+            stock_quantity=20,
+            is_available=True,
+        )
+
+    def test_customer_to_delivery_to_refund_without_manual_state_changes(self):
+        register_response = self.client.post(
+            "/api/auth/register/",
+            {
+                "username": "workflow_customer",
+                "email": "workflow_customer@example.com",
+                "phone": "01800000000",
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(register_response.status_code, 201)
+
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {
+                "email": "workflow_customer@example.com",
+                "password": "StrongPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        customer = User.objects.get(email="workflow_customer@example.com")
+
+        self.client.force_authenticate(user=customer)
+        cart_response = self.client.post(
+            "/api/cart/",
+            {"product": self.product.id, "quantity": 2},
+            format="json",
+        )
+        self.assertEqual(cart_response.status_code, 200)
+
+        order_response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+            },
+            format="json",
+        )
+        self.assertEqual(order_response.status_code, 201)
+        order = Order.objects.get(customer=customer)
+        self.assertEqual(order.status, Order.STATUS_PENDING)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.payment.status, "Pending")
+
+        self.client.force_authenticate(user=self.admin)
+        accept_response = self.client.post(
+            f"/api/orders/admin/{order.id}/accept/",
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_ACCEPTED)
+
+        order_item = order.items.get()
+        self.client.force_authenticate(user=self.supplier_user)
+        processing_response = self.client.patch(
+            f"/api/orders/supplier/items/{order_item.id}/update/",
+            {"supplier_status": OrderItem.STATUS_PROCESSING},
+            format="json",
+        )
+        self.assertEqual(processing_response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PROCESSING)
+
+        ready_response = self.client.patch(
+            f"/api/orders/supplier/items/{order_item.id}/update/",
+            {"supplier_status": OrderItem.STATUS_READY},
+            format="json",
+        )
+        self.assertEqual(ready_response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_READY)
+
+        self.client.force_authenticate(user=self.admin)
+        assignment_response = self.client.post(
+            f"/api/delivery/admin/orders/{order.id}/create/",
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        self.assertEqual(assignment_response.status_code, 201)
+        delivery = Delivery.objects.get(order=order)
+        order.refresh_from_db()
+        self.assertEqual(delivery.status, Delivery.STATUS_ASSIGNED)
+        self.assertEqual(order.status, Order.STATUS_ASSIGNED)
+
+        self.client.force_authenticate(user=self.rider)
+        for delivery_status, expected_order_status in [
+            (Delivery.STATUS_ACCEPTED, Order.STATUS_ASSIGNED),
+            (Delivery.STATUS_PICKED_UP, Order.STATUS_ASSIGNED),
+            (Delivery.STATUS_OUT_FOR_DELIVERY, Order.STATUS_OUT_FOR_DELIVERY),
+            (Delivery.STATUS_DELIVERED, Order.STATUS_DELIVERED),
+        ]:
+            response = self.client.patch(
+                f"/api/delivery/{delivery.id}/status/",
+                {"status": delivery_status},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200)
+            order.refresh_from_db()
+            self.assertEqual(order.status, expected_order_status)
+
+        self.client.force_authenticate(user=customer)
+        customer_order_response = self.client.get(
+            f"/api/orders/{order.id}/",
+        )
+        self.assertEqual(customer_order_response.status_code, 200)
+        self.assertEqual(customer_order_response.data["status"], Order.STATUS_DELIVERED)
+
+        refund_response = self.client.post(
+            "/api/orders/refunds/request/",
+            {
+                "order_id": order.id,
+                "reason": Refund.REASON_WRONG_PRODUCT,
+                "description": "Workflow refund test",
+            },
+            format="json",
+        )
+        self.assertEqual(refund_response.status_code, 201)
+        refund = Refund.objects.get(order=order)
+
+        self.client.force_authenticate(user=self.admin)
+        for refund_status in [Refund.STATUS_APPROVED, Refund.STATUS_COMPLETED]:
+            response = self.client.patch(
+                f"/api/orders/refunds/admin/{refund.id}/update/",
+                {"status": refund_status},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200)
+
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.STATUS_COMPLETED)
+        order.payment.refresh_from_db()
+        self.assertEqual(order.payment.status, "Refunded")
+
+        audit_response = self.client.get("/api/audit-logs/admin/")
+        self.assertEqual(audit_response.status_code, 200)
+        self.assertGreaterEqual(len(audit_response.data), 1)
+
+        reports_response = self.client.get(
+            "/api/reports/admin/summary/?period=year",
+        )
+        self.assertEqual(reports_response.status_code, 200)
+        self.assertGreaterEqual(reports_response.data["orders"]["total"], 1)
+
+        ai_response = self.client.get("/api/ai-prediction/admin/summary/")
+        self.assertEqual(ai_response.status_code, 200)
+        self.assertIn("forecast", ai_response.data)
 

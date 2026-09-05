@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin, IsDeliveryRider
+from audit_logs.services import record_audit
 from notifications.models import Notification
 from orders.models import Order, OrderItem
 
@@ -35,11 +36,7 @@ def is_delivery_rider_user(user):
 
     return (
         getattr(user, "role", None)
-        == getattr(
-            User,
-            "ROLE_DELIVERY",
-            "Delivery Rider",
-        )
+        == User.ROLE_DELIVERY_RIDER
     )
 
 
@@ -47,7 +44,7 @@ def notify_user(
     user,
     title,
     message,
-    notification_type="Delivery",
+    notification_type=Notification.TYPE_INFO,
 ):
     """
     Create a notification safely.
@@ -307,6 +304,18 @@ class AdminCreateDeliveryView(APIView):
             ]
         )
 
+        record_audit(
+            actor=request.user,
+            action="rider_assigned",
+            obj=delivery,
+            old_value={"order_status": Order.STATUS_READY},
+            new_value={
+                "order_status": Order.STATUS_ASSIGNED,
+                "rider_id": rider.id,
+                "delivery_status": delivery.status,
+            },
+        )
+
         # ------------------------------------------------------
         # Notify rider
         # ------------------------------------------------------
@@ -318,7 +327,7 @@ class AdminCreateDeliveryView(APIView):
                 f"Order #{order.id} has been assigned "
                 f"to you for delivery."
             ),
-            "Delivery",
+            Notification.TYPE_INFO,
         )
 
         # ------------------------------------------------------
@@ -332,7 +341,7 @@ class AdminCreateDeliveryView(APIView):
                 f"A delivery rider has been assigned "
                 f"to your Order #{order.id}."
             ),
-            "Delivery",
+            Notification.TYPE_INFO,
         )
 
         # ------------------------------------------------------
@@ -423,7 +432,9 @@ class MyDeliveryListView(APIView):
 
     def get(self, request):
 
-        deliveries = (
+        status_filter = request.query_params.get("status")
+
+        deliveries_queryset = (
             Delivery.objects
             .filter(rider=request.user)
             .select_related(
@@ -437,8 +448,18 @@ class MyDeliveryListView(APIView):
             )
         )
 
+        valid_statuses = {
+            value
+            for value, _ in Delivery.STATUS_CHOICES
+        }
+
+        if status_filter in valid_statuses:
+            deliveries_queryset = deliveries_queryset.filter(
+                status=status_filter,
+            )
+
         serializer = DeliverySerializer(
-            deliveries,
+            deliveries_queryset,
             many=True,
         )
 
@@ -638,7 +659,7 @@ class DeliveryStatusUpdateView(APIView):
                     f"The delivery rider has accepted "
                     f"your Order #{order.id}."
                 ),
-                "Delivery",
+                Notification.TYPE_INFO,
             )
 
         # ======================================================
@@ -668,7 +689,7 @@ class DeliveryStatusUpdateView(APIView):
                     f"Your Order #{order.id} has been "
                     f"picked up by the delivery rider."
                 ),
-                "Delivery",
+                Notification.TYPE_INFO,
             )
 
         # ======================================================
@@ -715,7 +736,7 @@ class DeliveryStatusUpdateView(APIView):
                     f"Your Order #{order.id} is now "
                     f"out for delivery."
                 ),
-                "Delivery",
+                Notification.TYPE_INFO,
             )
 
         # ======================================================
@@ -755,12 +776,20 @@ class DeliveryStatusUpdateView(APIView):
                     f"Your Order #{order.id} has been "
                     f"delivered successfully."
                 ),
-                "Delivery",
+                Notification.TYPE_DELIVERED,
             )
 
         # ------------------------------------------------------
         # Response
         # ------------------------------------------------------
+
+        record_audit(
+            actor=request.user,
+            action="delivery_status_changed",
+            obj=delivery,
+            old_value={"status": current_status},
+            new_value={"status": new_status},
+        )
 
         return Response(
             DeliverySerializer(

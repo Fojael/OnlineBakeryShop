@@ -127,11 +127,11 @@ const Navbar = () => {
             : normalizedRole === "CUSTOMER"
                 ? "/customer/dashboard"
                 : normalizedRole === "SUPPLIER"
-                    ? "/"
+                    ? "/supplier/dashboard"
                     : normalizedRole === "DELIVERY"
-                        ? "/"
+                        ? "/delivery/dashboard"
                         : normalizedRole === "DELIVERY_RIDER"
-                            ? "/"
+                            ? "/delivery/dashboard"
                             : "/";
 
 
@@ -234,6 +234,14 @@ const Navbar = () => {
                             </Link>
 
                         </li>
+
+                        {normalizedRole === "CUSTOMER" && (
+                            <>
+                                <li className="nav-item"><Link className="nav-link" to="/orders">My Orders</Link></li>
+                                <li className="nav-item"><Link className="nav-link" to="/wishlist">Wishlist</Link></li>
+                                <li className="nav-item"><Link className="nav-link" to="/cart">Cart</Link></li>
+                            </>
+                        )}
 
 
                         {/* ABOUT */}
