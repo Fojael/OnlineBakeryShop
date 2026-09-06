@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
-import { getInventory } from "../../../services/inventoryService";
+import { getInventory, getInventoryItems } from "../../../services/inventoryService";
 
 const InventoryTransactions = () => {
     const [inventory, setInventory] = useState([]);
@@ -20,8 +20,12 @@ const InventoryTransactions = () => {
             getInventory(),
             api.get("inventory/transactions/"),
         ]);
-        setInventory(inventoryResponse.data || []);
-        setTransactions(transactionResponse.data || []);
+        setInventory(getInventoryItems(inventoryResponse));
+        setTransactions(
+            Array.isArray(transactionResponse.data)
+                ? transactionResponse.data
+                : transactionResponse.data?.results || []
+        );
     };
 
     useEffect(() => {

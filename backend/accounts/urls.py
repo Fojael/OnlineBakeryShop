@@ -11,6 +11,8 @@ from .views import (
     ChangePasswordView,
     LogoutView,
     AdminDashboardView,
+    AdminCustomerListView,
+    AdminCustomerStatusView,
 )
 
 app_name = "accounts"
@@ -79,6 +81,18 @@ urlpatterns = [
         "admin-dashboard/",
         AdminDashboardView.as_view(),
         name="admin_dashboard",
+    ),
+
+    path(
+        "admin-customers/",
+        AdminCustomerListView.as_view(),
+        name="admin_customers",
+    ),
+
+    path(
+        "admin-customers/<int:pk>/status/",
+        AdminCustomerStatusView.as_view(),
+        name="admin_customer_status",
     ),
 ]
 

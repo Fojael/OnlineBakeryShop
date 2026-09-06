@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
-import { getInventory } from "../../../services/inventoryService";
+import { getInventory, getInventoryItems } from "../../../services/inventoryService";
 
 const Inventory = () => {
     const [inventory, setInventory] = useState([]);
@@ -18,7 +18,7 @@ const Inventory = () => {
                 const response = await getInventory();
 
                 if (!ignore) {
-                    setInventory(response.data || []);
+                    setInventory(getInventoryItems(response));
                 }
             } catch (error) {
                 console.error(error);

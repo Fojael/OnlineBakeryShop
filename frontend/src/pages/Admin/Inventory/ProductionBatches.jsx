@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
-import { getInventory } from "../../../services/inventoryService";
+import { getInventory, getInventoryItems } from "../../../services/inventoryService";
 
 const ProductionBatches = () => {
     const [inventory, setInventory] = useState([]);
@@ -21,8 +21,12 @@ const ProductionBatches = () => {
             getInventory(),
             api.get("inventory/batches/"),
         ]);
-        setInventory(inventoryResponse.data || []);
-        setBatches(batchResponse.data || []);
+        setInventory(getInventoryItems(inventoryResponse));
+        setBatches(
+            Array.isArray(batchResponse.data)
+                ? batchResponse.data
+                : batchResponse.data?.results || []
+        );
     };
 
     useEffect(() => {

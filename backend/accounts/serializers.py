@@ -193,6 +193,31 @@ class UserSerializer(
         ]
 
 
+class AdminCustomerSerializer(serializers.ModelSerializer):
+
+    name = serializers.CharField(source="full_name", read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "username",
+            "email",
+            "phone",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "name",
+            "username",
+            "email",
+            "phone",
+            "created_at",
+        ]
+
+
 # ==========================================================
 # CHANGE PASSWORD SERIALIZER
 # ==========================================================

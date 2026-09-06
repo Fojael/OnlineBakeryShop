@@ -23,6 +23,7 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     UserSerializer,
+    AdminCustomerSerializer,
     ChangePasswordSerializer,
 )
 
@@ -405,4 +406,25 @@ class AdminDashboardView(
             },
             status=status.HTTP_200_OK,
         )
+
+
+class AdminCustomerListView(generics.ListAPIView):
+
+    serializer_class = AdminCustomerSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get_queryset(self):
+        return User.objects.filter(
+            role=User.ROLE_CUSTOMER,
+        ).order_by("-created_at")
+
+
+class AdminCustomerStatusView(generics.UpdateAPIView):
+
+    serializer_class = AdminCustomerSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    http_method_names = ["patch"]
+
+    def get_queryset(self):
+        return User.objects.filter(role=User.ROLE_CUSTOMER)
     
