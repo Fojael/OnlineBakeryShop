@@ -4,72 +4,79 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin
+
 from .services import (
+    InsufficientHistoricalData,
     build_forecast,
-    clean_sales_data,
-    engineer_features,
-    extract_historical_sales,
-    product_predictions,
-    train_and_evaluate,
+    load_forecast_model,
+    train_forecast_model,
 )
 
 
-class AdminAIPredictionSummaryView(APIView):
+def _summary(model):
+    forecast = build_forecast(model)
+    return {
+        "summary": {
+            "historical_days": model.training_days,
+            "training_rows": model.training_rows,
+            "forecast_weekly_units": forecast["weekly"],
+            "forecast_monthly_units": forecast["monthly"],
+            "last_trained_at": model.trained_at,
+            "data_start": model.data_start,
+            "data_end": model.data_end,
+            "is_forecast": True,
+        },
+        "pipeline": {
+            "status": "ready",
+            "data_source": "Delivered order items excluding completed refunds",
+            "cleaning": "Missing product-days filled with zero sales",
+            "feature_engineering": "Lag-7, rolling-7, weekday and recent-demand features",
+            "model_version": model.version,
+            "evaluation": model.metrics,
+        },
+        "forecast": forecast,
+        "actual_vs_predicted": model.actual_vs_predicted,
+        "predictions": forecast["products"],
+    }
 
+
+class AdminAIPredictionSummaryView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        extracted = extract_historical_sales()
-        cleaned = clean_sales_data(extracted)
-        features = engineer_features(cleaned)
-        trained = train_and_evaluate(features)
-        forecast = build_forecast(features, trained["model"])
+        model = load_forecast_model()
+        if model is None:
+            return Response(
+                {
+                    "detail": "No trained forecast is available. Train the model first.",
+                    "training_required": True,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(_summary(model), status=status.HTTP_200_OK)
 
+
+class AdminAIPredictionTrainView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        try:
+            model = train_forecast_model()
+        except InsufficientHistoricalData as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "training_required": True,
+                    "available_days": exc.available_days,
+                    "required_days": exc.required_days,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         return Response(
             {
-                "summary": {
-                    "historical_days": len(cleaned),
-                    "historical_orders": len(extracted),
-                    "forecast_weekly_units": forecast["weekly"],
-                    "forecast_monthly_units": forecast["monthly"],
-                },
-                "pipeline": {
-                    "extraction": "Delivered OrderItems",
-                    "cleaning": "Missing dates filled with zero sales",
-                    "features": ["time_index", "day_of_week"],
-                    "feature_rows": len(features),
-                    "model": "Least-squares linear trend",
-                    "evaluation": trained["evaluation"],
-                    "feature_columns": [
-                        "date",
-                        "product",
-                        "category",
-                        "units",
-                        "revenue",
-                        "price",
-                        "day_of_week",
-                        "month",
-                        "season",
-                        "previous_sales",
-                    ],
-                },
-                "forecast": forecast,
-                "actual_vs_predicted": [
-                    {
-                        "date": row["date"].isoformat(),
-                        "actual_units": row["units"],
-                        "predicted_units": round(
-                            max(
-                                0,
-                                trained["model"]["intercept"]
-                                + trained["model"]["slope"] * row["time_index"],
-                            ),
-                            2,
-                        ),
-                    }
-                    for row in features
-                ],
-                "predictions": product_predictions(),
+                "message": "Sales forecast model trained successfully.",
+                "trained_at": model.trained_at,
+                "forecast": _summary(model),
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )

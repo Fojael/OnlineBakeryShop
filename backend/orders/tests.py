@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
@@ -7,6 +8,7 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from delivery.models import Delivery
 from products.models import Product
+from payments.models import Payment
 from suppliers.models import Supplier
 from .models import Order, OrderAddress, OrderItem, Refund
 from .serializers import OrderCreateSerializer
@@ -479,11 +481,18 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertEqual(refund_response.status_code, 201)
         refund = Refund.objects.get(order=order)
 
+        order.payment.status = Payment.STATUS_SUCCESS
+        order.payment.bank_transaction_id = "BANK-REFUND-TEST"
+        order.payment.save(update_fields=["status", "bank_transaction_id"])
+
         self.client.force_authenticate(user=self.admin)
-        for refund_status in [Refund.STATUS_APPROVED, Refund.STATUS_COMPLETED]:
+        with patch(
+            "orders.views.refund_payment",
+            return_value={"status": "success", "refund_ref_id": "REF-123"},
+        ):
             response = self.client.patch(
                 f"/api/orders/refunds/admin/{refund.id}/update/",
-                {"status": refund_status},
+                {"status": Refund.STATUS_APPROVED},
                 format="json",
             )
             self.assertEqual(response.status_code, 200)
@@ -504,6 +513,6 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertGreaterEqual(reports_response.data["orders"]["total"], 1)
 
         ai_response = self.client.get("/api/ai-prediction/admin/summary/")
-        self.assertEqual(ai_response.status_code, 200)
-        self.assertIn("forecast", ai_response.data)
+        self.assertEqual(ai_response.status_code, 503)
+        self.assertTrue(ai_response.data["training_required"])
 

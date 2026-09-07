@@ -20,6 +20,7 @@ from rest_framework.views import APIView
 
 from cart.models import Cart, CartItem
 from payments.models import Payment
+from payments.services import SSLCommerzError, refund_payment
 from products.models import Product
 from suppliers.models import Supplier
 from notifications.models import Notification
@@ -3059,6 +3060,26 @@ class CustomerRefundRequestView(APIView):
         )
 
 
+class CustomerRefundListView(APIView):
+
+    permission_classes = [
+        IsCustomer,
+    ]
+
+    def get(self, request):
+        refunds = (
+            Refund.objects
+            .filter(customer=request.user)
+            .select_related("order")
+            .order_by("-requested_at")
+        )
+
+        return Response(
+            RefundSerializer(refunds, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
 # ==========================================================
 # ADMIN - REFUND LIST
 # ==========================================================
@@ -3154,18 +3175,14 @@ class AdminRefundUpdateView(APIView):
             raise_exception=True,
         )
 
-        new_status = (
-            serializer.validated_data[
-                "status"
-            ]
-        )
+        new_status = serializer.validated_data["status"]
 
         old_status = refund.status
 
         # --------------------------------------------------
         # REFUND WORKFLOW
         #
-        # Pending → Approved → Completed
+        # Pending → Approved → Completed after a gateway success
         #
         # Pending → Rejected
         # --------------------------------------------------
@@ -3176,11 +3193,9 @@ class AdminRefundUpdateView(APIView):
                 Refund.STATUS_APPROVED,
                 Refund.STATUS_REJECTED,
             ],
-
             Refund.STATUS_APPROVED: [
-                Refund.STATUS_COMPLETED,
+                Refund.STATUS_APPROVED,
             ],
-
             Refund.STATUS_REJECTED: [],
 
             Refund.STATUS_COMPLETED: [],
@@ -3213,9 +3228,13 @@ class AdminRefundUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        refund.status = new_status
-
         refund.admin = request.user
+
+        if new_status == Refund.STATUS_REJECTED:
+            refund.status = Refund.STATUS_REJECTED
+            update_fields = ["status", "admin"]
+        else:
+            update_fields = ["admin"]
 
         if (
             "refund_amount"
@@ -3239,12 +3258,7 @@ class AdminRefundUpdateView(APIView):
                 ]
             )
 
-        update_fields = [
-            "status",
-            "admin",
-            "refund_amount",
-            "admin_notes",
-        ]
+        update_fields.extend(["refund_amount", "admin_notes"])
 
         if (
             new_status
@@ -3259,19 +3273,52 @@ class AdminRefundUpdateView(APIView):
                 "approved_at"
             )
 
-        if (
-            new_status
-            == Refund.STATUS_COMPLETED
-        ):
+            refund.status = Refund.STATUS_APPROVED
+            refund.refund_attempt_count += 1
+            refund.refund_failure_reason = ""
+            update_fields.extend([
+                "status",
+                "refund_attempt_count",
+                "refund_failure_reason",
+            ])
 
-            refund.completed_at = (
-                timezone.now()
+            payment = (
+                Payment.objects
+                .select_for_update()
+                .filter(order=refund.order)
+                .first()
             )
 
-            update_fields.append(
-                "completed_at"
-            )
+            try:
+                if not payment or payment.status != Payment.STATUS_SUCCESS:
+                    raise SSLCommerzError(
+                        "A successful SSLCOMMERZ payment is required for a refund."
+                    )
 
+                gateway_response = refund_payment(
+                    payment,
+                    refund.refund_amount,
+                    remarks=f"Refund for Order #{refund.order.id}",
+                )
+                refund.refund_gateway_response = gateway_response
+                refund.refund_reference_id = str(
+                    gateway_response.get("refund_ref_id")
+                    or gateway_response.get("refund_reference_id")
+                    or ""
+                )[:100]
+                refund.status = Refund.STATUS_COMPLETED
+                refund.completed_at = timezone.now()
+                update_fields.extend([
+                    "refund_gateway_response",
+                    "refund_reference_id",
+                    "completed_at",
+                    "status",
+                ])
+            except SSLCommerzError as exc:
+                refund.refund_failure_reason = str(exc)[:255]
+                update_fields.append("refund_failure_reason")
+
+        if refund.status == Refund.STATUS_COMPLETED:
             payment = Payment.objects.filter(
                 order=refund.order,
             ).first()
@@ -3286,9 +3333,7 @@ class AdminRefundUpdateView(APIView):
                     ]
                 )
 
-        refund.save(
-            update_fields=update_fields,
-        )
+        refund.save(update_fields=list(dict.fromkeys(update_fields)))
 
         record_audit(
             actor=request.user,
@@ -3305,10 +3350,7 @@ class AdminRefundUpdateView(APIView):
         # CUSTOMER NOTIFICATION
         # --------------------------------------------------
 
-        if (
-            new_status
-            == Refund.STATUS_APPROVED
-        ):
+        if refund.status == Refund.STATUS_APPROVED:
 
             message = (
                 f"Your refund request for "
@@ -3316,10 +3358,7 @@ class AdminRefundUpdateView(APIView):
                 "has been approved."
             )
 
-        elif (
-            new_status
-            == Refund.STATUS_REJECTED
-        ):
+        elif refund.status == Refund.STATUS_REJECTED:
 
             message = (
                 f"Your refund request for "
@@ -3348,6 +3387,13 @@ class AdminRefundUpdateView(APIView):
             refund,
         )
 
+        response_status = (
+            status.HTTP_200_OK
+            if refund.status != Refund.STATUS_APPROVED
+            or not refund.refund_failure_reason
+            else status.HTTP_502_BAD_GATEWAY
+        )
+
         return Response(
             {
                 "message":
@@ -3356,5 +3402,5 @@ class AdminRefundUpdateView(APIView):
                 "refund":
                     response_serializer.data,
             },
-            status=status.HTTP_200_OK,
+            status=response_status,
         )

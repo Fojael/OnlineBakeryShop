@@ -701,6 +701,10 @@ class RefundSerializer(
             "completed_at",
             "admin",
             "admin_notes",
+            "refund_failure_reason",
+            "refund_reference_id",
+            "refund_gateway_response",
+            "refund_attempt_count",
         ]
 
         read_only_fields = [
@@ -714,6 +718,10 @@ class RefundSerializer(
             "approved_at",
             "completed_at",
             "admin",
+            "refund_failure_reason",
+            "refund_reference_id",
+            "refund_gateway_response",
+            "refund_attempt_count",
         ]
 
 
@@ -814,10 +822,6 @@ class AdminRefundUpdateSerializer(
             (
                 Refund.STATUS_REJECTED,
                 "Rejected",
-            ),
-            (
-                Refund.STATUS_COMPLETED,
-                "Completed",
             ),
         ]
     )

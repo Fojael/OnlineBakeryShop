@@ -3,12 +3,6 @@ import { useEffect, useState } from "react";
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
 
-const REFUND_STATUSES = [
-    "Approved",
-    "Rejected",
-    "Completed",
-];
-
 const Refunds = () => {
     const [refunds, setRefunds] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -94,28 +88,27 @@ const Refunds = () => {
                                             <td>{refund.refund_amount}</td>
                                             <td>{refund.status}</td>
                                             <td>
-                                                <select
-                                                    className="form-select form-select-sm"
-                                                    value={refund.status}
-                                                    disabled={updatingId === refund.id}
-                                                    onChange={(event) =>
-                                                        updateRefund(
-                                                            refund.id,
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                >
-                                                    <option value={refund.status}>
-                                                        {refund.status}
-                                                    </option>
-                                                    {REFUND_STATUSES.filter(
-                                                        (status) => status !== refund.status
-                                                    ).map((status) => (
-                                                        <option key={status} value={status}>
-                                                            {status}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                {refund.status === "Pending" && (
+                                                    <div className="d-flex gap-2">
+                                                        <button
+                                                            className="btn btn-success btn-sm"
+                                                            disabled={updatingId === refund.id}
+                                                            onClick={() => updateRefund(refund.id, "Approved")}
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-outline-danger btn-sm"
+                                                            disabled={updatingId === refund.id}
+                                                            onClick={() => updateRefund(refund.id, "Rejected")}
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {refund.status === "Approved" && (
+                                                    <span className="text-muted small">Processing gateway refund...</span>
+                                                )}
                                             </td>
                                         </tr>
                                     ))

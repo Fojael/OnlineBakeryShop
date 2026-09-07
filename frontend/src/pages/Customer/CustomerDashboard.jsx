@@ -460,6 +460,19 @@ const CustomerDashboard = () => {
 
                         </div>
 
+                        {/* Refunds */}
+
+                        <div className="col-md-6 col-lg-4">
+
+                            <Link
+                                to="/refunds"
+                                className="btn btn-outline-warning w-100 py-3"
+                            >
+                                ↩ Refund Requests
+                            </Link>
+
+                        </div>
+
                         {/* Checkout */}
 
                         <div className="col-md-6 col-lg-4">

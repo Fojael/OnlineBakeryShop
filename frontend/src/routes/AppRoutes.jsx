@@ -63,6 +63,9 @@ import CustomerDashboard
 import Wishlist
     from "../pages/Customer/Wishlist";
 
+import RefundRequests
+    from "../pages/Customer/RefundRequests";
+
 import Address
     from "../pages/Address/Address";
 
@@ -410,6 +413,15 @@ const AppRoutes = () => {
                 element={
                     <ProtectedRoute allowedRoles={["CUSTOMER"]}>
                         <Wishlist />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/refunds"
+                element={
+                    <ProtectedRoute allowedRoles={["CUSTOMER"]}>
+                        <RefundRequests />
                     </ProtectedRoute>
                 }
             />

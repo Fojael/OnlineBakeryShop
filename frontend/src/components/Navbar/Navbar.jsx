@@ -238,6 +238,7 @@ const Navbar = () => {
                         {normalizedRole === "CUSTOMER" && (
                             <>
                                 <li className="nav-item"><Link className="nav-link" to="/orders">My Orders</Link></li>
+                                <li className="nav-item"><Link className="nav-link" to="/refunds">Refund Requests</Link></li>
                                 <li className="nav-item"><Link className="nav-link" to="/wishlist">Wishlist</Link></li>
                                 <li className="nav-item"><Link className="nav-link" to="/cart">Cart</Link></li>
                             </>

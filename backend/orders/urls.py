@@ -39,6 +39,7 @@ from .views import (
     # CUSTOMER REFUND
     # ==========================================================
     CustomerRefundRequestView,
+    CustomerRefundListView,
 
     # ==========================================================
     # ADMIN REFUND
@@ -234,6 +235,11 @@ urlpatterns = [
         "refunds/request/",
         CustomerRefundRequestView.as_view(),
         name="customer-refund-request",
+    ),
+    path(
+        "refunds/",
+        CustomerRefundListView.as_view(),
+        name="customer-refund-list",
     ),
 
 

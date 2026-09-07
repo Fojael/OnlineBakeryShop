@@ -1,12 +1,16 @@
 from decimal import Decimal
+from datetime import timedelta
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from products.models import Product
 from suppliers.models import Supplier
+from orders.models import Order, OrderItem
+from .models import ForecastModel
 
 
 class AIPredictionTests(TestCase):
@@ -31,7 +35,7 @@ class AIPredictionTests(TestCase):
             is_approved=True,
         )
 
-        Product.objects.create(
+        self.product = Product.objects.create(
             supplier=self.supplier,
             name="Chocolate Cake",
             category="Cake",
@@ -47,12 +51,52 @@ class AIPredictionTests(TestCase):
             reverse("ai_prediction:admin-ai-summary"),
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("predictions", response.data)
-        self.assertGreaterEqual(len(response.data["predictions"]), 1)
-        self.assertIn("pipeline", response.data)
-        self.assertIn("evaluation", response.data["pipeline"])
-        self.assertIn("forecast", response.data)
-        self.assertIn("daily", response.data["forecast"])
-        self.assertIn("weekly", response.data["forecast"])
-        self.assertIn("monthly", response.data["forecast"])
+        self.assertEqual(response.status_code, 503)
+        self.assertTrue(response.data["training_required"])
+
+    def test_training_requires_minimum_history(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            reverse("ai_prediction:admin-ai-train"),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.data["required_days"], 14)
+
+    def test_training_persists_artifact_and_summary_loads_it(self):
+        for offset in range(14):
+            order = Order.objects.create(
+                customer=self.admin,
+                shipping_address="Dhaka",
+                payment_method=Order.PAYMENT_COD,
+                total_amount=Decimal("250.00"),
+                status=Order.STATUS_DELIVERED,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=offset + 1,
+                price=Decimal("250.00"),
+            )
+            Order.objects.filter(id=order.id).update(
+                created_at=timezone.now() - timedelta(days=13 - offset),
+            )
+
+        self.client.force_authenticate(user=self.admin)
+        train_response = self.client.post(
+            reverse("ai_prediction:admin-ai-train"),
+        )
+
+        self.assertEqual(train_response.status_code, 201)
+        self.assertTrue(ForecastModel.objects.filter(name="sales_demand").exists())
+
+        summary_response = self.client.get(
+            reverse("ai_prediction:admin-ai-summary"),
+        )
+
+        self.assertEqual(summary_response.status_code, 200)
+        self.assertTrue(summary_response.data["summary"]["is_forecast"])
+        self.assertEqual(len(summary_response.data["forecast"]["daily"]), 30)
+        self.assertEqual(summary_response.data["predictions"][0]["product_id"], self.product.id)
+        self.assertNotIn("artifact", summary_response.data)

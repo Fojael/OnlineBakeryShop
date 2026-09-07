@@ -615,6 +615,27 @@ class Refund(models.Model):
         default="",
     )
 
+    refund_failure_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    refund_reference_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    refund_gateway_response = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    refund_attempt_count = models.PositiveIntegerField(
+        default=0,
+    )
+
     # ======================================================
     # CUSTOMER CAN REQUEST REFUND
     # ======================================================
