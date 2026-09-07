@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import MainLayout from "../../layouts/MainLayout";
 import { getOrder } from "../../services/orderService";
+import RefundRequestForm from "../../components/Orders/RefundRequestForm";
 
 const ORDER_STEPS = [
     "Pending",
@@ -50,6 +51,21 @@ const OrderDetails = () => {
                             <p><strong>Payment:</strong> {order.payment_status || order.payment_method}</p>
                             <p><strong>Shipping address:</strong> {order.shipping_address}</p>
                             <p className="mb-0"><strong>Total:</strong> ৳{order.total_amount}</p>
+                            {order.can_request_refund && (
+                                <RefundRequestForm
+                                    orderId={order.id}
+                                    onSubmitted={() => setOrder({
+                                        ...order,
+                                        can_request_refund: false,
+                                        refund_status: "Pending",
+                                    })}
+                                />
+                            )}
+                            {order.refund_status && (
+                                <p className="mt-3 mb-0">
+                                    <strong>Refund Status:</strong> {order.refund_status}
+                                </p>
+                            )}
                         </div>
                         <div className="card border-0 shadow-sm mt-4">
                             <div className="card-header">Items</div>

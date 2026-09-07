@@ -2993,13 +2993,7 @@ class CustomerRefundRequestView(APIView):
 
         existing = (
             Refund.objects
-            .filter(
-                order=order,
-                status__in=[
-                    Refund.STATUS_PENDING,
-                    Refund.STATUS_APPROVED,
-                ],
-            )
+            .filter(order=order)
             .first()
         )
 

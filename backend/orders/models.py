@@ -628,6 +628,7 @@ class Refund(models.Model):
         return (
             self.order.status
             == Order.STATUS_DELIVERED
+            and not self.order.refunds.exists()
         )
 
     # ======================================================

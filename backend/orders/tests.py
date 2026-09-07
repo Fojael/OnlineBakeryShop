@@ -212,7 +212,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
         )
 
         self.assertEqual(refund.status, Refund.STATUS_PENDING)
-        self.assertTrue(refund.can_customer_request)
+        self.assertFalse(refund.can_customer_request)
 
     def test_order_create_serializer_accepts_structured_checkout_address(self):
         payload = {
@@ -274,6 +274,44 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
                 status=Refund.STATUS_PENDING,
             ).exists()
         )
+
+        duplicate_response = self.client.post(
+            reverse("orders:customer-refund-request"),
+            {
+                "order_id": order.id,
+                "reason": Refund.REASON_DAMAGED_PRODUCT,
+            },
+            format="json",
+        )
+
+        self.assertEqual(duplicate_response.status_code, 400)
+
+    def test_customer_order_exposes_refund_eligibility(self):
+        customer = User.objects.create_user(
+            username="customer_refund_visibility",
+            email="customer_refund_visibility@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+
+        order = Order.objects.create(
+            customer=customer,
+            shipping_address="Refund address",
+            payment_method=Order.PAYMENT_SSLCOMMERZ,
+            subtotal=200,
+            total_amount=260,
+            status=Order.STATUS_DELIVERED,
+        )
+
+        self.client.force_authenticate(user=customer)
+        response = self.client.get(
+            reverse("orders:order-detail", args=[order.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["can_request_refund"])
+        self.assertIsNone(response.data["refund_status"])
 
 
 class CompleteOrderWorkflowTests(TestCase):

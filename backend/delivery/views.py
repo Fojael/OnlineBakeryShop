@@ -12,6 +12,7 @@ from accounts.permissions import IsAdmin, IsDeliveryRider
 from audit_logs.services import record_audit
 from notifications.models import Notification
 from orders.models import Order, OrderItem
+from payments.models import Payment
 
 from .models import Delivery
 from .serializers import (
@@ -744,6 +745,24 @@ class DeliveryStatusUpdateView(APIView):
         # ======================================================
 
         elif new_status == Delivery.STATUS_DELIVERED:
+
+            if (
+                order.payment_method == Order.PAYMENT_SSLCOMMERZ
+                and not Payment.objects.filter(
+                    order=order,
+                    status=Payment.STATUS_SUCCESS,
+                ).exists()
+            ):
+
+                return Response(
+                    {
+                        "detail": (
+                            "SSLCommerz payment must be successful "
+                            "before an order can be delivered."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             delivery.status = (
                 Delivery.STATUS_DELIVERED

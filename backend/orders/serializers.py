@@ -93,6 +93,10 @@ class OrderSerializer(
 
     rider_name = serializers.SerializerMethodField()
 
+    refund_status = serializers.SerializerMethodField()
+
+    can_request_refund = serializers.SerializerMethodField()
+
     class Meta:
 
         model = Order
@@ -124,6 +128,9 @@ class OrderSerializer(
             "delivery_id",
             "delivery_status",
             "rider_name",
+
+            "refund_status",
+            "can_request_refund",
 
             "created_at",
             "updated_at",
@@ -246,6 +253,25 @@ class OrderSerializer(
 
         except Exception:
             return None
+
+    def get_refund_status(
+        self,
+        obj,
+    ):
+
+        refund = obj.refunds.order_by("-requested_at").first()
+
+        return refund.status if refund else None
+
+    def get_can_request_refund(
+        self,
+        obj,
+    ):
+
+        return (
+            obj.status == Order.STATUS_DELIVERED
+            and not obj.refunds.exists()
+        )
 
 
 # ==========================================================

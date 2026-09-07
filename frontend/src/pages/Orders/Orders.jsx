@@ -13,6 +13,8 @@ import {
     cancelOrder,
 } from "../../services/orderService";
 
+import RefundRequestForm from "../../components/Orders/RefundRequestForm";
+
 
 const Orders = () => {
 
@@ -25,6 +27,7 @@ const Orders = () => {
     const [cancellingId, setCancellingId] = useState(null);
     const [expandedOrder, setExpandedOrder] = useState(null);
     const [search, setSearch] = useState("");
+    const [refundOrderId, setRefundOrderId] = useState(null);
 
 
     // =========================================================
@@ -603,6 +606,22 @@ const Orders = () => {
                                                         Track Order
                                                     </Link>
 
+                                                    {order.can_request_refund && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-warning btn-sm me-2"
+                                                            onClick={() =>
+                                                                setRefundOrderId(
+                                                                    refundOrderId === order.id
+                                                                        ? null
+                                                                        : order.id
+                                                                )
+                                                            }
+                                                        >
+                                                            Request Refund
+                                                        </button>
+                                                    )}
+
 
                                                     {/* =====================================
                                                         CANCEL ORDER
@@ -655,6 +674,16 @@ const Orders = () => {
                                                     )}
 
                                                 </div>
+
+                                                {refundOrderId === order.id && (
+                                                    <RefundRequestForm
+                                                        orderId={order.id}
+                                                        onSubmitted={() => {
+                                                            setRefundOrderId(null);
+                                                            void fetchOrders();
+                                                        }}
+                                                    />
+                                                )}
 
                                             </div>
 
