@@ -18,6 +18,7 @@ DEBUG = config("DEBUG", cast=bool)
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
+    ".ngrok-free.dev",
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
