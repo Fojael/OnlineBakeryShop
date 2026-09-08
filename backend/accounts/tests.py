@@ -84,3 +84,38 @@ class AdminDashboardViewTests(TestCase):
         self.assertEqual(data["stats"]["processing_orders"], 0)
         self.assertEqual(data["stats"]["delivered_orders"], 1)
         self.assertEqual(data["stats"]["low_stock_products"], 1)
+
+    def test_admin_can_list_customers_with_order_metrics_and_filters(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(
+            "/api/auth/admin-customers/",
+            {"search": self.customer.email, "is_active": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        customer = response.json()[0]
+        self.assertEqual(customer["email"], self.customer.email)
+        self.assertEqual(customer["total_orders"], 1)
+        self.assertEqual(customer["total_spent"], "180.00")
+        self.assertEqual(customer["latest_order"]["id"], self.order.id)
+
+    def test_admin_can_view_customer_order_history(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(
+            f"/api/auth/admin-customers/{self.customer.id}/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["total_orders"], 1)
+        self.assertEqual(len(data["orders"]), 1)
+        self.assertEqual(data["orders"][0]["id"], self.order.id)
+
+    def test_customer_cannot_access_admin_customer_management(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get("/api/auth/admin-customers/")
+
+        self.assertEqual(response.status_code, 403)

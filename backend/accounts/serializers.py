@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from suppliers.models import Supplier
+from orders.models import Order
 
 from .models import User
 
@@ -196,6 +197,13 @@ class UserSerializer(
 class AdminCustomerSerializer(serializers.ModelSerializer):
 
     name = serializers.CharField(source="full_name", read_only=True)
+    total_orders = serializers.IntegerField(read_only=True)
+    total_spent = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    latest_order = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -207,6 +215,9 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
             "phone",
             "is_active",
             "created_at",
+            "total_orders",
+            "total_spent",
+            "latest_order",
         ]
         read_only_fields = [
             "id",
@@ -216,6 +227,32 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
             "phone",
             "created_at",
         ]
+
+    def get_latest_order(self, obj):
+        order = getattr(obj, "latest_order_object", None)
+        if not order:
+            return None
+
+        return {
+            "id": order.id,
+            "status": order.status,
+            "total_amount": str(order.total_amount),
+            "created_at": order.created_at,
+        }
+
+
+class AdminCustomerOrderSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "status",
+            "payment_method",
+            "total_amount",
+            "created_at",
+        ]
+        read_only_fields = fields
 
 
 # ==========================================================

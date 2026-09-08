@@ -12,6 +12,7 @@ from .views import (
     LogoutView,
     AdminDashboardView,
     AdminCustomerListView,
+    AdminCustomerDetailView,
     AdminCustomerStatusView,
 )
 
@@ -93,6 +94,12 @@ urlpatterns = [
         "admin-customers/<int:pk>/status/",
         AdminCustomerStatusView.as_view(),
         name="admin_customer_status",
+    ),
+
+    path(
+        "admin-customers/<int:pk>/",
+        AdminCustomerDetailView.as_view(),
+        name="admin_customer_detail",
     ),
 ]
 

@@ -6,6 +6,7 @@ import {
     getProduct,
     updateProduct,
 } from "../../../services/productService";
+import { getSuppliers } from "../../../services/supplierService";
 
 const EditProduct = () => {
 
@@ -16,6 +17,8 @@ const EditProduct = () => {
     const [saving, setSaving] = useState(false);
 
     const [name, setName] = useState("");
+    const [supplier, setSupplier] = useState("");
+    const [suppliers, setSuppliers] = useState([]);
     const [category, setCategory] = useState("Cake");
     const [description, setDescription] = useState("");
     const [price, setPrice] = useState("");
@@ -29,11 +32,19 @@ const EditProduct = () => {
     useEffect(() => {
         const loadProduct = async () => {
             try {
-                const response = await getProduct(id);
+                const [productResponse, suppliersResponse] = await Promise.all([
+                    getProduct(id),
+                    getSuppliers(),
+                ]);
 
-                const product = response.data;
+                const product = productResponse.data;
+                const supplierItems = Array.isArray(suppliersResponse.data)
+                    ? suppliersResponse.data
+                    : suppliersResponse.data?.results || [];
 
                 setName(product.name);
+                setSupplier(String(product.supplier));
+                setSuppliers(supplierItems);
                 setCategory(product.category);
                 setDescription(product.description);
                 setPrice(product.price);
@@ -59,6 +70,7 @@ const EditProduct = () => {
 
         if (
             !name ||
+            !supplier ||
             !description ||
             !price ||
             !stockQuantity
@@ -74,6 +86,7 @@ const EditProduct = () => {
             const formData = new FormData();
 
             formData.append("name", name);
+            formData.append("supplier", supplier);
             formData.append("category", category);
             formData.append("description", description);
             formData.append("price", price);
@@ -131,6 +144,26 @@ const EditProduct = () => {
                         value={name}
                         onChange={(e)=>setName(e.target.value)}
                     />
+
+                </div>
+
+                <div className="mb-3">
+
+                    <label>Supplier</label>
+
+                    <select
+                        className="form-select"
+                        value={supplier}
+                        onChange={(e)=>setSupplier(e.target.value)}
+                        required
+                    >
+                        <option value="">Select a supplier</option>
+                        {suppliers.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.name}
+                            </option>
+                        ))}
+                    </select>
 
                 </div>
 

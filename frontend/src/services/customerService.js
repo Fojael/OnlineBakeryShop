@@ -1,6 +1,9 @@
 import api from "./api";
 
-export const getCustomers = () => api.get("auth/admin-customers/");
+export const getCustomers = (params = {}) =>
+    api.get("auth/admin-customers/", { params });
+
+export const getCustomer = (id) => api.get(`auth/admin-customers/${id}/`);
 
 export const updateCustomerStatus = (id, isActive) =>
     api.patch(`auth/admin-customers/${id}/status/`, {

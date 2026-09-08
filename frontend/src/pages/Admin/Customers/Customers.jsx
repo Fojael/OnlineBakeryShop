@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import {
     getCustomerItems,
+    getCustomer,
     getCustomers,
     updateCustomerStatus,
 } from "../../../services/customerService";
@@ -11,6 +12,7 @@ import {
 const Customers = () => {
     const [customers, setCustomers] = useState([]);
     const [search, setSearch] = useState("");
+    const [status, setStatus] = useState("");
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [loading, setLoading] = useState(true);
     const [updatingId, setUpdatingId] = useState(null);
@@ -20,7 +22,10 @@ const Customers = () => {
 
         const loadCustomers = async () => {
             try {
-                const response = await getCustomers();
+                const response = await getCustomers({
+                    search,
+                    ...(status ? { is_active: status } : {}),
+                });
                 if (!ignore) {
                     setCustomers(getCustomerItems(response));
                 }
@@ -41,16 +46,18 @@ const Customers = () => {
         return () => {
             ignore = true;
         };
-    }, []);
+    }, [search, status]);
 
-    const filteredCustomers = useMemo(() => {
-        const query = search.toLowerCase().trim();
-        return customers.filter((customer) =>
-            [customer.name, customer.email, customer.phone]
-                .filter(Boolean)
-                .some((value) => value.toLowerCase().includes(query))
-        );
-    }, [customers, search]);
+    const filteredCustomers = useMemo(() => customers, [customers]);
+
+    const showCustomerDetails = async (customer) => {
+        try {
+            const response = await getCustomer(customer.id);
+            setSelectedCustomer(response.data);
+        } catch {
+            toast.error("Failed to load customer details.");
+        }
+    };
 
     const toggleStatus = async (customer) => {
         setUpdatingId(customer.id);
@@ -62,11 +69,13 @@ const Customers = () => {
             const updatedCustomer = response.data;
             setCustomers((current) =>
                 current.map((item) =>
-                    item.id === customer.id ? updatedCustomer : item
+                    item.id === customer.id
+                        ? { ...item, ...updatedCustomer }
+                        : item
                 )
             );
             if (selectedCustomer?.id === customer.id) {
-                setSelectedCustomer(updatedCustomer);
+                setSelectedCustomer((current) => ({ ...current, ...updatedCustomer }));
             }
             toast.success(
                 updatedCustomer.is_active
@@ -90,33 +99,56 @@ const Customers = () => {
                             {filteredCustomers.length} customer{filteredCustomers.length === 1 ? "" : "s"}
                         </p>
                     </div>
-                    <button
-                        className="btn btn-outline-primary"
-                        type="button"
-                        onClick={() => window.location.reload()}
-                    >
+                    <button className="btn btn-outline-primary" type="button" onClick={() => window.location.reload()}>
                         Refresh
                     </button>
                 </div>
 
-                <input
-                    className="form-control mb-4"
-                    placeholder="Search by name, email, or phone"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                />
+                <div className="row g-2 mb-4">
+                    <div className="col-md-8">
+                        <input
+                            className="form-control"
+                            placeholder="Search by name, email, or phone"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                        />
+                    </div>
+                    <div className="col-md-4">
+                        <select className="form-select" value={status} onChange={(event) => setStatus(event.target.value)}>
+                            <option value="">All statuses</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
 
                 {selectedCustomer && (
-                    <div className="alert alert-info d-flex justify-content-between align-items-center">
-                        <span>
-                            <strong>{selectedCustomer.name}</strong> · {selectedCustomer.email}
-                        </span>
-                        <button
-                            className="btn-close"
-                            type="button"
-                            aria-label="Close customer details"
-                            onClick={() => setSelectedCustomer(null)}
-                        />
+                    <div className="card border-info mb-4">
+                        <div className="card-body">
+                            <div className="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5 className="card-title mb-1">{selectedCustomer.name}</h5>
+                                    <p className="text-muted mb-3">{selectedCustomer.email} · {selectedCustomer.phone || "No phone"}</p>
+                                </div>
+                                <button className="btn-close" type="button" aria-label="Close customer details" onClick={() => setSelectedCustomer(null)} />
+                            </div>
+                            <div className="row g-3 mb-3">
+                                <div className="col-sm-4"><strong>{selectedCustomer.total_orders}</strong><div className="text-muted small">Total orders</div></div>
+                                <div className="col-sm-4"><strong>{selectedCustomer.total_spent}</strong><div className="text-muted small">Total spending</div></div>
+                                <div className="col-sm-4"><strong>{new Date(selectedCustomer.created_at).toLocaleDateString()}</strong><div className="text-muted small">Registered</div></div>
+                            </div>
+                            <h6>Purchase history</h6>
+                            {selectedCustomer.orders?.length ? (
+                                <div className="table-responsive">
+                                    <table className="table table-sm mb-0">
+                                        <thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Date</th></tr></thead>
+                                        <tbody>{selectedCustomer.orders.map((order) => (
+                                            <tr key={order.id}><td>#{order.id}</td><td>{order.status}</td><td>{order.total_amount}</td><td>{new Date(order.created_at).toLocaleDateString()}</td></tr>
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            ) : <p className="text-muted mb-0">No orders yet.</p>}
+                        </div>
                     </div>
                 )}
 
@@ -153,7 +185,7 @@ const Customers = () => {
                                             <button
                                                 className="btn btn-outline-primary btn-sm me-2"
                                                 type="button"
-                                                onClick={() => setSelectedCustomer(customer)}
+                                                onClick={() => showCustomerDetails(customer)}
                                             >
                                                 View
                                             </button>

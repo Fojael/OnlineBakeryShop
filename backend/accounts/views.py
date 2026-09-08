@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Count, Q, Sum
 
 from rest_framework import generics, status
 from rest_framework.permissions import (
@@ -25,6 +25,7 @@ from .serializers import (
     UserSerializer,
     AdminCustomerSerializer,
     ChangePasswordSerializer,
+    AdminCustomerOrderSerializer,
 )
 
 
@@ -414,9 +415,59 @@ class AdminCustomerListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get_queryset(self):
+        queryset = User.objects.filter(
+            role=User.ROLE_CUSTOMER,
+        ).annotate(
+            total_orders=Count("orders", distinct=True),
+            total_spent=Sum("orders__total_amount"),
+        ).order_by("-created_at")
+
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(username__icontains=search)
+                | Q(email__icontains=search)
+                | Q(phone__icontains=search)
+            )
+
+        is_active = self.request.query_params.get("is_active")
+        if is_active in {"true", "false"}:
+            queryset = queryset.filter(is_active=is_active == "true")
+
+        for customer in queryset:
+            customer.latest_order_object = customer.orders.order_by(
+                "-created_at"
+            ).first()
+
+        return queryset
+
+
+class AdminCustomerDetailView(generics.RetrieveAPIView):
+
+    serializer_class = AdminCustomerSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get_queryset(self):
         return User.objects.filter(
             role=User.ROLE_CUSTOMER,
-        ).order_by("-created_at")
+        ).annotate(
+            total_orders=Count("orders", distinct=True),
+            total_spent=Sum("orders__total_amount"),
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        customer = self.get_object()
+        customer.latest_order_object = customer.orders.order_by(
+            "-created_at"
+        ).first()
+        data = self.get_serializer(customer).data
+        data["orders"] = AdminCustomerOrderSerializer(
+            customer.orders.order_by("-created_at"),
+            many=True,
+        ).data
+        return Response(data)
 
 
 class AdminCustomerStatusView(generics.UpdateAPIView):
@@ -426,5 +477,10 @@ class AdminCustomerStatusView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def get_queryset(self):
-        return User.objects.filter(role=User.ROLE_CUSTOMER)
+        return User.objects.filter(
+            role=User.ROLE_CUSTOMER,
+        ).annotate(
+            total_orders=Count("orders", distinct=True),
+            total_spent=Sum("orders__total_amount"),
+        )
     
