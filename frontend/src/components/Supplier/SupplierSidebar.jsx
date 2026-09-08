@@ -6,9 +6,7 @@ import {
 import {
     FaTachometerAlt,
     FaUser,
-    FaBoxOpen,
     FaBoxes,
-    FaShoppingCart,
     FaMoneyBillWave,
     FaBell,
     FaSignOutAlt,
@@ -112,27 +110,7 @@ const SupplierSidebar = ({
 
 
                 <NavLink
-                    to="/supplier/products"
-                    className={({ isActive }) =>
-                        `supplier-nav-link ${
-                            isActive
-                                ? "active"
-                                : ""
-                        }`
-                    }
-                >
-
-                    <FaBoxOpen />
-
-                    <span>
-                        My Supplies
-                    </span>
-
-                </NavLink>
-
-
-                <NavLink
-                    to="/supplier/inventory"
+                    to="/supplier/replenishments"
                     className={({ isActive }) =>
                         `supplier-nav-link ${
                             isActive
@@ -145,27 +123,7 @@ const SupplierSidebar = ({
                     <FaBoxes />
 
                     <span>
-                        Inventory
-                    </span>
-
-                </NavLink>
-
-
-                <NavLink
-                    to="/supplier/orders"
-                    className={({ isActive }) =>
-                        `supplier-nav-link ${
-                            isActive
-                                ? "active"
-                                : ""
-                        }`
-                    }
-                >
-
-                    <FaShoppingCart />
-
-                    <span>
-                        Supply Orders
+                        Replenishment Requests
                     </span>
 
                 </NavLink>

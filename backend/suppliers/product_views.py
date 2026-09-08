@@ -70,6 +70,12 @@ class SupplierProductListCreateView(
         Create a product for authenticated supplier.
     """
 
+    http_method_names = [
+        "get",
+        "head",
+        "options",
+    ]
+
     def perform_create(
         self,
         serializer,
@@ -95,5 +101,9 @@ class SupplierProductRetrieveUpdateDestroyView(
     only their own products.
     """
 
-    pass
+    http_method_names = [
+        "get",
+        "head",
+        "options",
+    ]
 

@@ -1,4 +1,11 @@
 import api from "./api";
+import { store } from "../redux/store";
+import { setCart } from "../redux/cartSlice";
+
+const syncCartState = (response) => {
+    store.dispatch(setCart(response.data));
+    return response;
+};
 
 // ============================================================
 // GET CUSTOMER CART
@@ -6,7 +13,8 @@ import api from "./api";
 // ============================================================
 
 export const getCart = async () => {
-    return await api.get("cart/");
+    const response = await api.get("cart/");
+    return syncCartState(response);
 };
 
 // ============================================================
@@ -18,10 +26,11 @@ export const addToCart = async (
     productId,
     quantity = 1
 ) => {
-    return await api.post("cart/", {
+    const response = await api.post("cart/", {
         product: productId,
         quantity,
     });
+    return syncCartState(response);
 };
 
 // ============================================================
@@ -33,12 +42,13 @@ export const updateCartItem = async (
     itemId,
     quantity
 ) => {
-    return await api.put(
+    const response = await api.put(
         `cart/items/${itemId}/`,
         {
             quantity,
         }
     );
+    return syncCartState(response);
 };
 
 // ============================================================
@@ -49,9 +59,10 @@ export const updateCartItem = async (
 export const removeCartItem = async (
     itemId
 ) => {
-    return await api.delete(
+    const response = await api.delete(
         `cart/items/${itemId}/`
     );
+    return syncCartState(response);
 };
 
 // ============================================================

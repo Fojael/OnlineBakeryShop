@@ -1,9 +1,6 @@
 from django.db.models import Sum
-from django.db.models.functions import TruncMonth
 
 from notifications.models import Notification
-from orders.models import Order
-from payments.models import Payment
 
 
 class SupplierDashboardService:
@@ -66,24 +63,10 @@ class SupplierDashboardService:
     # ==========================================================
 
     def get_order_statistics(self):
-        orders = (
-            Order.objects
-            .filter(
-                items__product__supplier=self.supplier
-            )
-            .distinct()
-        )
-
         return {
-            "pending_orders": orders.filter(
-                status="Pending"
-            ).count(),
-            "completed_orders": orders.filter(
-                status="Delivered"
-            ).count(),
-            "cancelled_orders": orders.filter(
-                status="Cancelled"
-            ).count(),
+            "pending_orders": 0,
+            "completed_orders": 0,
+            "cancelled_orders": 0,
         }
 
     # ==========================================================
@@ -91,28 +74,10 @@ class SupplierDashboardService:
     # ==========================================================
 
     def get_payment_statistics(self):
-        payments = (
-            Payment.objects
-            .filter(
-                order__items__product__supplier=self.supplier
-            )
-            .distinct()
-        )
-
         return {
-            "pending_payments": payments.filter(
-                status="Pending"
-            ).count(),
-            "completed_payments": payments.filter(
-                status="Success"
-            ).count(),
-            "total_income": (
-                payments.filter(
-                    status="Success"
-                ).aggregate(
-                    total=Sum("amount")
-                )["total"] or 0
-            ),
+            "pending_payments": 0,
+            "completed_payments": 0,
+            "total_income": 0,
         }
 
     # ==========================================================
@@ -158,39 +123,7 @@ class SupplierDashboardService:
     # ==========================================================
 
     def get_recent_orders(self, limit=5):
-        orders = (
-            Order.objects
-            .filter(
-                items__product__supplier=self.supplier
-            )
-            .distinct()
-            .select_related("customer")
-            .prefetch_related("items__product")
-            .order_by("-created_at")[:limit]
-        )
-
-        results = []
-
-        for order in orders:
-            items = order.items.filter(
-                product__supplier=self.supplier
-            )
-
-            results.append({
-                "id": order.id,
-                "order_number": f"ORD-{order.id}",
-                "customer": (
-                    order.customer.get_full_name()
-                    or order.customer.username
-                    or "Customer"
-                ),
-                "status": order.status,
-                "total_amount": float(order.total_amount),
-                "items_count": items.count(),
-                "date": order.created_at,
-            })
-
-        return results
+        return []
 
     # ==========================================================
     # LOW STOCK ALERTS
@@ -283,35 +216,7 @@ class SupplierDashboardService:
     # ==========================================================
 
     def get_sales_overview(self, months=6):
-        sales = (
-            Order.objects
-            .filter(
-                items__product__supplier=self.supplier,
-                status="Delivered",
-            )
-            .annotate(
-                month=TruncMonth("created_at")
-            )
-            .values("month")
-            .annotate(
-                total=Sum("total_amount")
-            )
-            .order_by("month")
-        )
-
-        monthly = list(sales)
-
-        return [
-            {
-                "label": (
-                    item["month"].strftime("%b %Y")
-                    if item["month"]
-                    else "Unknown"
-                ),
-                "amount": float(item["total"] or 0),
-            }
-            for item in monthly[-months:]
-        ]
+        return []
 
     # ==========================================================
     # RECENT ACTIVITY

@@ -6,6 +6,9 @@ from .views import (
     SupplierActivateView,
     SupplierDeactivateView,
     SupplierProfileView,
+    ReplenishmentRequestListCreateView,
+    ReplenishmentRequestDetailView,
+    ReplenishmentStatusUpdateView,
 )
 
 from .dashboard_views import (
@@ -56,6 +59,29 @@ urlpatterns = [
         "products/<int:pk>/",
         SupplierProductRetrieveUpdateDestroyView.as_view(),
         name="supplier-product-detail",
+    ),
+
+
+    # ==========================================================
+    # STOCK REPLENISHMENT
+    # ==========================================================
+
+    path(
+        "replenishments/",
+        ReplenishmentRequestListCreateView.as_view(),
+        name="replenishment-list-create",
+    ),
+
+    path(
+        "replenishments/<int:request_id>/",
+        ReplenishmentRequestDetailView.as_view(),
+        name="replenishment-detail",
+    ),
+
+    path(
+        "replenishments/<int:request_id>/status/",
+        ReplenishmentStatusUpdateView.as_view(),
+        name="replenishment-status-update",
     ),
 
 

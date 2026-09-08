@@ -19,20 +19,11 @@ from .views import (
     AdminDeliveryRiderDeliveriesView,
 
     # ==========================================================
-    # SUPPLIER ORDER MANAGEMENT
-    # ==========================================================
-    SupplierOrderListView,
-    SupplierOrderDetailView,
-    SupplierOrderItemStatusUpdateView,
-    SupplierDashboardView,
-    SupplierSalesAnalyticsView,
-    SupplierProductPerformanceView,
-
-    # ==========================================================
     # CUSTOMER ORDER MANAGEMENT
     # ==========================================================
     OrderListCreateView,
     OrderDetailView,
+    OrderStatusHistoryView,
     CancelOrderView,
 
     # ==========================================================
@@ -140,60 +131,6 @@ urlpatterns = [
 
 
     # ==========================================================
-    # SUPPLIER — ORDER MANAGEMENT
-    # ==========================================================
-
-    # GET
-    # Supplier's orders
-    path(
-        "supplier/",
-        SupplierOrderListView.as_view(),
-        name="supplier-order-list",
-    ),
-
-    # GET
-    # Supplier order details
-    path(
-        "supplier/<int:order_id>/",
-        SupplierOrderDetailView.as_view(),
-        name="supplier-order-detail",
-    ),
-
-    # PATCH / PUT
-    # Supplier updates their OrderItem:
-    # Pending → Processing → Ready
-    path(
-        "supplier/items/<int:item_id>/update/",
-        SupplierOrderItemStatusUpdateView.as_view(),
-        name="supplier-order-item-status-update",
-    ),
-
-    # GET
-    # Supplier dashboard
-    path(
-        "supplier/dashboard/",
-        SupplierDashboardView.as_view(),
-        name="supplier-dashboard",
-    ),
-
-    # GET
-    # Supplier sales analytics
-    path(
-        "supplier/analytics/",
-        SupplierSalesAnalyticsView.as_view(),
-        name="supplier-analytics",
-    ),
-
-    # GET
-    # Supplier product performance
-    path(
-        "supplier/products/performance/",
-        SupplierProductPerformanceView.as_view(),
-        name="supplier-product-performance",
-    ),
-
-
-    # ==========================================================
     # CUSTOMER — ORDERS
     # ==========================================================
 
@@ -214,6 +151,12 @@ urlpatterns = [
         "<int:order_id>/",
         OrderDetailView.as_view(),
         name="order-detail",
+    ),
+
+    path(
+        "<int:order_id>/history/",
+        OrderStatusHistoryView.as_view(),
+        name="order-status-history",
     ),
 
     # POST

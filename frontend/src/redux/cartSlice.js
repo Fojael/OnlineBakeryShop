@@ -10,6 +10,14 @@ const cartSlice = createSlice({
 
     reducers: {
 
+        setCart: (state, action) => {
+            state.cartItems = Array.isArray(
+                action.payload?.items
+            )
+                ? action.payload.items
+                : [];
+        },
+
         addToCart: (state, action) => {
             state.cartItems.push(action.payload);
         },
@@ -29,6 +37,7 @@ const cartSlice = createSlice({
 });
 
 export const {
+    setCart,
     addToCart,
     removeFromCart,
     clearCart,

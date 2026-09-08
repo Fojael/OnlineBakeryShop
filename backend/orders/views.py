@@ -22,7 +22,6 @@ from cart.models import Cart, CartItem
 from payments.models import Payment
 from payments.services import SSLCommerzError, refund_payment
 from products.models import Product
-from suppliers.models import Supplier
 from notifications.models import Notification
 from inventory.services import notify_low_stock
 
@@ -30,6 +29,7 @@ from accounts.permissions import (
     IsCustomer,
     IsSupplier,
 )
+from suppliers.models import Supplier
 from audit_logs.services import record_audit
 
 from delivery.models import Delivery
@@ -43,12 +43,16 @@ from .models import (
     Order,
     OrderItem,
     OrderAddress,
+    OrderStatusHistory,
     Refund,
 )
+
+from .services import record_order_status_change
 
 from .serializers import (
     OrderSerializer,
     OrderCreateSerializer,
+    OrderStatusHistorySerializer,
     SupplierOrderSerializer,
     SupplierOrderItemStatusSerializer,
     RefundSerializer,
@@ -87,34 +91,6 @@ def product_is_available(product):
             return False
 
     return True
-
-
-# ==========================================================
-# NOTIFICATION HELPERS
-# ==========================================================
-
-def notify_supplier(
-    supplier,
-    title,
-    message,
-    notification_type,
-):
-    """
-    Send notification to supplier.
-    """
-
-    if not supplier:
-        return None
-
-    if not supplier.user:
-        return None
-
-    return Notification.objects.create(
-        recipient=supplier.user,
-        title=title,
-        message=message,
-        notification_type=notification_type,
-    )
 
 
 def notify_customer(
@@ -165,40 +141,6 @@ def notify_user(
 
     except Exception:
         return None
-
-
-# ==========================================================
-# GET ORDER SUPPLIERS
-# ==========================================================
-
-def get_order_suppliers(order):
-    """
-    Return all suppliers associated with
-    products in an order.
-    """
-
-    supplier_ids = (
-        OrderItem.objects
-        .filter(
-            order=order,
-            product__supplier__isnull=False,
-        )
-        .values_list(
-            "product__supplier_id",
-            flat=True,
-        )
-        .distinct()
-    )
-
-    return (
-        Supplier.objects
-        .filter(
-            id__in=supplier_ids,
-        )
-        .select_related(
-            "user",
-        )
-    )
 
 
 # ==========================================================
@@ -283,83 +225,103 @@ class OrderListCreateView(APIView):
             ]
         )
 
-        # --------------------------------------------------
-        # LOCK CART
-        # --------------------------------------------------
-
-        cart = get_object_or_404(
-            Cart.objects.select_for_update(),
-            customer=request.user,
+        buy_now_product_id = serializer.validated_data.get(
+            "buy_now_product",
+        )
+        buy_now_quantity = serializer.validated_data.get(
+            "buy_now_quantity",
         )
 
-        # --------------------------------------------------
-        # LOCK CART ITEMS
-        # --------------------------------------------------
-
-        cart_items = list(
-            CartItem.objects
-            .select_for_update()
-            .filter(
-                cart=cart,
-            )
-        )
-
-        if not cart_items:
-
+        if (
+            (buy_now_product_id is None)
+            != (buy_now_quantity is None)
+        ):
             return Response(
                 {
-                    "detail":
-                        "Your cart is empty.",
+                    "detail": (
+                        "Buy Now product and quantity must be "
+                        "provided together."
+                    ),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # --------------------------------------------------
-        # PRODUCT IDS
-        # --------------------------------------------------
+        cart = None
+        cart_items = []
 
-        product_ids = [
-            item.product_id
-            for item in cart_items
-            if item.product_id
-        ]
-
-        if not product_ids:
-
-            return Response(
-                {
-                    "detail":
-                        "Your cart contains no valid products.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # --------------------------------------------------
-        # LOCK PRODUCTS
-        # --------------------------------------------------
-
-        products = {
-            product.id: product
-            for product in (
+        if buy_now_product_id is not None:
+            product = (
                 Product.objects
                 .select_for_update()
-                .filter(
-                    id__in=product_ids,
-                )
+                .filter(id=buy_now_product_id)
+                .first()
             )
-        }
 
-        # --------------------------------------------------
-        # CALCULATE SUBTOTAL
-        # --------------------------------------------------
+            if product is None:
+                return Response(
+                    {
+                        "detail": "The selected product does not exist.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            line_items = [
+                (product, buy_now_quantity),
+            ]
+
+        else:
+            cart = get_object_or_404(
+                Cart.objects.select_for_update(),
+                customer=request.user,
+            )
+
+            cart_items = list(
+                CartItem.objects
+                .select_for_update()
+                .filter(cart=cart)
+            )
+
+            if not cart_items:
+                return Response(
+                    {"detail": "Your cart is empty."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            product_ids = [
+                item.product_id
+                for item in cart_items
+                if item.product_id
+            ]
+
+            if not product_ids:
+                return Response(
+                    {
+                        "detail":
+                            "Your cart contains no valid products.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            products = {
+                product.id: product
+                for product in (
+                    Product.objects
+                    .select_for_update()
+                    .filter(id__in=product_ids)
+                )
+            }
+
+            line_items = [
+                (
+                    products.get(item.product_id),
+                    item.quantity,
+                )
+                for item in cart_items
+            ]
 
         subtotal = Decimal("0.00")
 
-        for item in cart_items:
-
-            product = products.get(
-                item.product_id,
-            )
+        for product, quantity in line_items:
 
             if product is None:
 
@@ -383,7 +345,7 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if item.quantity <= 0:
+            if quantity <= 0:
 
                 return Response(
                     {
@@ -395,7 +357,7 @@ class OrderListCreateView(APIView):
 
             if (
                 product.stock_quantity
-                < item.quantity
+                < quantity
             ):
 
                 return Response(
@@ -413,7 +375,7 @@ class OrderListCreateView(APIView):
 
             subtotal += (
                 product.price
-                * item.quantity
+                * quantity
             )
 
         # --------------------------------------------------
@@ -444,27 +406,28 @@ class OrderListCreateView(APIView):
             stock_deducted=False,
         )
 
+        record_order_status_change(
+            order=order,
+            previous_status="",
+            new_status=Order.STATUS_PENDING,
+            changed_by=request.user,
+            note="Order created.",
+        )
+
         # --------------------------------------------------
         # CREATE ORDER ITEMS
         # --------------------------------------------------
 
         order_items = []
 
-        for item in cart_items:
-
-            product = products[
-                item.product_id
-            ]
+        for product, quantity in line_items:
 
             order_items.append(
                 OrderItem(
                     order=order,
                     product=product,
-                    quantity=item.quantity,
+                    quantity=quantity,
                     price=product.price,
-                    supplier_status=(
-                        OrderItem.STATUS_PENDING
-                    ),
                 )
             )
 
@@ -527,16 +490,12 @@ class OrderListCreateView(APIView):
             == Order.PAYMENT_COD
         ):
 
-            for item in cart_items:
-
-                product = products[
-                    item.product_id
-                ]
+            for product, quantity in line_items:
 
                 previous_stock = product.stock_quantity
 
                 product.stock_quantity -= (
-                    item.quantity
+                    quantity
                 )
 
                 if hasattr(
@@ -574,9 +533,10 @@ class OrderListCreateView(APIView):
                 ]
             )
 
-            CartItem.objects.filter(
-                cart=cart,
-            ).delete()
+            if cart is not None:
+                CartItem.objects.filter(
+                    cart=cart,
+                ).delete()
 
         # --------------------------------------------------
         # SSL COMMERZ
@@ -591,28 +551,6 @@ class OrderListCreateView(APIView):
             # successful online payment.
 
             pass
-
-        # --------------------------------------------------
-        # NOTIFY SUPPLIERS
-        # --------------------------------------------------
-
-        suppliers = get_order_suppliers(
-            order,
-        )
-
-        for supplier in suppliers:
-
-            notify_supplier(
-                supplier=supplier,
-                title="New Order",
-                message=(
-                    f"Order #{order.id} "
-                    "contains one or more of your products."
-                ),
-                notification_type=(
-                    Notification.TYPE_NEW_ORDER
-                ),
-            )
 
         notify_customer(
             customer=request.user,
@@ -695,6 +633,86 @@ class OrderDetailView(APIView):
 
 
 # ==========================================================
+# ORDER STATUS HISTORY
+# ==========================================================
+
+class OrderStatusHistoryView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(
+        self,
+        request,
+        order_id,
+    ):
+
+        order = get_object_or_404(
+            Order.objects.select_related(
+                "customer",
+            ),
+            id=order_id,
+        )
+
+        if request.user.role == User.ROLE_CUSTOMER:
+
+            if order.customer_id != request.user.id:
+                return Response(
+                    {
+                        "detail":
+                            "Order history access denied.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        elif request.user.role == User.ROLE_ADMIN:
+            pass
+
+        elif request.user.role == User.ROLE_DELIVERY_RIDER:
+
+            if not Delivery.objects.filter(
+                order=order,
+                rider=request.user,
+            ).exists():
+                return Response(
+                    {
+                        "detail":
+                            "Order history access denied.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        else:
+
+            return Response(
+                {
+                    "detail":
+                        "Order history access denied.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        history = (
+            order.status_history
+            .select_related(
+                "changed_by",
+            )
+            .all()
+        )
+
+        serializer = OrderStatusHistorySerializer(
+            history,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
 # CUSTOMER - CANCEL ORDER
 # ==========================================================
 
@@ -717,6 +735,8 @@ class CancelOrderView(APIView):
             id=order_id,
             customer=request.user,
         )
+
+        previous_status = order.status
 
         if order.status == Order.STATUS_CANCELLED:
 
@@ -920,6 +940,14 @@ class CancelOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        record_order_status_change(
+            order=order,
+            previous_status=previous_status,
+            new_status=Order.STATUS_CANCELLED,
+            changed_by=request.user,
+            note="Customer cancelled the order.",
+        )
+
         # --------------------------------------------------
         # CANCEL DELIVERY IF EXISTS
         # --------------------------------------------------
@@ -949,28 +977,6 @@ class CancelOrderView(APIView):
                         "updated_at",
                     ]
                 )
-
-        # --------------------------------------------------
-        # NOTIFY SUPPLIERS
-        # --------------------------------------------------
-
-        suppliers = get_order_suppliers(
-            order,
-        )
-
-        for supplier in suppliers:
-
-            notify_supplier(
-                supplier=supplier,
-                title="Order Cancelled",
-                message=(
-                    f"Order #{order.id} "
-                    "has been cancelled."
-                ),
-                notification_type=(
-                    Notification.TYPE_CANCELLED
-                ),
-            )
 
         # --------------------------------------------------
         # RESPONSE
@@ -1160,6 +1166,14 @@ class AdminAcceptOrderView(APIView):
             ]
         )
 
+        record_order_status_change(
+            order=order,
+            previous_status=Order.STATUS_PENDING,
+            new_status=Order.STATUS_ACCEPTED,
+            changed_by=request.user,
+            note="Order accepted by admin.",
+        )
+
         record_audit(
             actor=request.user,
             action="order_accepted",
@@ -1183,29 +1197,6 @@ class AdminAcceptOrderView(APIView):
                 Notification.TYPE_INFO
             ),
         )
-
-        # --------------------------------------------------
-        # SUPPLIER NOTIFICATION
-        # --------------------------------------------------
-
-        suppliers = get_order_suppliers(
-            order,
-        )
-
-        for supplier in suppliers:
-
-            notify_supplier(
-                supplier=supplier,
-                title="Order Accepted",
-                message=(
-                    f"Order #{order.id} "
-                    "has been accepted and is "
-                    "ready for processing."
-                ),
-                notification_type=(
-                    Notification.TYPE_INFO
-                ),
-            )
 
         serializer = OrderSerializer(
             order,
@@ -1270,22 +1261,16 @@ class AdminOrderUpdateView(APIView):
             ).strip()
 
             # --------------------------------------------------
-            # ADMIN MANAGES ONLY ADMIN-CONTROLLED STATES
-            #
-            # Admin DOES NOT manually set:
-            #
-            # Ready
-            # Assigned
-            # Out for Delivery
-            # Delivered
-            #
-            # Those are controlled by supplier/delivery
-            # workflows.
+            # Admin controls customer-order preparation.
+            # Delivery assignment and rider statuses are handled
+            # by the delivery workflow.
             # --------------------------------------------------
 
             allowed_statuses = [
                 Order.STATUS_PENDING,
                 Order.STATUS_ACCEPTED,
+                Order.STATUS_PROCESSING,
+                Order.STATUS_READY,
                 Order.STATUS_CANCELLED,
             ]
 
@@ -1337,10 +1322,12 @@ class AdminOrderUpdateView(APIView):
                 ],
 
                 Order.STATUS_ACCEPTED: [
+                    Order.STATUS_PROCESSING,
                     Order.STATUS_CANCELLED,
                 ],
 
                 Order.STATUS_PROCESSING: [
+                    Order.STATUS_READY,
                     Order.STATUS_CANCELLED,
                 ],
 
@@ -1531,6 +1518,18 @@ class AdminOrderUpdateView(APIView):
                 update_fields=update_fields
             )
 
+            record_order_status_change(
+                order=order,
+                previous_status=old_status,
+                new_status=new_status,
+                changed_by=request.user,
+                note=(
+                    "Order cancelled by admin."
+                    if new_status == Order.STATUS_CANCELLED
+                    else "Order status updated by admin."
+                ),
+            )
+
             record_audit(
                 actor=request.user,
                 action="order_status_changed",
@@ -1574,6 +1573,28 @@ class AdminOrderUpdateView(APIView):
                             ]
                         )
 
+            if new_status == Order.STATUS_PROCESSING:
+                notify_customer(
+                    customer=order.customer,
+                    title="Order Processing",
+                    message=(
+                        f"Your Order #{order.id} "
+                        "is now being processed by the bakery."
+                    ),
+                    notification_type=Notification.TYPE_INFO,
+                )
+
+            elif new_status == Order.STATUS_READY:
+                notify_customer(
+                    customer=order.customer,
+                    title="Order Ready",
+                    message=(
+                        f"Your Order #{order.id} "
+                        "is ready for delivery assignment."
+                    ),
+                    notification_type=Notification.TYPE_INFO,
+                )
+
             # --------------------------------------------------
             # NOTIFICATIONS
             # --------------------------------------------------
@@ -1594,26 +1615,6 @@ class AdminOrderUpdateView(APIView):
                         Notification.TYPE_CANCELLED
                     ),
                 )
-
-                suppliers = (
-                    get_order_suppliers(
-                        order,
-                    )
-                )
-
-                for supplier in suppliers:
-
-                    notify_supplier(
-                        supplier=supplier,
-                        title="Order Cancelled",
-                        message=(
-                            f"Order #{order.id} "
-                            "has been cancelled."
-                        ),
-                        notification_type=(
-                            Notification.TYPE_CANCELLED
-                        ),
-                    )
 
             serializer = OrderSerializer(
                 order,

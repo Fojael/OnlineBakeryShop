@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import deliveryService from "../services/deliveryService";
+import OrderStatusHistory from "../components/Orders/OrderStatusHistory";
 
 import "./delivery.css";
 
@@ -206,6 +207,8 @@ const DeliveryOrderDetails = () => {
                 </Link>
 
             </div>
+
+            <OrderStatusHistory history={order?.history} />
 
             {/* ============================================ */}
             {/* MESSAGES */}

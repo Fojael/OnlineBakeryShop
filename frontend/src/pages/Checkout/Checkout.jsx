@@ -1,6 +1,9 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+    useLocation,
+    useNavigate,
+} from "react-router-dom";
 import { toast } from "react-toastify";
 
 import { createOrder } from "../../services/orderService";
@@ -31,6 +34,24 @@ const initialAddress = {
 const Checkout = () => {
 
     const navigate = useNavigate();
+
+    const location = useLocation();
+
+    const buyNow = location.state?.buyNow;
+
+    const buyNowProductId = Number(
+        buyNow?.productId
+    );
+
+    const buyNowQuantity = Number(
+        buyNow?.quantity
+    );
+
+    const isBuyNow =
+        Number.isInteger(buyNowProductId) &&
+        buyNowProductId > 0 &&
+        Number.isInteger(buyNowQuantity) &&
+        buyNowQuantity > 0;
 
     // ========================================================
     // STATE
@@ -263,6 +284,15 @@ const Checkout = () => {
 
                 payment_method:
                     paymentMethod,
+
+                ...(isBuyNow
+                    ? {
+                        buy_now_product:
+                            buyNowProductId,
+                        buy_now_quantity:
+                            buyNowQuantity,
+                    }
+                    : {}),
             };
 
 

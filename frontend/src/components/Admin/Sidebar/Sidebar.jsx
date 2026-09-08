@@ -75,6 +75,15 @@ const Sidebar = () => {
 
                 <li className="nav-item mb-1">
                     <NavLink
+                        to="/admin/replenishments"
+                        className={linkClass}
+                    >
+                        Stock Replenishment
+                    </NavLink>
+                </li>
+
+                <li className="nav-item mb-1">
+                    <NavLink
                         to="/admin/customers"
                         className={linkClass}
                     >

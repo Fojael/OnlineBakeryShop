@@ -8,11 +8,6 @@ import {
     getSupplierDashboard,
 } from "../../../services/supplierService";
 
-import {
-    getSupplierOrders,
-    updateSupplierOrderItemStatus,
-} from "../../../services/orderService";
-
 
 // ==========================================================
 // STAT CARD
@@ -880,6 +875,8 @@ function SupplierOrderWorkflow({
     );
 }
 
+void SupplierOrderWorkflow;
+
 
 // ==========================================================
 // SUPPLIER DASHBOARD
@@ -890,23 +887,12 @@ export default function SupplierDashboard() {
     const [dashboard, setDashboard] =
         useState(null);
 
-    const [supplierOrders, setSupplierOrders] =
-        useState([]);
-
     const [loading, setLoading] =
         useState(true);
-
-    const [ordersLoading, setOrdersLoading] =
-        useState(true);
-
-    const [updatingItemId, setUpdatingItemId] =
-        useState(null);
 
     const [error, setError] =
         useState("");
 
-    const [orderError, setOrderError] =
-        useState("");
 
 
     // ==========================================================
@@ -989,191 +975,6 @@ export default function SupplierDashboard() {
 
 
     // ==========================================================
-    // LOAD SUPPLIER ORDERS
-    // ==========================================================
-
-    const loadSupplierOrders = useCallback(
-        async () => {
-
-            try {
-
-                setOrdersLoading(true);
-                setOrderError("");
-
-
-                const response =
-                    await getSupplierOrders();
-
-
-                // ==================================================
-                // NORMALIZE SUPPLIER ORDER RESPONSE
-                // ==================================================
-                //
-                // Axios normally returns:
-                //
-                // response.data
-                //
-                // The backend may return:
-                //
-                // 1. Array
-                // 2. { results: [...] }
-                // 3. { orders: [...] }
-                //
-                // This function supports all of those forms.
-                // ==================================================
-
-                let orders = [];
-
-
-                // --------------------------------------------------
-                // CASE 1
-                // Service directly returns an array
-                // --------------------------------------------------
-
-                if (Array.isArray(response)) {
-
-                    orders = response;
-
-                }
-
-
-                // --------------------------------------------------
-                // CASE 2
-                // Axios response.data is an array
-                // --------------------------------------------------
-
-                else if (
-                    Array.isArray(
-                        response?.data
-                    )
-                ) {
-
-                    orders =
-                        response.data;
-
-                }
-
-
-                // --------------------------------------------------
-                // CASE 3
-                // Direct object with orders
-                // --------------------------------------------------
-
-                else if (
-                    Array.isArray(
-                        response?.orders
-                    )
-                ) {
-
-                    orders =
-                        response.orders;
-
-                }
-
-
-                // --------------------------------------------------
-                // CASE 4
-                // Axios response.data contains orders
-                // --------------------------------------------------
-
-                else if (
-                    Array.isArray(
-                        response?.data?.orders
-                    )
-                ) {
-
-                    orders =
-                        response.data.orders;
-
-                }
-
-
-                // --------------------------------------------------
-                // CASE 5
-                // Direct paginated response
-                // --------------------------------------------------
-
-                else if (
-                    Array.isArray(
-                        response?.results
-                    )
-                ) {
-
-                    orders =
-                        response.results;
-
-                }
-
-
-                // --------------------------------------------------
-                // CASE 6
-                // Axios paginated response
-                // --------------------------------------------------
-
-                else if (
-                    Array.isArray(
-                        response?.data?.results
-                    )
-                ) {
-
-                    orders =
-                        response.data.results;
-
-                }
-
-
-                // --------------------------------------------------
-                // SAVE ORDERS
-                // --------------------------------------------------
-
-                setSupplierOrders(
-                    orders
-                );
-
-
-            } catch (error) {
-
-                console.error(
-                    "Supplier orders error:",
-                    error
-                );
-
-                if (
-                    error.response?.status === 401
-                ) {
-
-                    setOrderError(
-                        "Your session has expired. Please login again."
-                    );
-
-                } else if (
-                    error.response?.status === 403
-                ) {
-
-                    setOrderError(
-                        "You are not authorized to view supplier orders."
-                    );
-
-                } else {
-
-                    setOrderError(
-                        "Failed to load supplier order items."
-                    );
-                }
-
-                setSupplierOrders([]);
-
-            } finally {
-
-                setOrdersLoading(false);
-            }
-
-        },
-        []
-    );
-
-
-    // ==========================================================
     // INITIAL LOAD
     // ==========================================================
 
@@ -1183,7 +984,6 @@ export default function SupplierDashboard() {
             setTimeout(() => {
 
                 void loadDashboard();
-                void loadSupplierOrders();
 
             }, 0);
 
@@ -1195,137 +995,7 @@ export default function SupplierDashboard() {
 
     }, [
         loadDashboard,
-        loadSupplierOrders,
     ]);
-
-
-    // ==========================================================
-    // UPDATE SUPPLIER ITEM STATUS
-    // ==========================================================
-
-    const handleSupplierItemStatusUpdate =
-        async (
-            itemId,
-            nextStatus
-        ) => {
-
-            if (!itemId) {
-                return;
-            }
-
-
-            if (
-                ![
-                    "Processing",
-                    "Ready",
-                ].includes(nextStatus)
-            ) {
-                return;
-            }
-
-
-            try {
-
-                setUpdatingItemId(
-                    itemId
-                );
-
-                setOrderError("");
-
-
-                // ==================================================
-                // UPDATE ITEM
-                // ==================================================
-
-                await updateSupplierOrderItemStatus(
-                    itemId,
-                    nextStatus
-                );
-
-
-                // ==================================================
-                // REFRESH ORDERS
-                // ==================================================
-                //
-                // This is important because the backend updates
-                // the parent order automatically.
-                //
-                // Pending → Processing
-                //
-                // Processing → Ready
-                //
-                // when all supplier items are ready.
-                // ==================================================
-
-                await loadSupplierOrders();
-
-
-                // ==================================================
-                // REFRESH DASHBOARD STATISTICS
-                // ==================================================
-
-                await loadDashboard();
-
-
-            } catch (error) {
-
-                console.error(
-                    "Supplier item status update error:",
-                    error
-                );
-
-
-                let message =
-                    "Failed to update item status.";
-
-
-                if (
-                    error.response?.data
-                ) {
-
-                    const data =
-                        error.response.data;
-
-
-                    if (
-                        typeof data.detail ===
-                        "string"
-                    ) {
-
-                        message =
-                            data.detail;
-
-                    } else if (
-                        typeof data.message ===
-                        "string"
-                    ) {
-
-                        message =
-                            data.message;
-
-                    } else if (
-                        typeof data.error ===
-                        "string"
-                    ) {
-
-                        message =
-                            data.error;
-                    }
-
-                }
-
-
-                setOrderError(
-                    message
-                );
-
-            } finally {
-
-                setUpdatingItemId(
-                    null
-                );
-            }
-        };
 
 
     // ==========================================================
@@ -1416,12 +1086,7 @@ export default function SupplierDashboard() {
             ? dashboard.notifications
             : [];
 
-    const recentOrders =
-        Array.isArray(
-            dashboard.recent_orders
-        )
-            ? dashboard.recent_orders
-            : [];
+    const recentOrders = [];
 
     const lowStockAlerts =
         Array.isArray(
@@ -1679,53 +1344,6 @@ export default function SupplierDashboard() {
                 />
 
             </div>
-
-
-            {/* ==================================================
-                SUPPLIER ORDER WORKFLOW
-            ================================================== */}
-
-            <SupplierOrderWorkflow
-                orders={
-                    supplierOrders
-                }
-                loading={
-                    ordersLoading
-                }
-                updatingItemId={
-                    updatingItemId
-                }
-                onUpdate={
-                    handleSupplierItemStatusUpdate
-                }
-            />
-
-
-            {/* ==================================================
-                ORDER ERROR
-            ================================================== */}
-
-            {orderError && (
-
-                <div
-                    className="alert alert-danger alert-dismissible fade show"
-                    role="alert"
-                >
-
-                    {orderError}
-
-                    <button
-                        type="button"
-                        className="btn-close"
-                        aria-label="Close"
-                        onClick={() =>
-                            setOrderError("")
-                        }
-                    />
-
-                </div>
-
-            )}
 
 
             {/* ==================================================

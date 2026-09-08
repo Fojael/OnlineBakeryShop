@@ -10,7 +10,13 @@ from delivery.models import Delivery
 from products.models import Product
 from payments.models import Payment
 from suppliers.models import Supplier
-from .models import Order, OrderAddress, OrderItem, Refund
+from .models import (
+    Order,
+    OrderAddress,
+    OrderItem,
+    OrderStatusHistory,
+    Refund,
+)
 from .serializers import OrderCreateSerializer
 
 
@@ -403,6 +409,7 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertEqual(order_response.status_code, 201)
         order = Order.objects.get(customer=customer)
         self.assertEqual(order.status, Order.STATUS_PENDING)
+
         self.assertEqual(order.items.count(), 1)
         self.assertEqual(order.payment.status, "Pending")
 
@@ -414,11 +421,10 @@ class CompleteOrderWorkflowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, Order.STATUS_ACCEPTED)
 
-        order_item = order.items.get()
-        self.client.force_authenticate(user=self.supplier_user)
+        self.client.force_authenticate(user=self.admin)
         processing_response = self.client.patch(
-            f"/api/orders/supplier/items/{order_item.id}/update/",
-            {"supplier_status": OrderItem.STATUS_PROCESSING},
+            f"/api/orders/admin/{order.id}/update/",
+            {"status": Order.STATUS_PROCESSING},
             format="json",
         )
         self.assertEqual(processing_response.status_code, 200)
@@ -426,8 +432,8 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertEqual(order.status, Order.STATUS_PROCESSING)
 
         ready_response = self.client.patch(
-            f"/api/orders/supplier/items/{order_item.id}/update/",
-            {"supplier_status": OrderItem.STATUS_READY},
+            f"/api/orders/admin/{order.id}/update/",
+            {"status": Order.STATUS_READY},
             format="json",
         )
         self.assertEqual(ready_response.status_code, 200)
@@ -444,6 +450,7 @@ class CompleteOrderWorkflowTests(TestCase):
         delivery = Delivery.objects.get(order=order)
         order.refresh_from_db()
         self.assertEqual(delivery.status, Delivery.STATUS_ASSIGNED)
+        self.assertIsNotNone(delivery.assigned_at)
         self.assertEqual(order.status, Order.STATUS_ASSIGNED)
 
         self.client.force_authenticate(user=self.rider)
@@ -468,6 +475,59 @@ class CompleteOrderWorkflowTests(TestCase):
         )
         self.assertEqual(customer_order_response.status_code, 200)
         self.assertEqual(customer_order_response.data["status"], Order.STATUS_DELIVERED)
+
+        history_response = self.client.get(
+            f"/api/orders/{order.id}/history/",
+        )
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual(
+            [item["new_status"] for item in history_response.data],
+            [
+                Order.STATUS_PENDING,
+                Order.STATUS_ACCEPTED,
+                Order.STATUS_PROCESSING,
+                Order.STATUS_READY,
+                Order.STATUS_ASSIGNED,
+                Order.STATUS_OUT_FOR_DELIVERY,
+                Order.STATUS_DELIVERED,
+            ],
+        )
+        self.assertTrue(
+            all(item["changed_at"] for item in history_response.data)
+        )
+        self.assertEqual(
+            history_response.data[1]["changed_by_role"],
+            User.ROLE_ADMIN,
+        )
+        self.assertEqual(
+            history_response.data[-1]["changed_by_role"],
+            User.ROLE_DELIVERY_RIDER,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        admin_history_response = self.client.get(
+            f"/api/orders/{order.id}/history/",
+        )
+        self.assertEqual(admin_history_response.status_code, 200)
+
+        self.client.force_authenticate(user=self.rider)
+        rider_history_response = self.client.get(
+            f"/api/orders/{order.id}/history/",
+        )
+        self.assertEqual(rider_history_response.status_code, 200)
+
+        self.client.force_authenticate(user=self.supplier_user)
+        supplier_history_response = self.client.get(
+            f"/api/orders/{order.id}/history/",
+        )
+        self.assertEqual(supplier_history_response.status_code, 403)
+
+        self.assertEqual(
+            OrderStatusHistory.objects.filter(order=order).count(),
+            7,
+        )
+
+        self.client.force_authenticate(user=customer)
 
         refund_response = self.client.post(
             "/api/orders/refunds/request/",
@@ -515,4 +575,119 @@ class CompleteOrderWorkflowTests(TestCase):
         ai_response = self.client.get("/api/ai-prediction/admin/summary/")
         self.assertEqual(ai_response.status_code, 503)
         self.assertTrue(ai_response.data["training_required"])
+
+    def test_admin_cannot_skip_order_states_or_mark_delivered(self):
+        customer = User.objects.create_user(
+            username="transition_customer",
+            email="transition_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        order = Order.objects.create(
+            customer=customer,
+            shipping_address="12 Bakery Road, Dhaka",
+            payment_method=Order.PAYMENT_COD,
+            subtotal=250,
+            total_amount=310,
+            status=Order.STATUS_ACCEPTED,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+
+        skip_response = self.client.patch(
+            f"/api/orders/admin/{order.id}/update/",
+            {"status": Order.STATUS_READY},
+            format="json",
+        )
+        self.assertEqual(skip_response.status_code, 400)
+
+        order.status = Order.STATUS_READY
+        order.save(update_fields=["status", "updated_at"])
+
+        delivered_response = self.client.patch(
+            f"/api/orders/admin/{order.id}/update/",
+            {"status": Order.STATUS_DELIVERED},
+            format="json",
+        )
+        self.assertEqual(delivered_response.status_code, 400)
+        self.assertEqual(
+            OrderStatusHistory.objects.filter(order=order).count(),
+            0,
+        )
+
+
+class BuyNowOrderTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = User.objects.create_user(
+            username="buy_now_customer",
+            email="buy_now_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        self.product = Product.objects.create(
+            name="Buy Now Bread",
+            category="Bread",
+            price=Decimal("30.00"),
+            stock_quantity=5,
+            is_available=True,
+        )
+
+    def test_authenticated_customer_can_buy_now_without_cart(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 1,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(customer=self.customer)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.get().quantity, 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 4)
+
+    def test_buy_now_rejects_out_of_stock_product(self):
+        self.product.stock_quantity = 0
+        self.product.is_available = False
+        self.product.save(update_fields=["stock_quantity", "is_available"])
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 1,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Order.objects.filter(customer=self.customer).exists())
+
+    def test_unauthenticated_customer_cannot_buy_now(self):
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 1,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
 

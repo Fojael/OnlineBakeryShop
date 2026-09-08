@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 
+
 class Supplier(models.Model):
 
     # ==========================================================
@@ -234,5 +235,74 @@ class Supplier(models.Model):
             and self.is_approved
             and self.user is not None
             and self.user.is_active
+        )
+
+
+class ReplenishmentRequest(models.Model):
+    STATUS_PENDING = "PENDING"
+    STATUS_PROCESSING = "PROCESSING"
+    STATUS_READY = "READY"
+    STATUS_DELIVERED = "DELIVERED"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_READY, "Ready"),
+        (STATUS_DELIVERED, "Delivered"),
+    ]
+
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.PROTECT,
+        related_name="replenishment_requests",
+    )
+
+    product = models.ForeignKey(
+        "products.Product",
+        on_delete=models.PROTECT,
+        related_name="replenishment_requests",
+    )
+
+    requested_quantity = models.PositiveIntegerField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_replenishment_requests",
+    )
+
+    notes = models.TextField(blank=True, default="")
+
+    inventory_applied_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    delivered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["supplier", "status"]),
+            models.Index(fields=["product", "status"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"Replenishment #{self.id} - "
+            f"{self.product.name} ({self.requested_quantity})"
         )
         

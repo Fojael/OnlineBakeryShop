@@ -444,35 +444,17 @@ const handleBuyNow = async () => {
 
     }
 
-    try {
-
-        setCartLoading(true);
-
-        await addToCart(
-            product.id,
-            quantity
-        );
-
-        toast.success(
-            "Proceeding to checkout..."
-        );
-
-        navigate("/checkout");
-
-    } catch (error) {
-
-        console.error(error);
-
-        toast.error(
-            error?.response?.data?.detail ||
-            "Unable to proceed to checkout."
-        );
-
-    } finally {
-
-        setCartLoading(false);
-
-    }
+    navigate(
+        "/checkout",
+        {
+            state: {
+                buyNow: {
+                    productId: product.id,
+                    quantity,
+                },
+            },
+        }
+    );
 
 };
 

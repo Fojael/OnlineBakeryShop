@@ -1,7 +1,15 @@
 import {
+    useCallback,
+    useEffect,
+    useState,
+} from "react";
+
+import {
     Link,
     useNavigate,
 } from "react-router-dom";
+
+import { useDispatch, useSelector } from "react-redux";
 
 import {
     toast,
@@ -11,6 +19,14 @@ import {
     logout,
 } from "../../services/authService";
 
+import {
+    getCart,
+} from "../../services/cartService";
+
+import {
+    clearCart as clearCartState,
+} from "../../redux/cartSlice";
+
 import NotificationBell from "../Notifications/NotificationBell";
 
 
@@ -18,26 +34,94 @@ const Navbar = () => {
 
     const navigate = useNavigate();
 
+    const dispatch = useDispatch();
+
+    const cartItems = useSelector(
+        (state) => state.cart.cartItems
+    );
+
+    const [auth, setAuth] = useState(() => ({
+        token:
+            localStorage.getItem("access") ||
+            sessionStorage.getItem("access"),
+        role:
+            localStorage.getItem("role") ||
+            sessionStorage.getItem("role") ||
+            "",
+        username:
+            localStorage.getItem("username") ||
+            "User",
+    }));
+
+    const syncAuthentication = useCallback(async () => {
+        const nextAuth = {
+            token:
+                localStorage.getItem("access") ||
+                sessionStorage.getItem("access"),
+            role:
+                localStorage.getItem("role") ||
+                sessionStorage.getItem("role") ||
+                "",
+            username:
+                localStorage.getItem("username") ||
+                "User",
+        };
+
+        setAuth(nextAuth);
+
+        if (
+            nextAuth.token &&
+            String(nextAuth.role).toUpperCase() === "CUSTOMER"
+        ) {
+            try {
+                await getCart();
+            } catch {
+                dispatch(clearCartState());
+            }
+        } else {
+            dispatch(clearCartState());
+        }
+    }, [dispatch]);
+
+    useEffect(() => {
+        const handleAuthenticationChanged = () => {
+            void syncAuthentication();
+        };
+
+        window.addEventListener(
+            "auth-changed",
+            handleAuthenticationChanged
+        );
+
+        const timer = setTimeout(() => {
+            void syncAuthentication();
+        }, 0);
+
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener(
+                "auth-changed",
+                handleAuthenticationChanged
+            );
+        };
+    }, [syncAuthentication]);
+
+    const cartQuantity = cartItems.reduce(
+        (total, item) => total + Number(item.quantity || 0),
+        0
+    );
+
 
     // ==========================================================
     // AUTH DATA
     // ==========================================================
 
-    const token =
-        localStorage.getItem("access")
-        ||
-        sessionStorage.getItem("access");
+    const token = auth.token;
 
-    const role =
-        localStorage.getItem("role")
-        ||
-        "";
+    const role = auth.role;
 
 
-    const username =
-        localStorage.getItem("username")
-        ||
-        "User";
+    const username = auth.username;
 
 
     // ==========================================================
@@ -86,6 +170,8 @@ const Navbar = () => {
         sessionStorage.removeItem("role");
         sessionStorage.removeItem("username");
         sessionStorage.removeItem("email");
+
+        dispatch(clearCartState());
 
 
         // Tell NotificationProvider
@@ -240,7 +326,21 @@ const Navbar = () => {
                                 <li className="nav-item"><Link className="nav-link" to="/orders">My Orders</Link></li>
                                 <li className="nav-item"><Link className="nav-link" to="/refunds">Refund Requests</Link></li>
                                 <li className="nav-item"><Link className="nav-link" to="/wishlist">Wishlist</Link></li>
-                                <li className="nav-item"><Link className="nav-link" to="/cart">Cart</Link></li>
+                                <li className="nav-item">
+                                    <Link
+                                        className="nav-link position-relative d-inline-block"
+                                        to="/cart"
+                                    >
+                                        Cart
+                                        {cartQuantity > 0 && (
+                                            <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                                                {cartQuantity > 99
+                                                    ? "99+"
+                                                    : cartQuantity}
+                                            </span>
+                                        )}
+                                    </Link>
+                                </li>
                             </>
                         )}
 

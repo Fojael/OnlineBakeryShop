@@ -217,20 +217,14 @@ import SupplierDashboard
 import SupplierProfile
     from "../pages/Supplier/Profile/SupplierProfile";
 
-import SupplierProducts
-    from "../pages/Supplier/Products/SupplierProducts";
-
-import SupplierInventory
-    from "../pages/Supplier/Inventory/SupplierInventory";
-
-import SupplierOrders
-    from "../pages/Supplier/Orders/SupplierOrders";
-
-import SupplierOrderDetails
-    from "../pages/Supplier/Orders/SupplierOrderDetails";
-
 import SupplierPayments
     from "../pages/Supplier/Payments/SupplierPayments";
+
+import ReplenishmentRequests
+    from "../pages/Admin/Suppliers/ReplenishmentRequests";
+
+import SupplierReplenishments
+    from "../pages/Supplier/Replenishments/SupplierReplenishments";
 
 // ============================================================
 // DELIVERY RIDER ROUTES
@@ -791,6 +785,15 @@ const AppRoutes = () => {
                 }
             />
 
+            <Route
+                path="/admin/replenishments"
+                element={
+                    <ProtectedAdminRoute>
+                        <ReplenishmentRequests />
+                    </ProtectedAdminRoute>
+                }
+            />
+
            {/* ======================================================
     SUPPLIER DASHBOARD
 ====================================================== */}
@@ -824,70 +827,6 @@ const AppRoutes = () => {
 
 
 {/* ======================================================
-    SUPPLIER PRODUCTS
-====================================================== */}
-
-<Route
-    path="/supplier/products"
-    element={
-        <ProtectedRoute
-            allowedRoles={["SUPPLIER"]}
-        >
-            <SupplierProducts />
-        </ProtectedRoute>
-    }
-/>
-
-
-{/* ======================================================
-    SUPPLIER INVENTORY
-====================================================== */}
-
-<Route
-    path="/supplier/inventory"
-    element={
-        <ProtectedRoute
-            allowedRoles={["SUPPLIER"]}
-        >
-            <SupplierInventory />
-        </ProtectedRoute>
-    }
-/>
-
-
-{/* ======================================================
-    SUPPLIER ORDERS
-====================================================== */}
-
-<Route
-    path="/supplier/orders"
-    element={
-        <ProtectedRoute
-            allowedRoles={["SUPPLIER"]}
-        >
-            <SupplierOrders />
-        </ProtectedRoute>
-    }
-/>
-
-
-{/* ======================================================
-    SUPPLIER ORDER DETAILS
-====================================================== */}
-
-<Route
-    path="/supplier/orders/:id"
-    element={
-        <ProtectedRoute
-            allowedRoles={["SUPPLIER"]}
-        >
-            <SupplierOrderDetails />
-        </ProtectedRoute>
-    }
-/>
-
-
-{/* ======================================================
     SUPPLIER PAYMENTS
 ====================================================== */}
 
@@ -901,6 +840,18 @@ const AppRoutes = () => {
         </ProtectedRoute>
     }
 />
+
+
+<Route
+    path="/supplier/replenishments"
+    element={
+        <ProtectedRoute
+            allowedRoles={["SUPPLIER"]}
+        >
+            <SupplierReplenishments />
+        </ProtectedRoute>
+    }
+/> 
 
 
             {/* ==================================================

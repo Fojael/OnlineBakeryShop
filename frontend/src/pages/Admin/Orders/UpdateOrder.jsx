@@ -13,6 +13,7 @@ import {
 } from "react-toastify";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
+import OrderStatusHistory from "../../../components/Orders/OrderStatusHistory";
 
 import {
     getAdminOrder,
@@ -23,16 +24,13 @@ import {
 // =========================================================
 // AVAILABLE ADMIN STATUSES
 // =========================================================
-// Admin directly controls only:
+// Admin directly controls:
 //
-// Pending -> Accepted
-// Pending -> Cancelled
+// Pending -> Accepted -> Processing -> Ready
+// Pending/Accepted/Processing -> Cancelled
 //
-// Processing is controlled by Supplier.
-// Ready is controlled by Supplier.
 // Assigned is controlled by Admin Rider Assignment.
-// Out for Delivery is controlled by Rider.
-// Delivered is controlled by Rider.
+// Out for Delivery and Delivered are controlled by the Rider.
 // =========================================================
 
 const getAvailableStatuses = (currentStatus) => {
@@ -43,6 +41,30 @@ const getAvailableStatuses = (currentStatus) => {
                 {
                     value: "Accepted",
                     label: "Accept Order",
+                },
+                {
+                    value: "Cancelled",
+                    label: "Cancel Order",
+                },
+            ];
+
+        case "Accepted":
+            return [
+                {
+                    value: "Processing",
+                    label: "Start Processing",
+                },
+                {
+                    value: "Cancelled",
+                    label: "Cancel Order",
+                },
+            ];
+
+        case "Processing":
+            return [
+                {
+                    value: "Ready",
+                    label: "Mark Ready",
                 },
                 {
                     value: "Cancelled",
@@ -272,9 +294,9 @@ const UpdateOrder = () => {
             );
 
             toast.success(
-                status === "Accepted"
-                    ? "Order accepted successfully."
-                    : "Order cancelled successfully."
+                status === "Cancelled"
+                    ? "Order cancelled successfully."
+                    : `Order marked ${status.toLowerCase()} successfully.`
             );
 
             navigate(
@@ -473,6 +495,8 @@ const UpdateOrder = () => {
 
                         </div>
 
+                        <OrderStatusHistory history={order.history} />
+
 
                         {/* =================================================
                             STATUS UPDATE
@@ -543,14 +567,12 @@ const UpdateOrder = () => {
                                         <div className="alert alert-info">
 
                                             <strong>
-                                                Waiting for supplier
+                                                Admin action available
                                             </strong>
 
                                             <div className="small mt-2">
-                                                The supplier will process the
-                                                order items. The order will
-                                                automatically move to Processing
-                                                when supplier processing begins.
+                                                Start processing this accepted
+                                                order or cancel it.
                                             </div>
 
                                         </div>
@@ -561,14 +583,13 @@ const UpdateOrder = () => {
                                         <div className="alert alert-info">
 
                                             <strong>
-                                                Supplier is processing the order
+                                                Admin action available
                                             </strong>
 
                                             <div className="small mt-2">
-                                                The supplier controls the item
-                                                status. When all supplier items
-                                                are Ready, the order will
-                                                automatically become Ready.
+                                                Mark the order Ready when bakery
+                                                preparation is complete, or
+                                                cancel it.
                                             </div>
 
                                         </div>

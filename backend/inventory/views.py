@@ -119,14 +119,9 @@ class InventoryUpdateView(
             return inventory
 
         if user.role == "SUPPLIER":
-
-            if inventory.product.supplier_id != user.supplier.id:
-
-                raise PermissionDenied(
-                    "You do not have permission to modify this inventory."
-                )
-
-            return inventory
+            raise PermissionDenied(
+                "Suppliers cannot modify inventory directly."
+            )
 
         raise PermissionDenied(
             "Permission denied."

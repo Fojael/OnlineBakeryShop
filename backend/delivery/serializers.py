@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from orders.models import Order, OrderItem
+from orders.serializers import OrderStatusHistorySerializer
 
 from .models import Delivery
 
@@ -23,8 +24,6 @@ class DeliveryOrderItemSerializer(
         read_only=True,
     )
 
-    supplier_name = serializers.SerializerMethodField()
-
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
@@ -34,38 +33,12 @@ class DeliveryOrderItemSerializer(
             "id",
             "product",
             "product_name",
-            "supplier_name",
             "quantity",
             "price",
             "subtotal",
-            "supplier_status",
         ]
 
         read_only_fields = fields
-
-    def get_supplier_name(self, obj):
-
-        try:
-            supplier = obj.product.supplier
-
-            if not supplier:
-                return None
-
-            user = supplier.user
-
-            if not user:
-                return None
-
-            return (
-                user.get_full_name()
-                or user.username
-            )
-
-        except (
-            AttributeError,
-            TypeError,
-        ):
-            return None
 
     def get_subtotal(self, obj):
         return obj.subtotal
@@ -94,6 +67,12 @@ class DeliveryOrderSerializer(
         read_only=True,
     )
 
+    history = OrderStatusHistorySerializer(
+        many=True,
+        source="status_history",
+        read_only=True,
+    )
+
     item_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -111,6 +90,7 @@ class DeliveryOrderSerializer(
             "status",
             "items",
             "item_count",
+            "history",
             "created_at",
             "updated_at",
         ]

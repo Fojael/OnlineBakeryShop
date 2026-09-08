@@ -2,14 +2,19 @@ from django.db import transaction
 from django.utils import timezone
 
 from rest_framework import generics, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 
 from accounts.permissions import IsAdmin, IsSupplier
+from inventory.services import receive_replenishment
 
-from .models import Supplier
+from .models import ReplenishmentRequest, Supplier
 from .serializers import (
+    ReplenishmentRequestSerializer,
+    ReplenishmentStatusSerializer,
     SupplierCreateSerializer,
     SupplierSerializer,
     SupplierProfileSerializer,
@@ -401,6 +406,165 @@ class SupplierProfileView(
                 "supplier": serializer.data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class ReplenishmentRequestListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self, request):
+        queryset = ReplenishmentRequest.objects.select_related(
+            "supplier",
+            "product",
+            "created_by",
+        )
+
+        if request.user.role == "ADMIN":
+            return queryset
+
+        if request.user.role == "SUPPLIER":
+            return queryset.filter(
+                supplier__user=request.user,
+            )
+
+        return queryset.none()
+
+    def get(self, request):
+        if request.user.role not in ["ADMIN", "SUPPLIER"]:
+            return Response(
+                {"detail": "Supplier access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ReplenishmentRequestSerializer(
+            self.get_queryset(request),
+            many=True,
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        if request.user.role != "ADMIN":
+            return Response(
+                {"detail": "Admin permission required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ReplenishmentRequestSerializer(
+            data=request.data,
+        )
+        serializer.is_valid(raise_exception=True)
+        replenishment_request = serializer.save(
+            created_by=request.user,
+        )
+
+        return Response(
+            ReplenishmentRequestSerializer(
+                replenishment_request,
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ReplenishmentRequestDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, request, request_id):
+        queryset = ReplenishmentRequest.objects.select_related(
+            "supplier",
+            "product",
+            "created_by",
+        )
+
+        if request.user.role == "ADMIN":
+            return get_object_or_404(queryset, id=request_id)
+
+        if request.user.role == "SUPPLIER":
+            return get_object_or_404(
+                queryset,
+                id=request_id,
+                supplier__user=request.user,
+            )
+
+        raise PermissionDenied("Supplier access required.")
+
+    def get(self, request, request_id):
+        replenishment_request = self.get_object(
+            request,
+            request_id,
+        )
+        return Response(
+            ReplenishmentRequestSerializer(
+                replenishment_request,
+            ).data,
+        )
+
+
+class ReplenishmentStatusUpdateView(APIView):
+    permission_classes = [
+        IsAuthenticated,
+        IsSupplier,
+    ]
+
+    @transaction.atomic
+    def patch(self, request, request_id):
+        replenishment_request = get_object_or_404(
+            ReplenishmentRequest.objects.select_for_update(),
+            id=request_id,
+            supplier__user=request.user,
+        )
+
+        serializer = ReplenishmentStatusSerializer(
+            data=request.data,
+        )
+        serializer.is_valid(raise_exception=True)
+        new_status = serializer.validated_data["status"]
+
+        transitions = {
+            ReplenishmentRequest.STATUS_PENDING: [
+                ReplenishmentRequest.STATUS_PROCESSING,
+            ],
+            ReplenishmentRequest.STATUS_PROCESSING: [
+                ReplenishmentRequest.STATUS_READY,
+            ],
+            ReplenishmentRequest.STATUS_READY: [
+                ReplenishmentRequest.STATUS_DELIVERED,
+            ],
+            ReplenishmentRequest.STATUS_DELIVERED: [],
+        }
+
+        allowed_next = transitions.get(
+            replenishment_request.status,
+            [],
+        )
+
+        if new_status not in allowed_next:
+            return Response(
+                {
+                    "detail": (
+                        "Invalid replenishment status transition: "
+                        f"{replenishment_request.status} -> "
+                        f"{new_status}."
+                    ),
+                    "current_status": replenishment_request.status,
+                    "allowed_next_statuses": allowed_next,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        replenishment_request.status = new_status
+        replenishment_request.save(
+            update_fields=["status", "updated_at"],
+        )
+
+        if new_status == ReplenishmentRequest.STATUS_DELIVERED:
+            replenishment_request = receive_replenishment(
+                replenishment_request,
+            )
+
+        return Response(
+            ReplenishmentRequestSerializer(
+                replenishment_request,
+            ).data,
         )
         
         

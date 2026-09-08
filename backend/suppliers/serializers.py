@@ -6,7 +6,7 @@ from rest_framework import serializers
 from accounts.models import User
 from products.models import Product
 
-from .models import Supplier
+from .models import ReplenishmentRequest, Supplier
 
 
 # ==========================================================
@@ -530,4 +530,69 @@ class SupplierDashboardSerializer(
             "products",
 
         )
+
+
+class ReplenishmentRequestSerializer(
+    serializers.ModelSerializer
+):
+    supplier_name = serializers.CharField(
+        source="supplier.name",
+        read_only=True,
+    )
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True,
+    )
+    created_by_name = serializers.CharField(
+        source="created_by.username",
+        read_only=True,
+    )
+
+    class Meta:
+        model = ReplenishmentRequest
+        fields = [
+            "id",
+            "supplier",
+            "supplier_name",
+            "product",
+            "product_name",
+            "requested_quantity",
+            "status",
+            "created_by",
+            "created_by_name",
+            "notes",
+            "inventory_applied_at",
+            "delivered_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "supplier_name",
+            "product_name",
+            "status",
+            "created_by",
+            "created_by_name",
+            "inventory_applied_at",
+            "delivered_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_requested_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "Requested quantity must be greater than zero."
+            )
+        return value
+
+
+class ReplenishmentStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            (ReplenishmentRequest.STATUS_PROCESSING, "Processing"),
+            (ReplenishmentRequest.STATUS_READY, "Ready"),
+            (ReplenishmentRequest.STATUS_DELIVERED, "Delivered"),
+        ]
+    )
         

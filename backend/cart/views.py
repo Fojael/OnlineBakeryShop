@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 from rest_framework import status
 from accounts.permissions import IsCustomer
@@ -32,6 +33,7 @@ class CartView(APIView):
         )
 
     # POST Add Product
+    @transaction.atomic
     def post(self, request):
         product_id = request.data.get("product")
         quantity = request.data.get("quantity", 1)
@@ -63,8 +65,8 @@ class CartView(APIView):
             )
 
         product = get_object_or_404(
-            Product,
-            id=product_id
+            Product.objects.select_for_update(),
+            id=product_id,
         )
 
         if not product.is_available:
@@ -86,14 +88,22 @@ class CartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        cart = self.get_cart(request.user)
+        cart, _ = (
+            Cart.objects
+            .select_for_update()
+            .get_or_create(customer=request.user)
+        )
 
-        cart_item, created = CartItem.objects.get_or_create(
-            cart=cart,
-            product=product,
-            defaults={
-                "quantity": quantity
-            }
+        cart_item, created = (
+            CartItem.objects
+            .select_for_update()
+            .get_or_create(
+                cart=cart,
+                product=product,
+                defaults={
+                    "quantity": quantity
+                },
+            )
         )
 
         if not created:
@@ -131,13 +141,23 @@ class CartItemView(APIView):
         return cart
 
     # PUT Update Quantity
+    @transaction.atomic
     def put(self, request, item_id):
-        cart = self.get_cart(request.user)
+        cart, _ = (
+            Cart.objects
+            .select_for_update()
+            .get_or_create(customer=request.user)
+        )
 
         cart_item = get_object_or_404(
-            CartItem,
+            CartItem.objects.select_for_update(),
             id=item_id,
             cart=cart
+        )
+
+        product = get_object_or_404(
+            Product.objects.select_for_update(),
+            id=cart_item.product_id,
         )
 
         quantity = request.data.get("quantity")
@@ -160,7 +180,7 @@ class CartItemView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not cart_item.product.is_available:
+        if not product.is_available:
             return Response(
                 {
                     "detail": "This product is unavailable."
@@ -168,11 +188,11 @@ class CartItemView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if quantity > cart_item.product.stock_quantity:
+        if quantity > product.stock_quantity:
             return Response(
                 {
                     "detail": (
-                        f"Only {cart_item.product.stock_quantity} "
+                        f"Only {product.stock_quantity} "
                         f"items are available."
                     )
                 },

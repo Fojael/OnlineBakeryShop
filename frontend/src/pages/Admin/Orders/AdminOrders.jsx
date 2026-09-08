@@ -487,25 +487,6 @@ const AdminOrders = () => {
 
 
     // =====================================================
-    // CHECK WHETHER ALL ITEMS ARE READY
-    // =====================================================
-
-    const areAllItemsReady = (order) => {
-        if (
-            !order ||
-            !Array.isArray(order.items) ||
-            order.items.length === 0
-        ) {
-            return false;
-        }
-
-        return order.items.every(
-            (item) =>
-                item.supplier_status === "Ready"
-        );
-    };
-
-
     // =====================================================
     // CHECK WHETHER RIDER CAN BE ASSIGNED
     // =====================================================
@@ -514,7 +495,8 @@ const AdminOrders = () => {
         return (
             order &&
             order.status === "Ready" &&
-            areAllItemsReady(order)
+            Array.isArray(order.items) &&
+            order.items.length > 0
         );
     };
 
@@ -617,9 +599,9 @@ const AdminOrders = () => {
             return;
         }
 
-        if (!areAllItemsReady(order)) {
+        if (!Array.isArray(order.items) || order.items.length === 0) {
             toast.warning(
-                "All supplier order items must be Ready before assigning a rider."
+                "An order must contain at least one item before assigning a rider."
             );
 
             return;
@@ -983,10 +965,9 @@ const AdminOrders = () => {
                             Important:
                         </strong>{" "}
 
-                        Suppliers control Processing and Ready.
+                        Admin controls Processing and Ready.
                         Admin selects a specific active rider only
-                        after the order becomes Ready and every
-                        supplier item is Ready.
+                        after the order becomes Ready.
 
                     </div>
 
@@ -1133,11 +1114,6 @@ const AdminOrders = () => {
                                                     selectedRiders[
                                                         order.id
                                                     ] || "";
-
-                                                const allItemsReady =
-                                                    areAllItemsReady(
-                                                        order
-                                                    );
 
                                                 const canAssign =
                                                     canAssignRider(
@@ -1293,8 +1269,9 @@ const AdminOrders = () => {
 
                                                                     {/* ACCEPT */}
 
-                                                                    {order.status ===
-                                                                        "Pending" && (
+                                                                    {["Pending", "Accepted", "Processing"].includes(
+                                                                        order.status
+                                                                    ) && (
                                                                         <button
                                                                             type="button"
                                                                             className="btn btn-success btn-sm"
@@ -1347,25 +1324,6 @@ const AdminOrders = () => {
                                                                     "Ready" && (
 
                                                                     <div className="mt-1">
-
-                                                                        {/* -------------------------------------------------
-                                                                            SUPPLIER ITEMS NOT READY
-                                                                        ------------------------------------------------- */}
-
-                                                                        {!allItemsReady && (
-                                                                            <div className="small text-danger mb-2">
-
-                                                                                <strong>
-                                                                                    Waiting:
-                                                                                </strong>{" "}
-
-                                                                                All supplier items must
-                                                                                be Ready before rider
-                                                                                assignment.
-
-                                                                            </div>
-                                                                        )}
-
 
                                                                         {/* -------------------------------------------------
                                                                             RIDER ASSIGNMENT

@@ -6,6 +6,7 @@ from .models import (
     Order,
     OrderItem,
     OrderAddress,
+    OrderStatusHistory,
     Refund,
 )
 
@@ -41,7 +42,6 @@ class OrderItemSerializer(
             "quantity",
             "price",
             "subtotal",
-            "supplier_status",
             "created_at",
         ]
 
@@ -52,6 +52,42 @@ class OrderItemSerializer(
         obj,
     ):
         return obj.subtotal
+
+
+class OrderStatusHistorySerializer(
+    serializers.ModelSerializer
+):
+    changed_by_name = serializers.SerializerMethodField()
+    changed_by_role = serializers.CharField(
+        source="changed_by.role",
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = OrderStatusHistory
+        fields = [
+            "id",
+            "order",
+            "previous_status",
+            "new_status",
+            "changed_by",
+            "changed_by_name",
+            "changed_by_role",
+            "changed_at",
+            "note",
+        ]
+        read_only_fields = fields
+
+    def get_changed_by_name(self, obj):
+        if not obj.changed_by:
+            return "System"
+
+        return (
+            obj.changed_by.get_full_name()
+            or obj.changed_by.username
+            or obj.changed_by.email
+        )
 
 
 # ==========================================================
@@ -97,6 +133,12 @@ class OrderSerializer(
 
     can_request_refund = serializers.SerializerMethodField()
 
+    history = OrderStatusHistorySerializer(
+        many=True,
+        source="status_history",
+        read_only=True,
+    )
+
     class Meta:
 
         model = Order
@@ -118,6 +160,8 @@ class OrderSerializer(
             "total_amount",
 
             "status",
+
+            "history",
 
             "is_paid",
             "can_cancel",
@@ -282,6 +326,17 @@ class OrderCreateSerializer(
     serializers.ModelSerializer
 ):
 
+    buy_now_product = serializers.IntegerField(
+        required=False,
+        write_only=True,
+    )
+
+    buy_now_quantity = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        write_only=True,
+    )
+
     shipping_address = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -354,6 +409,8 @@ class OrderCreateSerializer(
             "street_address",
             "postal_code",
             "delivery_note",
+            "buy_now_product",
+            "buy_now_quantity",
         ]
 
     # ======================================================

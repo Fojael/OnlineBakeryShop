@@ -11,7 +11,8 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsDeliveryRider
 from audit_logs.services import record_audit
 from notifications.models import Notification
-from orders.models import Order, OrderItem
+from orders.models import Order
+from orders.services import record_order_status_change
 from payments.models import Payment
 
 from .models import Delivery
@@ -75,7 +76,6 @@ def order_is_ready_for_delivery(order):
     Conditions:
     1. Parent order status must be Ready.
     2. Order must contain at least one item.
-    3. Every order item must have supplier_status = Ready.
     """
 
     if order.status != Order.STATUS_READY:
@@ -86,9 +86,7 @@ def order_is_ready_for_delivery(order):
     if not items.exists():
         return False
 
-    return not items.exclude(
-        supplier_status=OrderItem.STATUS_READY
-    ).exists()
+    return True
 
 
 # ==========================================================
@@ -133,6 +131,7 @@ class AdminCreateDeliveryView(APIView):
             Order.objects.select_for_update(),
             id=order_id,
         )
+        previous_order_status = order.status
 
         # ------------------------------------------------------
         # Validate assignment request
@@ -202,20 +201,6 @@ class AdminCreateDeliveryView(APIView):
             )
 
         # ------------------------------------------------------
-        # All supplier items must be Ready
-        # ------------------------------------------------------
-
-        if not order_is_ready_for_delivery(order):
-            return Response(
-                {
-                    "detail": (
-                        "All order items must be Ready "
-                        "before assigning a delivery rider."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         # ------------------------------------------------------
         # Get existing delivery
         # ------------------------------------------------------
@@ -250,6 +235,9 @@ class AdminCreateDeliveryView(APIView):
             # If already assigned to the same rider,
             # return the existing assignment.
             if delivery.rider_id == rider.id:
+                if delivery.assigned_at is None:
+                    delivery.assigned_at = timezone.now()
+
                 order.status = Order.STATUS_ASSIGNED
                 order.save(
                     update_fields=[
@@ -257,6 +245,23 @@ class AdminCreateDeliveryView(APIView):
                         "updated_at",
                     ]
                 )
+
+                if previous_order_status != Order.STATUS_ASSIGNED:
+                    record_order_status_change(
+                        order=order,
+                        previous_status=previous_order_status,
+                        new_status=Order.STATUS_ASSIGNED,
+                        changed_by=request.user,
+                        note="Delivery rider assigned by admin.",
+                    )
+
+                if delivery.assigned_at:
+                    delivery.save(
+                        update_fields=[
+                            "assigned_at",
+                            "updated_at",
+                        ]
+                    )
 
                 return Response(
                     DeliverySerializer(
@@ -268,6 +273,7 @@ class AdminCreateDeliveryView(APIView):
             # Change assigned rider before acceptance.
             delivery.rider = rider
             delivery.status = Delivery.STATUS_ASSIGNED
+            delivery.assigned_at = timezone.now()
             delivery.delivery_note = (
                 delivery.delivery_note or ""
             )
@@ -276,6 +282,7 @@ class AdminCreateDeliveryView(APIView):
                 update_fields=[
                     "rider",
                     "status",
+                    "assigned_at",
                     "delivery_note",
                     "updated_at",
                 ]
@@ -290,6 +297,7 @@ class AdminCreateDeliveryView(APIView):
                 order=order,
                 rider=rider,
                 status=Delivery.STATUS_ASSIGNED,
+                assigned_at=timezone.now(),
             )
 
         # ------------------------------------------------------
@@ -303,6 +311,14 @@ class AdminCreateDeliveryView(APIView):
                 "status",
                 "updated_at",
             ]
+        )
+
+        record_order_status_change(
+            order=order,
+            previous_status=previous_order_status,
+            new_status=Order.STATUS_ASSIGNED,
+            changed_by=request.user,
+            note="Delivery rider assigned by admin.",
         )
 
         record_audit(
@@ -633,6 +649,8 @@ class DeliveryStatusUpdateView(APIView):
             )
         )
 
+        previous_order_status = order.status
+
         # ======================================================
         # ASSIGNED → ACCEPTED
         # ======================================================
@@ -730,6 +748,14 @@ class DeliveryStatusUpdateView(APIView):
                 ]
             )
 
+            record_order_status_change(
+                order=order,
+                previous_status=previous_order_status,
+                new_status=Order.STATUS_OUT_FOR_DELIVERY,
+                changed_by=request.user,
+                note="Order marked out for delivery by rider.",
+            )
+
             notify_user(
                 order.customer,
                 "Order Out for Delivery",
@@ -786,6 +812,14 @@ class DeliveryStatusUpdateView(APIView):
                     "status",
                     "updated_at",
                 ]
+            )
+
+            record_order_status_change(
+                order=order,
+                previous_status=previous_order_status,
+                new_status=Order.STATUS_DELIVERED,
+                changed_by=request.user,
+                note="Order delivered by rider.",
             )
 
             notify_user(

@@ -247,6 +247,54 @@ class Order(models.Model):
         )
 
 
+class OrderStatusHistory(models.Model):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="status_history",
+    )
+
+    previous_status = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+
+    new_status = models.CharField(
+        max_length=20,
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_status_changes",
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    note = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    class Meta:
+        ordering = ["changed_at", "id"]
+        indexes = [
+            models.Index(fields=["order", "changed_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"Order #{self.order_id}: "
+            f"{self.previous_status or 'Created'} -> {self.new_status}"
+        )
+
+
 # ==========================================================
 # ORDER ITEM
 # ==========================================================

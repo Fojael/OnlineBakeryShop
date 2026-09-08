@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import MainLayout from "../../layouts/MainLayout";
 import { getOrder } from "../../services/orderService";
 import RefundRequestForm from "../../components/Orders/RefundRequestForm";
+import OrderStatusHistory from "../../components/Orders/OrderStatusHistory";
 
 const ORDER_STEPS = [
     "Pending",
@@ -67,6 +68,7 @@ const OrderDetails = () => {
                                 </p>
                             )}
                         </div>
+                        <OrderStatusHistory history={order.history} />
                         <div className="card border-0 shadow-sm mt-4">
                             <div className="card-header">Items</div>
                             <ul className="list-group list-group-flush">
