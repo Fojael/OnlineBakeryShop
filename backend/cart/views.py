@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from products.models import Product
+from inventory.services import validate_product_quantity
 
 from .models import Cart, CartItem
 from .serializers import CartSerializer
@@ -69,23 +70,12 @@ class CartView(APIView):
             id=product_id,
         )
 
-        if not product.is_available:
+        try:
+            validate_product_quantity(product, quantity)
+        except ValueError as exc:
             return Response(
-                {
-                    "detail": "This product is currently unavailable."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if product.stock_quantity < quantity:
-            return Response(
-                {
-                    "detail": (
-                        f"Only {product.stock_quantity} "
-                        f"items are available."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         cart, _ = (
@@ -109,15 +99,12 @@ class CartView(APIView):
         if not created:
             new_quantity = cart_item.quantity + quantity
 
-            if new_quantity > product.stock_quantity:
+            try:
+                validate_product_quantity(product, new_quantity)
+            except ValueError as exc:
                 return Response(
-                    {
-                        "detail": (
-                            f"Only {product.stock_quantity} "
-                            f"items are available."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             cart_item.quantity = new_quantity
@@ -180,23 +167,12 @@ class CartItemView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not product.is_available:
+        try:
+            validate_product_quantity(product, quantity)
+        except ValueError as exc:
             return Response(
-                {
-                    "detail": "This product is unavailable."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if quantity > product.stock_quantity:
-            return Response(
-                {
-                    "detail": (
-                        f"Only {product.stock_quantity} "
-                        f"items are available."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         cart_item.quantity = quantity

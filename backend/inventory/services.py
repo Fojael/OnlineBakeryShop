@@ -10,6 +10,141 @@ from .models import Inventory, InventoryTransaction
 User = get_user_model()
 
 
+def validate_product_quantity(product, quantity):
+    """Validate a purchase quantity against current product stock."""
+    if not product.is_available:
+        raise ValueError(
+            f"{product.name} is no longer available."
+        )
+
+    if quantity <= 0:
+        raise ValueError(
+            f"Invalid quantity for {product.name}."
+        )
+
+    if product.stock_quantity < quantity:
+        raise ValueError(
+            f"Only {product.stock_quantity} units of "
+            f"{product.name} are available."
+        )
+
+    return True
+
+
+def _get_inventory(product):
+    inventory, _ = Inventory.objects.get_or_create(
+        product=product,
+    )
+    return inventory
+
+
+@transaction.atomic
+def deduct_order_stock(order):
+    """Lock order products and deduct customer-order stock once."""
+    if order.stock_deducted:
+        return False
+
+    order_items = list(
+        order.items
+        .select_related("product")
+        .select_for_update()
+        .all()
+    )
+
+    if not order_items:
+        raise ValueError("Cannot deduct stock for an empty order.")
+
+    for item in order_items:
+        product = item.product
+
+        validate_product_quantity(product, item.quantity)
+
+    for item in order_items:
+        product = item.product
+        previous_stock = product.stock_quantity
+        resulting_stock = previous_stock - item.quantity
+
+        product.stock_quantity = resulting_stock
+        product.is_available = resulting_stock > 0
+        product.save(
+            update_fields=[
+                "stock_quantity",
+                "is_available",
+                "updated_at",
+            ]
+        )
+
+        inventory = _get_inventory(product)
+        InventoryTransaction.objects.create(
+            inventory=inventory,
+            transaction_type=InventoryTransaction.TYPE_STOCK_OUT,
+            quantity=-item.quantity,
+            previous_stock=previous_stock,
+            resulting_stock=resulting_stock,
+            reason=f"Customer order #{order.id}",
+            created_by=order.customer,
+        )
+        notify_low_stock(product, previous_stock)
+
+    order.stock_deducted = True
+    order.save(
+        update_fields=[
+            "stock_deducted",
+            "updated_at",
+        ]
+    )
+    return True
+
+
+@transaction.atomic
+def restore_order_stock(order):
+    """Lock order products and restore deducted stock once."""
+    if not order.stock_deducted:
+        return False
+
+    order_items = list(
+        order.items
+        .select_related("product")
+        .select_for_update()
+        .all()
+    )
+
+    for item in order_items:
+        product = item.product
+        previous_stock = product.stock_quantity
+        resulting_stock = previous_stock + item.quantity
+
+        product.stock_quantity = resulting_stock
+        product.is_available = True
+        product.save(
+            update_fields=[
+                "stock_quantity",
+                "is_available",
+                "updated_at",
+            ]
+        )
+
+        inventory = _get_inventory(product)
+        InventoryTransaction.objects.create(
+            inventory=inventory,
+            transaction_type=InventoryTransaction.TYPE_STOCK_IN,
+            quantity=item.quantity,
+            previous_stock=previous_stock,
+            resulting_stock=resulting_stock,
+            reason=f"Customer order #{order.id} cancellation",
+            created_by=order.customer,
+        )
+
+    order.stock_deducted = False
+    order.save(
+        update_fields=[
+            "stock_deducted",
+            "updated_at",
+        ]
+    )
+    return True
+
+
 def notify_low_stock(product, previous_stock=None):
     inventory = getattr(product, "inventory", None)
     if inventory is None:

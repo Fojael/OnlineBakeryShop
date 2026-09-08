@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 
 from cart.models import Cart, CartItem
 from orders.models import Order, OrderItem
-from inventory.services import notify_low_stock
+from inventory.services import deduct_order_stock
 from accounts.permissions import IsAdmin
 from audit_logs.services import record_audit
 
@@ -253,79 +253,11 @@ def finalize_success(payment, validation):
             "This order contains no items."
         )
 
-    # ======================================================
-    # STOCK CHECK
-    # ======================================================
-
     if not order.stock_deducted:
-
-        for item in order_items:
-
-            product = item.product
-
-            if hasattr(product, "is_active"):
-
-                if not product.is_active:
-
-                    raise SSLCommerzError(
-                        f"{product.name} is no longer available."
-                    )
-
-            if hasattr(product, "is_available"):
-
-                if not product.is_available:
-
-                    raise SSLCommerzError(
-                        f"{product.name} is no longer available."
-                    )
-
-            if item.quantity <= 0:
-
-                raise SSLCommerzError(
-                    f"Invalid quantity for "
-                    f"{product.name}."
-                )
-
-            if product.stock_quantity < item.quantity:
-
-                raise SSLCommerzError(
-                    f"Insufficient stock for "
-                    f"{product.name}."
-                )
-
-        # ==================================================
-        # DEDUCT STOCK
-        # ==================================================
-
-        for item in order_items:
-
-            product = item.product
-
-            previous_stock = product.stock_quantity
-
-            product.stock_quantity -= item.quantity
-
-            update_fields = [
-                "stock_quantity",
-            ]
-
-            if hasattr(product, "is_available"):
-
-                product.is_available = (
-                    product.stock_quantity > 0
-                )
-
-                update_fields.append(
-                    "is_available"
-                )
-
-            product.save(
-                update_fields=update_fields
-            )
-
-            notify_low_stock(product, previous_stock)
-
-        order.stock_deducted = True
+        try:
+            deduct_order_stock(order)
+        except ValueError as exc:
+            raise SSLCommerzError(str(exc)) from exc
 
     # ======================================================
     # REMOVE CART ITEMS
@@ -992,6 +924,21 @@ class AdminPaymentStatusUpdateView(APIView):
         }:
             return Response(
                 {"detail": "Invalid payment status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if (
+            new_status == Payment.STATUS_SUCCESS
+            and payment.order.payment_method
+            == Order.PAYMENT_SSLCOMMERZ
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "SSLCommerz payment success must be confirmed "
+                        "by the gateway callback."
+                    ),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

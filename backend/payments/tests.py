@@ -69,7 +69,7 @@ class AdminPaymentManagementTests(TestCase):
         self.assertIn("results", response.data)
         self.assertGreaterEqual(len(response.data["results"]), 1)
 
-    def test_admin_can_update_payment_status(self):
+    def test_admin_cannot_manually_mark_sslcommerz_success(self):
         self.client.force_authenticate(user=self.admin)
 
         response = self.client.patch(
@@ -81,6 +81,6 @@ class AdminPaymentManagementTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         self.payment.refresh_from_db()
-        self.assertEqual(self.payment.status, Payment.STATUS_SUCCESS)
+        self.assertEqual(self.payment.status, Payment.STATUS_PENDING)

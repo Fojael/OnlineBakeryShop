@@ -23,7 +23,11 @@ from payments.models import Payment
 from payments.services import SSLCommerzError, refund_payment
 from products.models import Product
 from notifications.models import Notification
-from inventory.services import notify_low_stock
+from inventory.services import (
+    deduct_order_stock,
+    restore_order_stock,
+    validate_product_quantity,
+)
 
 from accounts.permissions import (
     IsCustomer,
@@ -69,28 +73,6 @@ User = get_user_model()
 # ==========================================================
 
 DELIVERY_CHARGE = Decimal("60.00")
-
-
-# ==========================================================
-# PRODUCT AVAILABILITY
-# ==========================================================
-
-def product_is_available(product):
-    """
-    Check whether a product can be ordered.
-    """
-
-    if hasattr(product, "is_available"):
-
-        if not product.is_available:
-            return False
-
-    if hasattr(product, "is_active"):
-
-        if not product.is_active:
-            return False
-
-    return True
 
 
 def notify_customer(
@@ -324,7 +306,6 @@ class OrderListCreateView(APIView):
         for product, quantity in line_items:
 
             if product is None:
-
                 return Response(
                     {
                         "detail":
@@ -333,50 +314,15 @@ class OrderListCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if not product_is_available(
-                product,
-            ):
-
+            try:
+                validate_product_quantity(product, quantity)
+            except ValueError as exc:
                 return Response(
-                    {
-                        "detail":
-                            f"{product.name} is no longer available.",
-                    },
+                    {"detail": str(exc)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if quantity <= 0:
-
-                return Response(
-                    {
-                        "detail":
-                            f"Invalid quantity for {product.name}.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if (
-                product.stock_quantity
-                < quantity
-            ):
-
-                return Response(
-                    {
-                        "detail": (
-                            f"Only "
-                            f"{product.stock_quantity} "
-                            f"units of "
-                            f"{product.name} "
-                            "are available."
-                        ),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            subtotal += (
-                product.price
-                * quantity
-            )
+            subtotal += product.price * quantity
 
         # --------------------------------------------------
         # TOTAL
@@ -485,71 +431,23 @@ class OrderListCreateView(APIView):
         # COD
         # --------------------------------------------------
 
-        if (
-            payment_method
-            == Order.PAYMENT_COD
-        ):
-
-            for product, quantity in line_items:
-
-                previous_stock = product.stock_quantity
-
-                product.stock_quantity -= (
-                    quantity
+        if payment_method == Order.PAYMENT_COD:
+            try:
+                deduct_order_stock(order)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-
-                if hasattr(
-                    product,
-                    "is_available",
-                ):
-
-                    product.is_available = (
-                        product.stock_quantity > 0
-                    )
-
-                    product.save(
-                        update_fields=[
-                            "stock_quantity",
-                            "is_available",
-                        ]
-                    )
-
-                else:
-
-                    product.save(
-                        update_fields=[
-                            "stock_quantity",
-                        ]
-                    )
-
-                notify_low_stock(product, previous_stock)
-
-            order.stock_deducted = True
-
-            order.save(
-                update_fields=[
-                    "stock_deducted",
-                    "updated_at",
-                ]
-            )
 
             if cart is not None:
                 CartItem.objects.filter(
                     cart=cart,
                 ).delete()
 
-        # --------------------------------------------------
-        # SSL COMMERZ
-        # --------------------------------------------------
+        elif payment_method == Order.PAYMENT_SSLCOMMERZ:
 
-        elif (
-            payment_method
-            == Order.PAYMENT_SSLCOMMERZ
-        ):
-
-            # Stock is deducted only after
-            # successful online payment.
-
+            # Stock is deducted only after successful payment.
             pass
 
         notify_customer(
@@ -562,6 +460,9 @@ class OrderListCreateView(APIView):
             notification_type=Notification.TYPE_INFO,
         )
 
+        # --------------------------------------------------
+        # RESPONSE
+        # --------------------------------------------------
         # --------------------------------------------------
         # RESPONSE
         # --------------------------------------------------
@@ -856,50 +757,7 @@ class CancelOrderView(APIView):
             == Order.PAYMENT_COD
         ):
 
-            if order.stock_deducted:
-
-                order_items = list(
-                    OrderItem.objects
-                    .select_related(
-                        "product",
-                    )
-                    .select_for_update()
-                    .filter(
-                        order=order,
-                    )
-                )
-
-                for item in order_items:
-
-                    product = item.product
-
-                    product.stock_quantity += (
-                        item.quantity
-                    )
-
-                    if hasattr(
-                        product,
-                        "is_available",
-                    ):
-
-                        product.is_available = True
-
-                        product.save(
-                            update_fields=[
-                                "stock_quantity",
-                                "is_available",
-                            ]
-                        )
-
-                    else:
-
-                        product.save(
-                            update_fields=[
-                                "stock_quantity",
-                            ]
-                        )
-
-                order.stock_deducted = False
+            restore_order_stock(order)
 
             if payment:
 
@@ -1421,57 +1279,8 @@ class AdminOrderUpdateView(APIView):
                 # RESTORE STOCK
                 # ----------------------------------------------
 
-                if (
-                    order.stock_deducted
-                    and order.status in [
-                        Order.STATUS_PENDING,
-                        Order.STATUS_ACCEPTED,
-                        Order.STATUS_PROCESSING,
-                    ]
-                ):
-
-                    order_items = list(
-                        OrderItem.objects
-                        .select_related(
-                            "product",
-                        )
-                        .select_for_update()
-                        .filter(
-                            order=order,
-                        )
-                    )
-
-                    for item in order_items:
-
-                        product = item.product
-
-                        product.stock_quantity += (
-                            item.quantity
-                        )
-
-                        if hasattr(
-                            product,
-                            "is_available",
-                        ):
-
-                            product.is_available = True
-
-                            product.save(
-                                update_fields=[
-                                    "stock_quantity",
-                                    "is_available",
-                                ]
-                            )
-
-                        else:
-
-                            product.save(
-                                update_fields=[
-                                    "stock_quantity",
-                                ]
-                            )
-
-                    order.stock_deducted = False
+                if order.stock_deducted:
+                    restore_order_stock(order)
 
                 # ----------------------------------------------
                 # CANCEL PENDING PAYMENT

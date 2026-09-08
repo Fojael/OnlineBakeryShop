@@ -6,9 +6,13 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from cart.models import Cart, CartItem
 from delivery.models import Delivery
+from inventory.models import InventoryTransaction
+from inventory.services import deduct_order_stock
 from products.models import Product
 from payments.models import Payment
+from payments.views import finalize_success
 from suppliers.models import Supplier
 from .models import (
     Order,
@@ -690,4 +694,151 @@ class BuyNowOrderTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_buy_now_rechecks_stale_stock_at_checkout(self):
+        self.client.force_authenticate(user=self.customer)
+
+        self.product.stock_quantity = 1
+        self.product.save(update_fields=["stock_quantity"])
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 2,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Order.objects.filter(customer=self.customer).exists()
+        )
+
+    def test_cart_checkout_rechecks_stale_stock_at_checkout(self):
+        self.client.force_authenticate(user=self.customer)
+        cart = Cart.objects.create(customer=self.customer)
+        CartItem.objects.create(
+            cart=cart,
+            product=self.product,
+            quantity=3,
+        )
+
+        self.product.stock_quantity = 2
+        self.product.save(update_fields=["stock_quantity"])
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Order.objects.filter(customer=self.customer).exists()
+        )
+
+    def test_duplicate_stock_deduction_is_idempotent_and_records_transaction(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 2,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(customer=self.customer)
+        self.product.refresh_from_db()
+        stock_after_order = self.product.stock_quantity
+
+        self.assertFalse(deduct_order_stock(order))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, stock_after_order)
+        self.assertEqual(
+            InventoryTransaction.objects.filter(
+                reason=f"Customer order #{order.id}",
+            ).count(),
+            1,
+        )
+
+    def test_cancellation_restores_stock_and_records_stock_in(self):
+        self.client.force_authenticate(user=self.customer)
+
+        create_response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_COD,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 2,
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        order = Order.objects.get(customer=self.customer)
+
+        cancel_response = self.client.post(
+            f"/api/orders/{order.id}/cancel/",
+        )
+        self.assertEqual(cancel_response.status_code, 200)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 5)
+        self.assertFalse(
+            Order.objects.get(id=order.id).stock_deducted
+        )
+        self.assertEqual(
+            InventoryTransaction.objects.filter(
+                reason=f"Customer order #{order.id} cancellation",
+            ).count(),
+            1,
+        )
+
+    def test_duplicate_payment_finalization_does_not_deduct_stock_twice(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "shipping_address": "12 Bakery Road, Dhaka",
+                "payment_method": Order.PAYMENT_SSLCOMMERZ,
+                "buy_now_product": self.product.id,
+                "buy_now_quantity": 2,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        order = Order.objects.get(customer=self.customer)
+        payment = order.payment
+        validation = {
+            "tran_id": payment.transaction_id,
+            "currency": payment.currency,
+            "amount": str(payment.amount),
+            "status": "VALID",
+            "risk_level": "0",
+            "val_id": "validation-1",
+            "bank_tran_id": "bank-1",
+        }
+
+        finalize_success(payment, validation)
+        self.product.refresh_from_db()
+        stock_after_first = self.product.stock_quantity
+
+        _, finalized_again = finalize_success(payment, validation)
+        self.product.refresh_from_db()
+
+        self.assertFalse(finalized_again)
+        self.assertEqual(self.product.stock_quantity, stock_after_first)
 
