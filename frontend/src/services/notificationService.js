@@ -60,7 +60,7 @@ export const markAllNotificationsRead =
 
         const response =
             await api.patch(
-                "/notifications/read-all/"
+                "/notifications/mark-all-read/"
             );
 
         return response.data;

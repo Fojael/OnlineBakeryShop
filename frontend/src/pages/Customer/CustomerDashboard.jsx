@@ -6,6 +6,9 @@ import { getCart } from "../../services/cartService";
 import { getOrders } from "../../services/orderService";
 import { getWishlist } from "../../services/wishlistService";
 import { getAddresses } from "../../services/addressService";
+import { getRefunds } from "../../services/refundService";
+import { getNotifications } from "../../services/notificationService";
+import { getProducts } from "../../services/productService";
 
 const CustomerDashboard = () => {
     // ==========================================================
@@ -32,6 +35,9 @@ const CustomerDashboard = () => {
         useState(0);
 
     const [orders, setOrders] = useState([]);
+    const [refundCount, setRefundCount] = useState(0);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [recommendedProducts, setRecommendedProducts] = useState([]);
 
     // ==========================================================
     // LOAD DASHBOARD
@@ -116,6 +122,38 @@ const CustomerDashboard = () => {
                     if (mounted) {
                         setOrders([]);
                     }
+                }
+
+                try {
+                    const [refundResponse, notificationResponse] = await Promise.all([
+                        getRefunds(),
+                        getNotifications(),
+                    ]);
+                    if (mounted) {
+                        setRefundCount(Array.isArray(refundResponse.data) ? refundResponse.data.length : 0);
+                        setUnreadCount(notificationResponse?.unread_count || 0);
+                    }
+                } catch {
+                    if (mounted) {
+                        setRefundCount(0);
+                        setUnreadCount(0);
+                    }
+                }
+
+                try {
+                    const productResponse = await getProducts({
+                        availability: "in_stock",
+                        ordering: "-created_at",
+                        page_size: 4,
+                    });
+                    const productData = productResponse.data;
+                    if (mounted) {
+                        setRecommendedProducts(
+                            (Array.isArray(productData) ? productData : productData.results || []).slice(0, 4)
+                        );
+                    }
+                } catch {
+                    if (mounted) setRecommendedProducts([]);
                 }
 
                 // ==================================================
@@ -329,6 +367,16 @@ const CustomerDashboard = () => {
 
                 </div>
 
+                <div className="col-md-6 col-lg-3">
+                    <div className="card border-0 shadow-sm h-100 text-center">
+                        <div className="card-body">
+                            <h1>↩</h1>
+                            <h2 className="fw-bold">{refundCount}</h2>
+                            <p className="text-muted mb-0">Refunds</p>
+                        </div>
+                    </div>
+                </div>
+
                 {/* ==================================================
                     CART
                 ================================================== */}
@@ -388,6 +436,28 @@ const CustomerDashboard = () => {
 
                 </div>
 
+            </div>
+
+            <div className="row g-4 mb-5">
+                <div className="col-md-6">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <h5>Order overview</h5>
+                            <p className="mb-1">Pending orders: <strong>{orders.filter((order) => ["Pending", "Accepted", "Processing", "Ready"].includes(order.status)).length}</strong></p>
+                            <p className="mb-0">Delivered orders: <strong>{orders.filter((order) => order.status === "Delivered").length}</strong></p>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-md-6">
+                    <Link to="/notifications" className="text-decoration-none text-dark">
+                        <div className="card border-0 shadow-sm h-100">
+                            <div className="card-body">
+                                <h5>Notifications</h5>
+                                <p className="mb-0">{unreadCount} unread notification{unreadCount === 1 ? "" : "s"}</p>
+                            </div>
+                        </div>
+                    </Link>
+                </div>
             </div>
 
             {/* ==================================================
@@ -666,6 +736,32 @@ const CustomerDashboard = () => {
                 </div>
 
             </div>
+
+            {recommendedProducts.length > 0 && (
+                <section className="mt-5" aria-labelledby="recommended-products-title">
+                    <h4 id="recommended-products-title" className="mb-3">Recommended Products</h4>
+                    <div className="row g-3">
+                        {recommendedProducts.map((product) => (
+                            <div className="col-6 col-lg-3" key={product.id}>
+                                <Link to={`/products/${product.id}`} className="text-decoration-none text-dark">
+                                    <article className="card border-0 shadow-sm h-100">
+                                        <img
+                                            src={product.image?.startsWith("http") ? product.image : product.image ? `http://127.0.0.1:8000${product.image}` : "https://placehold.co/320x200?text=Bakery"}
+                                            alt={product.name}
+                                            height="150"
+                                            className="card-img-top object-fit-cover"
+                                        />
+                                        <div className="card-body">
+                                            <h6 className="mb-1">{product.name}</h6>
+                                            <strong className="text-primary">৳{Number(product.price).toFixed(2)}</strong>
+                                        </div>
+                                    </article>
+                                </Link>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
 
         </div>
     );

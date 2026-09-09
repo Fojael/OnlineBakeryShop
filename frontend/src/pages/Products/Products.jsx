@@ -86,6 +86,12 @@ const Products = () => {
     const [sort, setSort] =
         useState("default");
 
+    const [minPrice, setMinPrice] = useState("");
+    const [maxPrice, setMaxPrice] = useState("");
+    const [availability, setAvailability] = useState("in_stock");
+    const [page, setPage] = useState(1);
+    const [pageCount, setPageCount] = useState(1);
+
     // ========================================================
     // AUTH
     // ========================================================
@@ -102,13 +108,25 @@ const Products = () => {
         async () => {
             try {
                 const response =
-                    await getProducts();
+                    await getProducts({
+                        search,
+                        category: category === "All" ? "" : category,
+                        min_price: minPrice || undefined,
+                        max_price: maxPrice || undefined,
+                        availability,
+                        ordering: sort === "default"
+                            ? "-created_at"
+                            : sort === "lowToHigh"
+                                ? "price"
+                                : sort === "highToLow"
+                                    ? "-price"
+                                    : "name",
+                        page,
+                    });
 
-                setProducts(
-                    Array.isArray(response.data)
-                        ? response.data
-                        : []
-                );
+                const data = response.data;
+                setProducts(Array.isArray(data) ? data : data.results || []);
+                setPageCount(data.count ? Math.max(1, Math.ceil(data.count / 12)) : 1);
             } catch (error) {
                 console.error(error);
 
@@ -120,7 +138,7 @@ const Products = () => {
                 setProducts([]);
             }
         },
-        []
+        [availability, category, maxPrice, minPrice, page, search, sort]
     );
 
     // ========================================================
@@ -199,81 +217,17 @@ const Products = () => {
     // FILTERED PRODUCTS
     // ========================================================
 
-    const filteredProducts = useMemo(() => {
+    const filteredProducts = products;
 
-        let list = [...products];
-
-        // Search
-
-        if (search.trim()) {
-
-            const keyword =
-                search.toLowerCase();
-
-            list = list.filter((product) =>
-                product.name
-                    .toLowerCase()
-                    .includes(keyword)
-            );
-        }
-
-        // Category
-
-        if (category !== "All") {
-
-            list = list.filter(
-                (product) =>
-                    product.category.toLowerCase() ===
-                    category.toLowerCase()
-            );
-        }
-
-        // Sorting
-
-        switch (sort) {
-
-            case "lowToHigh":
-
-                list.sort(
-                    (a, b) =>
-                        Number(a.price) -
-                        Number(b.price)
-                );
-
-                break;
-
-            case "highToLow":
-
-                list.sort(
-                    (a, b) =>
-                        Number(b.price) -
-                        Number(a.price)
-                );
-
-                break;
-
-            case "name":
-
-                list.sort((a, b) =>
-                    a.name.localeCompare(
-                        b.name
-                    )
-                );
-
-                break;
-
-            default:
-                break;
-        }
-
-        return list;
-
-    }, [
-        products,
-        search,
-        category,
-        sort,
-    ]);
+    const clearFilters = () => {
+        setSearch("");
+        setCategory("All");
+        setMinPrice("");
+        setMaxPrice("");
+        setAvailability("in_stock");
+        setSort("default");
+        setPage(1);
+    };
     // ========================================================
 // IMAGE URL
 // ========================================================
@@ -523,9 +477,10 @@ return (
                     className="form-control"
                     placeholder="Search bakery products..."
                     value={search}
-                    onChange={(e) =>
-                        setSearch(e.target.value)
-                    }
+                    onChange={(e) => {
+                        setSearch(e.target.value);
+                        setPage(1);
+                    }}
                 />
 
             </div>
@@ -537,9 +492,10 @@ return (
                 <select
                     className="form-select"
                     value={category}
-                    onChange={(e) =>
-                        setCategory(e.target.value)
-                    }
+                    onChange={(e) => {
+                        setCategory(e.target.value);
+                        setPage(1);
+                    }}
                 >
                     <option value="All">
                         All Categories
@@ -584,9 +540,10 @@ return (
                 <select
                     className="form-select"
                     value={sort}
-                    onChange={(e) =>
-                        setSort(e.target.value)
-                    }
+                    onChange={(e) => {
+                        setSort(e.target.value);
+                        setPage(1);
+                    }}
                 >
 
                     <option value="default">
@@ -607,6 +564,54 @@ return (
 
                 </select>
 
+            </div>
+
+            <div className="col-md-3">
+                <input
+                    type="number"
+                    min="0"
+                    className="form-control"
+                    placeholder="Min price"
+                    value={minPrice}
+                    onChange={(event) => {
+                        setMinPrice(event.target.value);
+                        setPage(1);
+                    }}
+                />
+            </div>
+
+            <div className="col-md-3">
+                <input
+                    type="number"
+                    min="0"
+                    className="form-control"
+                    placeholder="Max price"
+                    value={maxPrice}
+                    onChange={(event) => {
+                        setMaxPrice(event.target.value);
+                        setPage(1);
+                    }}
+                />
+            </div>
+
+            <div className="col-md-3">
+                <select
+                    className="form-select"
+                    value={availability}
+                    onChange={(event) => {
+                        setAvailability(event.target.value);
+                        setPage(1);
+                    }}
+                >
+                    <option value="in_stock">In Stock</option>
+                    <option value="low_stock">Low Stock</option>
+                </select>
+            </div>
+
+            <div className="col-md-3">
+                <button type="button" className="btn btn-outline-secondary w-100" onClick={clearFilters}>
+                    Clear Filters
+                </button>
             </div>
 
         </div>
@@ -778,6 +783,28 @@ return (
                                         </Link>
 
                                     </div>
+
+                                    {pageCount > 1 && (
+                                        <div className="d-flex justify-content-center align-items-center gap-3 mt-3">
+                                            <button
+                                                type="button"
+                                                className="btn btn-outline-primary"
+                                                disabled={page <= 1}
+                                                onClick={() => setPage((current) => current - 1)}
+                                            >
+                                                Previous
+                                            </button>
+                                            <span className="text-muted">Page {page} of {pageCount}</span>
+                                            <button
+                                                type="button"
+                                                className="btn btn-outline-primary"
+                                                disabled={page >= pageCount}
+                                                onClick={() => setPage((current) => current + 1)}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    )}
 
                                 </div>
                                 {/* End Card Body */}

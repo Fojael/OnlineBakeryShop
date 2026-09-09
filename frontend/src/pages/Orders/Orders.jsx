@@ -1,7 +1,6 @@
 import {
     useCallback,
     useEffect,
-    useMemo,
     useState,
 } from "react";
 
@@ -27,6 +26,9 @@ const Orders = () => {
     const [cancellingId, setCancellingId] = useState(null);
     const [expandedOrder, setExpandedOrder] = useState(null);
     const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("");
+    const [page, setPage] = useState(1);
+    const [pageCount, setPageCount] = useState(1);
     const [refundOrderId, setRefundOrderId] = useState(null);
 
 
@@ -40,7 +42,11 @@ const Orders = () => {
 
             setLoading(true);
 
-            const response = await getOrders();
+            const response = await getOrders({
+                page,
+                search: search || undefined,
+                status: statusFilter || undefined,
+            });
 
             const data = response?.data;
 
@@ -62,12 +68,14 @@ const Orders = () => {
             if (Array.isArray(data)) {
 
                 setOrders(data);
+                setPageCount(1);
 
             } else if (
                 Array.isArray(data?.results)
             ) {
 
                 setOrders(data.results);
+                setPageCount(data.count ? Math.max(1, Math.ceil(data.count / 10)) : 1);
 
             } else {
 
@@ -124,7 +132,7 @@ const Orders = () => {
 
         }
 
-    }, []);
+    }, [page, search, statusFilter]);
 
 
     // =========================================================
@@ -152,64 +160,7 @@ const Orders = () => {
     // SEARCH ORDERS
     // =========================================================
 
-    const filteredOrders = useMemo(() => {
-
-        const keyword =
-            search.trim().toLowerCase();
-
-        if (!keyword) {
-
-            return orders;
-
-        }
-
-        return orders.filter((order) => {
-
-            const orderNumber =
-                `ORD${String(
-                    order.id
-                ).padStart(3, "0")}`;
-
-            return (
-
-                orderNumber
-                    .toLowerCase()
-                    .includes(keyword)
-
-                ||
-
-                String(order.id)
-                    .includes(keyword)
-
-                ||
-
-                String(
-                    order.status || ""
-                )
-                    .toLowerCase()
-                    .includes(keyword)
-
-                ||
-
-                String(
-                    order.payment_method || ""
-                )
-                    .toLowerCase()
-                    .includes(keyword)
-
-                ||
-
-                String(
-                    order.payment_status || ""
-                )
-                    .toLowerCase()
-                    .includes(keyword)
-
-            );
-
-        });
-
-    }, [orders, search]);
+    const filteredOrders = orders;
 
 
     // =========================================================
@@ -398,16 +349,40 @@ const Orders = () => {
                         className="form-control"
                         placeholder="Search order..."
                         value={search}
-                        onChange={(e) =>
-                            setSearch(
-                                e.target.value
-                            )
-                        }
+                        onChange={(e) => {
+                            setSearch(e.target.value);
+                            setPage(1);
+                        }}
                     />
 
                 </div>
 
+                <div className="d-flex gap-2" style={{ maxWidth: "420px", width: "100%" }}>
+                    <select className="form-select" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+                        <option value="">All statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Accepted">Accepted</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Ready">Ready</option>
+                        <option value="Assigned">Assigned</option>
+                        <option value="Out for Delivery">Out for Delivery</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                    <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(""); setStatusFilter(""); setPage(1); }}>
+                        Clear
+                    </button>
+                </div>
+
             </div>
+
+            {pageCount > 1 && (
+                <div className="d-flex justify-content-center align-items-center gap-3 mt-3">
+                    <button type="button" className="btn btn-outline-primary" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button>
+                    <span className="text-muted">Page {page} of {pageCount}</span>
+                    <button type="button" className="btn btn-outline-primary" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</button>
+                </div>
+            )}
 
 
             {/* =================================================

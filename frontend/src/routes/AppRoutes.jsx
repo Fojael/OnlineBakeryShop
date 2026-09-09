@@ -388,6 +388,10 @@ const AppRoutes = () => {
                 }
             />
 
+            <Route path="/payment/success" element={<ProtectedRoute allowedRoles={["CUSTOMER"]}><PaymentSuccess /></ProtectedRoute>} />
+            <Route path="/payment/failed" element={<ProtectedRoute allowedRoles={["CUSTOMER"]}><PaymentFailed /></ProtectedRoute>} />
+            <Route path="/payment/cancelled" element={<ProtectedRoute allowedRoles={["CUSTOMER"]}><PaymentCancelled /></ProtectedRoute>} />
+
 
             {/* ==================================================
                 CUSTOMER DASHBOARD

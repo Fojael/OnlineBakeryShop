@@ -39,6 +39,9 @@ const OrderDetails = () => {
     const [order, setOrder] = useState(null);
     const [error, setError] = useState("");
     const [cancelling, setCancelling] = useState(false);
+    const [showCancellationFlow, setShowCancellationFlow] = useState(false);
+    const [cancellationReason, setCancellationReason] = useState("");
+    const [cancellationError, setCancellationError] = useState("");
 
     const loadOrder = useCallback(async () => {
         try {
@@ -61,23 +64,45 @@ const OrderDetails = () => {
         return () => window.clearTimeout(timer);
     }, [loadOrder]);
 
+    const openCancellationFlow = () => {
+        setCancellationError("");
+        setCancellationReason("");
+        setShowCancellationFlow(true);
+    };
+
     const handleCancel = async () => {
         if (!order?.can_cancel || cancelling) return;
-        if (!window.confirm("Are you sure you want to cancel this order?")) return;
+        if (!cancellationReason) {
+            setCancellationError("Select a reason before confirming cancellation.");
+            return;
+        }
+
+        if (!window.confirm(`Cancel this order because: ${cancellationReason}?`)) return;
 
         try {
             setCancelling(true);
+            setCancellationError("");
             await cancelOrder(order.id);
             toast.success("Order cancelled successfully.");
+            setShowCancellationFlow(false);
             await loadOrder();
         } catch (requestError) {
-            toast.error(
-                requestError.response?.data?.detail ||
-                "Failed to cancel order."
-            );
+            const message = requestError.response?.data?.detail || "Failed to cancel order.";
+            setCancellationError(message);
+            toast.error(message);
         } finally {
             setCancelling(false);
         }
+    };
+
+    const cancellationEligibilityMessage = () => {
+        if (order?.can_cancel) return "This order is currently eligible for cancellation.";
+        if (order?.status === "Cancelled") return "This order has already been cancelled.";
+        if (order?.status === "Delivered") return "Delivered orders cannot be cancelled.";
+        if (!["Pending", "Accepted", "Processing"].includes(order?.status)) {
+            return "This order can no longer be cancelled at its current status.";
+        }
+        return "This order is outside the cancellation policy or has a payment restriction.";
     };
 
     return (
@@ -160,9 +185,44 @@ const OrderDetails = () => {
                                         </span>
                                     </div>
                                     {order.can_cancel && (
-                                        <button type="button" className="btn btn-outline-danger btn-sm mb-3" onClick={handleCancel} disabled={cancelling}>
-                                            {cancelling ? "Cancelling..." : "Cancel Order"}
+                                        <button type="button" className="btn btn-outline-danger btn-sm mb-3" onClick={openCancellationFlow} disabled={cancelling}>
+                                            Cancel Order
                                         </button>
+                                    )}
+                                    <p className={`small ${order.can_cancel ? "text-success" : "text-muted"}`}>
+                                        {cancellationEligibilityMessage()}
+                                    </p>
+                                    {showCancellationFlow && order.can_cancel && (
+                                        <div className="border rounded p-3 mt-2">
+                                            <div className="small text-muted mb-2">Step 1 of 3: Eligibility confirmed by the server.</div>
+                                            <label className="form-label" htmlFor="cancellation-reason">Step 2 of 3: Why are you cancelling?</label>
+                                            <select
+                                                id="cancellation-reason"
+                                                className="form-select mb-3"
+                                                value={cancellationReason}
+                                                onChange={(event) => {
+                                                    setCancellationReason(event.target.value);
+                                                    setCancellationError("");
+                                                }}
+                                                disabled={cancelling}
+                                            >
+                                                <option value="">Select a reason</option>
+                                                <option value="I placed the order by mistake">I placed the order by mistake</option>
+                                                <option value="I no longer need the items">I no longer need the items</option>
+                                                <option value="I need to change the order">I need to change the order</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                            {cancellationError && <div className="alert alert-danger py-2">{cancellationError}</div>}
+                                            <div className="small text-muted mb-2">Step 3 of 3: The backend will re-check eligibility before cancelling.</div>
+                                            <div className="d-flex gap-2">
+                                                <button type="button" className="btn btn-danger btn-sm" onClick={handleCancel} disabled={cancelling}>
+                                                    {cancelling ? "Cancelling..." : "Confirm Cancellation"}
+                                                </button>
+                                                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowCancellationFlow(false)} disabled={cancelling}>
+                                                    Keep Order
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
                                     <div className="d-flex justify-content-between align-items-center gap-3">
                                         <span>Refund status</span>

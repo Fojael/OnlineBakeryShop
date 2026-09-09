@@ -5,10 +5,11 @@ import api from "./api";
 // GET ALL PRODUCTS
 // ==========================================================
 
-export const getProducts = () => {
+export const getProducts = (params = {}) => {
 
     return api.get(
-        "/products/"
+        "/products/",
+        { params }
     );
 
 };

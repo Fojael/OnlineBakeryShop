@@ -2,9 +2,13 @@ import {
     Link,
     useSearchParams,
 } from "react-router-dom";
+import { useState } from "react";
+import { toast } from "react-toastify";
+import { retryPayment } from "../../services/paymentService";
 
 
 const PaymentCancelled = () => {
+    const [retrying, setRetrying] = useState(false);
 
     const [
         searchParams,
@@ -17,6 +21,21 @@ const PaymentCancelled = () => {
 
     const transactionId =
         searchParams.get("tran_id");
+
+    const handleRetry = async () => {
+        if (!orderId || retrying) return;
+        try {
+            setRetrying(true);
+            const response = await retryPayment(orderId);
+            const gatewayUrl = response?.gateway_url || response?.data?.gateway_url;
+            if (!gatewayUrl) throw new Error("Payment gateway URL was not returned.");
+            window.location.href = gatewayUrl;
+        } catch (error) {
+            toast.error(error.response?.data?.detail || "Unable to retry payment.");
+        } finally {
+            setRetrying(false);
+        }
+    };
 
 
     return (
@@ -83,6 +102,12 @@ const PaymentCancelled = () => {
 
 
                             <div className="d-flex gap-2 justify-content-center mt-4">
+
+                                {orderId && (
+                                    <button type="button" className="btn btn-primary" onClick={handleRetry} disabled={retrying}>
+                                        {retrying ? "Retrying..." : "Retry Payment"}
+                                    </button>
+                                )}
 
                                 {orderId && (
 

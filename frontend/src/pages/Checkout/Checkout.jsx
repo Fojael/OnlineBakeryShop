@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     useLocation,
     useNavigate,
@@ -8,6 +8,8 @@ import { toast } from "react-toastify";
 
 import { createOrder } from "../../services/orderService";
 import { createPayment } from "../../services/paymentService";
+import { getAddresses } from "../../services/addressService";
+import { getCart } from "../../services/cartService";
 
 // ============================================================
 // INITIAL ADDRESS
@@ -62,6 +64,8 @@ const Checkout = () => {
     const [addressForm, setAddressForm] = useState(
         initialAddress
     );
+    const [savedAddresses, setSavedAddresses] = useState([]);
+    const [selectedAddressId, setSelectedAddressId] = useState("");
 
     // IMPORTANT:
     // Backend values are:
@@ -70,6 +74,64 @@ const Checkout = () => {
     const [paymentMethod, setPaymentMethod] = useState("COD");
 
     const [loading, setLoading] = useState(false);
+    const [cartSnapshot, setCartSnapshot] = useState(null);
+    const [cartSnapshotError, setCartSnapshotError] = useState("");
+
+    useEffect(() => {
+        let mounted = true;
+        getAddresses()
+            .then((response) => {
+                if (mounted) setSavedAddresses(response.data || []);
+            })
+            .catch(() => {
+                if (mounted) setSavedAddresses([]);
+            });
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (isBuyNow) return undefined;
+        let mounted = true;
+        getCart()
+            .then((response) => {
+                if (mounted) setCartSnapshot(response.data);
+            })
+            .catch((error) => {
+                if (mounted) {
+                    setCartSnapshotError(
+                        error.response?.data?.detail ||
+                        "Unable to refresh your cart."
+                    );
+                }
+            });
+        return () => {
+            mounted = false;
+        };
+    }, [isBuyNow]);
+
+    const selectSavedAddress = (event) => {
+        const addressId = event.target.value;
+        setSelectedAddressId(addressId);
+        const address = savedAddresses.find(
+            (item) => String(item.id) === addressId
+        );
+        if (!address) return;
+        setAddressForm({
+            full_name: address.full_name || "",
+            phone: address.phone || "",
+            email: addressForm.email,
+            division: address.division || "",
+            district: address.district || "",
+            city: address.upazila || "",
+            area: address.upazila || "",
+            street_address: address.address_line || "",
+            postal_code: address.postal_code || "",
+            delivery_note: "",
+        });
+        setShippingAddress("");
+    };
 
 
     // ========================================================
@@ -525,7 +587,9 @@ const Checkout = () => {
 
 
             toast.error(
-                backendMessage
+                backendMessage.includes("stock") || backendMessage.includes("available")
+                    ? `${backendMessage} Please return to your cart and review the updated stock.`
+                    : backendMessage
             );
 
         } finally {
@@ -555,6 +619,21 @@ const Checkout = () => {
                                 Checkout
                             </h2>
 
+                            {cartSnapshotError && (
+                                <div className="alert alert-warning">{cartSnapshotError}</div>
+                            )}
+                            {!isBuyNow && cartSnapshot && (
+                                <div className="alert alert-light border mb-4">
+                                    <div className="d-flex justify-content-between">
+                                        <span>Current cart subtotal</span>
+                                        <strong>৳{Number(cartSnapshot.total_amount || 0).toFixed(2)}</strong>
+                                    </div>
+                                    <small className="text-muted">
+                                        Final price, stock, delivery charge, and total are calculated by the server when you place the order.
+                                    </small>
+                                </div>
+                            )}
+
 
                             {/* ==================================================
                                 SHIPPING ADDRESS
@@ -573,6 +652,29 @@ const Checkout = () => {
                                     </small>
 
                                 </div>
+
+                                {savedAddresses.length > 0 && (
+                                    <div className="mb-3">
+                                        <label className="form-label" htmlFor="saved-address">
+                                            Use a saved address
+                                        </label>
+                                        <select
+                                            id="saved-address"
+                                            className="form-select"
+                                            value={selectedAddressId}
+                                            onChange={selectSavedAddress}
+                                            disabled={loading}
+                                        >
+                                            <option value="">Enter a new address</option>
+                                            {savedAddresses.map((address) => (
+                                                <option key={address.id} value={address.id}>
+                                                    {address.full_name} - {address.address_line}
+                                                    {address.is_default ? " (Default)" : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
 
 
                                 <div className="row g-3">

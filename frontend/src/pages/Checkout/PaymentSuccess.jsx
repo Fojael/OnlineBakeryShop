@@ -1,5 +1,6 @@
 import {
     useEffect,
+    useState,
 } from "react";
 
 import {
@@ -10,10 +11,10 @@ import {
 import {
     toast,
 } from "react-toastify";
+import { getPaymentStatus } from "../../services/paymentService";
 
 
 const PaymentSuccess = () => {
-
     const [
         searchParams,
     ] = useSearchParams();
@@ -30,14 +31,24 @@ const PaymentSuccess = () => {
     const transactionId =
         searchParams.get("tran_id");
 
+    const [verification, setVerification] = useState({
+        loading: Boolean(orderId),
+        confirmed: false,
+        error: "",
+    });
+
 
     useEffect(() => {
+        if (!orderId) return;
+        getPaymentStatus(orderId)
+            .then((response) => {
+                const confirmed = response.data?.status === "Success";
+                setVerification({ loading: false, confirmed, error: confirmed ? "" : "Payment is still being verified." });
+                if (confirmed) toast.success("Payment completed successfully.");
+            })
+            .catch((error) => setVerification({ loading: false, confirmed: false, error: error.response?.data?.detail || "Unable to verify payment status." }));
 
-        toast.success(
-            "Payment completed successfully."
-        );
-
-    }, []);
+    }, [orderId]);
 
 
     return (
@@ -60,13 +71,12 @@ const PaymentSuccess = () => {
 
 
                             <h2 className="mb-3">
-                                Payment Successful
+                                {verification.loading ? "Verifying Payment" : verification.confirmed ? "Payment Successful" : "Payment Verification Pending"}
                             </h2>
 
 
                             <p className="text-muted">
-                                Your payment has been
-                                successfully processed.
+                                {verification.loading ? "Confirming the gateway result with the server." : verification.error || "Your payment has been successfully processed."}
                             </p>
 
 

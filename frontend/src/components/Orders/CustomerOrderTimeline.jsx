@@ -1,11 +1,62 @@
-const ORDER_STEPS = [
-    "Pending",
-    "Accepted",
-    "Processing",
-    "Ready",
-    "Assigned",
-    "Out for Delivery",
-    "Delivered",
+const TIMELINE_STEPS = [
+    {
+        key: "placed",
+        label: "Order Placed",
+        description: "Your order has been received.",
+        historyStatus: "Pending",
+    },
+    {
+        key: "accepted",
+        label: "Accepted",
+        description: "The bakery has accepted your order.",
+        historyStatus: "Accepted",
+    },
+    {
+        key: "processing",
+        label: "Processing",
+        description: "Your order is being prepared.",
+        historyStatus: "Processing",
+    },
+    {
+        key: "ready",
+        label: "Ready",
+        description: "Your order is ready for delivery assignment.",
+        historyStatus: "Ready",
+    },
+    {
+        key: "assigned",
+        label: "Rider Assigned",
+        description: "A delivery rider has been assigned.",
+        timestamp: "assigned_at",
+    },
+    {
+        key: "accepted_delivery",
+        label: "Delivery Accepted",
+        description: "The rider has accepted the delivery.",
+        timestamp: "accepted_at",
+        deliveryStatus: "ACCEPTED",
+    },
+    {
+        key: "picked_up",
+        label: "Picked Up",
+        description: "The rider has collected your order.",
+        timestamp: "picked_up_at",
+        deliveryStatus: "PICKED_UP",
+    },
+    {
+        key: "out_for_delivery",
+        label: "Out for Delivery",
+        description: "Your order is on its way.",
+        timestamp: "out_for_delivery_at",
+        deliveryStatus: "OUT_FOR_DELIVERY",
+    },
+    {
+        key: "delivered",
+        label: "Delivered",
+        description: "Your order has been delivered.",
+        historyStatus: "Delivered",
+        timestamp: "delivered_at",
+    },
 ];
 
 const formatDateTime = (value) => (
@@ -17,18 +68,46 @@ const CustomerOrderTimeline = ({ order }) => {
         entries.set(entry.new_status, entry);
         return entries;
     }, new Map());
-    const currentIndex = ORDER_STEPS.indexOf(order.status);
-    const riderVisible = currentIndex >= ORDER_STEPS.indexOf("Assigned");
+    const deliveryTimestamps = order.delivery_timestamps || {};
+    const completedSteps = TIMELINE_STEPS.map((step) => {
+        const historyEntry = step.historyStatus
+            ? historyByStatus.get(step.historyStatus)
+            : null;
+        const timestamp = step.key === "placed"
+            ? order.created_at
+            : step.timestamp
+            ? deliveryTimestamps[step.timestamp]
+            : historyEntry?.changed_at;
+        const isCompleted = Boolean(timestamp);
+
+        return {
+            ...step,
+            historyEntry,
+            timestamp,
+            isCompleted,
+        };
+    });
+    const currentIndex = completedSteps.reduce(
+        (lastIndex, step, index) => (step.isCompleted ? index : lastIndex),
+        -1,
+    );
+    const currentDeliveryStatus = order.delivery_status;
+    const currentStepIndex = completedSteps.findIndex(
+        (step) => step.deliveryStatus === currentDeliveryStatus,
+    );
+    const activeIndex = currentStepIndex >= 0 ? currentStepIndex : currentIndex;
 
     return (
         <section className="card border-0 shadow-sm mt-4" aria-labelledby="tracking-title">
             <div className="card-body">
-                <h5 id="tracking-title" className="mb-4">Delivery tracking</h5>
+                <h5 id="tracking-title" className="mb-1">Order tracking</h5>
+                <p className="text-muted small mb-4">
+                    Progress is updated from the bakery and delivery service.
+                </p>
                 <ol className="list-unstyled mb-0">
-                    {ORDER_STEPS.map((step, index) => {
-                        const historyEntry = historyByStatus.get(step);
-                        const isCurrent = step === order.status;
-                        const isComplete = index < currentIndex;
+                    {completedSteps.map((step, index) => {
+                        const isCurrent = index === activeIndex;
+                        const isComplete = step.isCompleted;
                         const stateClass = isCurrent
                             ? "border-primary bg-primary-subtle"
                             : isComplete
@@ -46,19 +125,16 @@ const CustomerOrderTimeline = ({ order }) => {
                                 </div>
                                 <div className="flex-grow-1">
                                     <div className="d-flex flex-wrap justify-content-between gap-2">
-                                        <strong>{step}</strong>
+                                        <strong>{step.label}</strong>
                                         <small className="text-muted">
-                                            {formatDateTime(
-                                                isComplete || isCurrent
-                                                    ? historyEntry?.changed_at
-                                                    : null
-                                            )}
+                                            {isComplete ? formatDateTime(step.timestamp) : "Not reached yet"}
                                         </small>
                                     </div>
                                     <div className="small text-muted">
                                         {isCurrent ? "Current step" : isComplete ? "Completed" : "Upcoming"}
                                     </div>
-                                    {isCurrent && riderVisible && order.rider_name && (
+                                    <div className="small mt-1">{step.description}</div>
+                                    {isCurrent && order.rider_name && index >= 4 && (
                                         <div className="small mt-1">
                                             Rider: {order.rider_name}
                                         </div>
@@ -68,6 +144,11 @@ const CustomerOrderTimeline = ({ order }) => {
                         );
                     })}
                 </ol>
+                {order.status === "Cancelled" && (
+                    <div className="alert alert-danger mt-3 mb-0">
+                        This order was cancelled. No further delivery steps will be completed.
+                    </div>
+                )}
             </div>
         </section>
     );

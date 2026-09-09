@@ -5,8 +5,8 @@ import api from "./api";
 // CUSTOMER - GET ALL ORDERS
 // ============================================================
 
-export const getOrders = async () => {
-    return api.get("/orders/");
+export const getOrders = async (params = {}) => {
+    return api.get("/orders/", { params });
 };
 
 

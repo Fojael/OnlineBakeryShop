@@ -267,6 +267,11 @@ const Wishlist = () => {
 
                 {items.map((item) => {
 
+                    const available = Boolean(
+                        item.product?.is_available
+                        && Number(item.product?.stock_quantity || 0) > 0
+                    );
+
                     const image =
                         item.product.image
                             ? item.product.image.startsWith(
@@ -338,6 +343,12 @@ const Wishlist = () => {
 
                                     </h4>
 
+                                    {!available && (
+                                        <span className="badge bg-secondary">
+                                            Currently unavailable
+                                        </span>
+                                    )}
+
                                 </div>
 
                                 <div className="card-footer bg-white d-grid gap-2">
@@ -345,6 +356,7 @@ const Wishlist = () => {
                                     <button
                                         className="btn btn-success"
                                         disabled={
+                                            !available ||
                                             addingId ===
                                             item.id
                                         }

@@ -7,6 +7,7 @@ from django.db.models import (
     Sum,
     Count,
     F,
+    Q,
     DecimalField,
     ExpressionWrapper,
 )
@@ -18,12 +19,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.pagination import PageNumberPagination
 
 from cart.models import Cart, CartItem
 from payments.models import Payment
 from payments.services import SSLCommerzError, refund_payment
 from products.models import Product
 from notifications.models import Notification
+from notifications.services import create_notification
 from inventory.services import (
     deduct_order_stock,
     restore_order_stock,
@@ -90,6 +93,7 @@ def notify_customer(
     title,
     message,
     notification_type,
+    related_order=None,
 ):
     """
     Send notification to customer.
@@ -98,11 +102,12 @@ def notify_customer(
     if not customer:
         return None
 
-    return Notification.objects.create(
+    return create_notification(
         recipient=customer,
         title=title,
         message=message,
         notification_type=notification_type,
+        related_order=related_order,
     )
 
 
@@ -111,6 +116,7 @@ def notify_user(
     title,
     message,
     notification_type,
+    related_order=None,
 ):
     """
     Safely create a notification.
@@ -124,11 +130,12 @@ def notify_user(
 
     try:
 
-        return Notification.objects.create(
+        return create_notification(
             recipient=recipient,
             title=title,
             message=message,
             notification_type=notification_type,
+            related_order=related_order,
         )
 
     except Exception:
@@ -178,6 +185,7 @@ def notify_refund_customer(refund, status, detail=""):
         title=title,
         message=message,
         notification_type=notification_type,
+        related_order=refund.order,
     )
 
 
@@ -217,18 +225,45 @@ class OrderListCreateView(APIView):
             )
         )
 
-        serializer = OrderSerializer(
-            orders,
-            many=True,
-            context={
-                "request": request,
-            },
-        )
+        search = request.query_params.get("search", "").strip()
+        status_filter = request.query_params.get("status", "").strip()
+        if search:
+            if not search.isdigit():
+                return Response(
+                    {"count": 0, "next": None, "previous": None, "results": []},
+                    status=status.HTTP_200_OK,
+                )
+            orders = orders.filter(id=int(search))
+        if status_filter:
+            allowed_statuses = {value for value, _ in Order.STATUS_CHOICES}
+            if status_filter not in allowed_statuses:
+                return Response(
+                    {"detail": "Invalid order status filter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            orders = orders.filter(status=status_filter)
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK,
+        if "page" not in request.query_params:
+            return Response(
+                OrderSerializer(
+                    orders,
+                    many=True,
+                    context={"request": request},
+                ).data,
+                status=status.HTTP_200_OK,
+            )
+
+        paginator = PageNumberPagination()
+        paginator.page_size = 10
+        paginator.page_size_query_param = "page_size"
+        paginator.max_page_size = 30
+        page = paginator.paginate_queryset(orders, request, view=self)
+        page_serializer = OrderSerializer(
+            page,
+            many=True,
+            context={"request": request},
         )
+        return paginator.get_paginated_response(page_serializer.data)
 
     # ======================================================
     # CREATE ORDER

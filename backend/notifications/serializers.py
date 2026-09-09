@@ -12,6 +12,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "recipient",
             "title",
             "message",
+            "related_order",
             "notification_type",
             "is_read",
             "created_at",
@@ -22,6 +23,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "recipient",
             "title",
             "message",
+            "related_order",
             "notification_type",
             "created_at",
         ]

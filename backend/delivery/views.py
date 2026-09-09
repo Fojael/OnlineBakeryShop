@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsDeliveryRider
 from audit_logs.services import record_audit
 from notifications.models import Notification
+from notifications.services import create_notification
 from orders.models import Order
 from orders.services import record_order_status_change
 from payments.models import Payment
@@ -56,7 +57,7 @@ def notify_user(
     """
 
     try:
-        Notification.objects.create(
+        create_notification(
             recipient=user,
             title=title,
             message=message,

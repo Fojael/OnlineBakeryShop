@@ -1,10 +1,13 @@
 import useNotification
     from "../../hooks/useNotification";
+import { useNavigate } from "react-router-dom";
 
 import "../../styles/Notification.css";
 
 
 const NotificationsPage = () => {
+
+    const navigate = useNavigate();
 
     const {
 
@@ -23,6 +26,15 @@ const NotificationsPage = () => {
         deleteAllNotifications,
 
     } = useNotification();
+
+    const openNotification = async (notification) => {
+        if (!notification.is_read) {
+            await markNotificationRead(notification.id);
+        }
+        if (notification.related_order) {
+            navigate(`/orders/${notification.related_order}`);
+        }
+    };
 
 
     return (
@@ -160,6 +172,9 @@ const NotificationsPage = () => {
                                         : "notification-unread"
                                 }
                             `}
+                            role={notification.related_order ? "button" : undefined}
+                            tabIndex={notification.related_order ? 0 : undefined}
+                            onClick={() => openNotification(notification)}
                         >
 
                             <div
@@ -218,11 +233,10 @@ const NotificationsPage = () => {
                                             btn-success
                                             btn-sm
                                         "
-                                        onClick={() =>
-                                            markNotificationRead(
-                                                notification.id
-                                            )
-                                        }
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            markNotificationRead(notification.id);
+                                        }}
                                     >
                                         Mark Read
                                     </button>
@@ -237,11 +251,10 @@ const NotificationsPage = () => {
                                         btn-outline-danger
                                         btn-sm
                                     "
-                                    onClick={() =>
-                                        deleteNotification(
-                                            notification.id
-                                        )
-                                    }
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        deleteNotification(notification.id);
+                                    }}
                                 >
                                     Delete
                                 </button>

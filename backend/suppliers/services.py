@@ -2,6 +2,7 @@ from django.db.models import Sum
 
 from accounts.models import User
 from notifications.models import Notification
+from notifications.services import create_notification
 
 
 def _create_replenishment_notification(
@@ -13,7 +14,7 @@ def _create_replenishment_notification(
         return None
 
     try:
-        notification, _ = Notification.objects.get_or_create(
+        notification = create_notification(
             recipient=recipient,
             title=title,
             message=message,

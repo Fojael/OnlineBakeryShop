@@ -14,6 +14,7 @@ import { toast } from "react-toastify";
 
 import {
     getProduct,
+    getProducts,
 } from "../../services/productService";
 
 import {
@@ -51,6 +52,8 @@ const ProductDetails = () => {
 
     const [product, setProduct] =
         useState(null);
+
+    const [relatedProducts, setRelatedProducts] = useState([]);
 
     const [loading, setLoading] =
         useState(true);
@@ -179,6 +182,26 @@ const ProductDetails = () => {
         loadProduct,
         loadWishlist,
     ]);
+
+    useEffect(() => {
+        if (!product?.category) return undefined;
+        let mounted = true;
+        getProducts({
+            category: product.category,
+            availability: "in_stock",
+            page_size: 5,
+        }).then((response) => {
+            if (!mounted) return;
+            const data = response.data;
+            const items = Array.isArray(data) ? data : data.results || [];
+            setRelatedProducts(items.filter((item) => item.id !== product.id));
+        }).catch(() => {
+            if (mounted) setRelatedProducts([]);
+        });
+        return () => {
+            mounted = false;
+        };
+    }, [product]);
     // ========================================================
 // PRODUCT IMAGE
 // ========================================================
@@ -709,6 +732,32 @@ return (
             </div>
 
         </div>
+
+        {relatedProducts.length > 0 && (
+            <section className="mt-5" aria-labelledby="related-products-title">
+                <h3 id="related-products-title" className="mb-3">Related products</h3>
+                <div className="row g-3">
+                    {relatedProducts.slice(0, 4).map((related) => (
+                        <div className="col-sm-6 col-lg-3" key={related.id}>
+                            <Link to={`/products/${related.id}`} className="text-decoration-none text-dark">
+                                <article className="card h-100 shadow-sm border-0">
+                                    <img
+                                        src={related.image?.startsWith("http") ? related.image : related.image ? `${API_BASE_URL}${related.image}` : FALLBACK_IMAGE}
+                                        alt={related.name}
+                                        height="150"
+                                        className="card-img-top object-fit-cover"
+                                    />
+                                    <div className="card-body">
+                                        <h6>{related.name}</h6>
+                                        <strong className="text-primary">৳{Number(related.price).toFixed(2)}</strong>
+                                    </div>
+                                </article>
+                            </Link>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        )}
 
     </div>
 );

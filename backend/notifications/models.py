@@ -62,6 +62,14 @@ class Notification(models.Model):
 
     message = models.TextField()
 
+    related_order = models.ForeignKey(
+        "orders.Order",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+
     notification_type = models.CharField(
         max_length=30,
         choices=TYPE_CHOICES,
