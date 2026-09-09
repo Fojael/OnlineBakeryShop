@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AdminAIPredictionSummaryView,
     AdminAIPredictionTrainView,
+    AdminAIReorderRecommendationView,
 )
 
 app_name = "ai_prediction"
@@ -17,5 +18,10 @@ urlpatterns = [
         "admin/train/",
         AdminAIPredictionTrainView.as_view(),
         name="admin-ai-train",
+    ),
+    path(
+        "admin/reorder-recommendations/",
+        AdminAIReorderRecommendationView.as_view(),
+        name="admin-ai-reorder-recommendations",
     ),
 ]

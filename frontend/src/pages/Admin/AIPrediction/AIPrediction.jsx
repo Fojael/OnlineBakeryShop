@@ -2,21 +2,54 @@ import { useEffect, useState } from "react";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
+import { getAIReorderRecommendations } from "../../../services/aiPredictionService";
+import { createReplenishmentRequest } from "../../../services/replenishmentService";
 
 const AIPrediction = () => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [training, setTraining] = useState(false);
+    const [recommendations, setRecommendations] = useState([]);
+    const [recommendationLoading, setRecommendationLoading] = useState(true);
+    const [recommendationError, setRecommendationError] = useState("");
+    const [drafts, setDrafts] = useState({});
+    const [creatingProductId, setCreatingProductId] = useState(null);
 
     useEffect(() => {
+        let ignore = false;
+
         api.get("ai-prediction/admin/summary/")
-            .then((response) => setData(response.data))
+            .then((response) => {
+                if (!ignore) setData(response.data);
+            })
             .catch((requestError) => setError(
                 requestError.response?.data?.detail ||
                 "Failed to load AI sales prediction."
             ))
             .finally(() => setLoading(false));
+
+        getAIReorderRecommendations()
+            .then((response) => {
+                if (!ignore) setRecommendations(response.data?.recommendations || []);
+            })
+            .catch((requestError) => {
+                if (!ignore) {
+                    setRecommendationError(
+                        requestError.response?.status === 503
+                            ? "Train the forecast model before reviewing reorder recommendations."
+                            : requestError.response?.data?.detail ||
+                            "Failed to load reorder recommendations."
+                    );
+                }
+            })
+            .finally(() => {
+                if (!ignore) setRecommendationLoading(false);
+            });
+
+        return () => {
+            ignore = true;
+        };
     }, []);
 
     const trainModel = async () => {
@@ -25,6 +58,9 @@ const AIPrediction = () => {
         try {
             const response = await api.post("ai-prediction/admin/train/");
             setData(response.data.forecast);
+            const recommendationResponse = await getAIReorderRecommendations();
+            setRecommendations(recommendationResponse.data?.recommendations || []);
+            setRecommendationError("");
         } catch (requestError) {
             setError(
                 requestError.response?.data?.detail ||
@@ -32,6 +68,66 @@ const AIPrediction = () => {
             );
         } finally {
             setTraining(false);
+        }
+    };
+
+    const getDraft = (recommendation) => (
+        drafts[recommendation.product_id] || {
+            supplier: recommendation.supplier_id
+                ? String(recommendation.supplier_id)
+                : "",
+            quantity: String(recommendation.recommended_reorder_quantity),
+        }
+    );
+
+    const updateDraft = (recommendation, field, value) => {
+        const productId = recommendation.product_id;
+        setDrafts((previous) => ({
+            ...previous,
+            [productId]: {
+                ...getDraft(recommendation),
+                [field]: value,
+            },
+        }));
+    };
+
+    const createRequestFromRecommendation = async (recommendation) => {
+        const draft = getDraft(recommendation);
+        const quantity = Number(draft.quantity);
+
+        if (!draft.supplier) {
+            setRecommendationError("Select an active approved supplier first.");
+            return;
+        }
+
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            setRecommendationError("Requested quantity must be a whole number greater than zero.");
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Create a replenishment request for ${quantity} units of ${recommendation.product_name}?`
+        );
+        if (!confirmed) return;
+
+        try {
+            setCreatingProductId(recommendation.product_id);
+            setRecommendationError("");
+            await createReplenishmentRequest({
+                supplier: Number(draft.supplier),
+                product: recommendation.product_id,
+                requested_quantity: quantity,
+                notes: "Created after admin review of an AI recommendation.",
+            });
+            const recommendationResponse = await getAIReorderRecommendations();
+            setRecommendations(recommendationResponse.data?.recommendations || []);
+        } catch (requestError) {
+            setRecommendationError(
+                requestError.response?.data?.detail ||
+                "Failed to create replenishment request."
+            );
+        } finally {
+            setCreatingProductId(null);
         }
     };
 
@@ -90,6 +186,85 @@ const AIPrediction = () => {
                         <div className="table-responsive">
                             <table className="table table-striped"><thead><tr><th>Product</th><th>Tomorrow</th><th>Next 7 Days</th><th>Next 30 Days</th><th>Current Stock</th><th>Shortage</th><th>Recommendation</th></tr></thead><tbody>{data.predictions.map((item) => <tr key={item.product_id}><td>{item.product_name}</td><td>{item.tomorrow_units}</td><td>{item.next_7_days_units}</td><td>{item.next_30_days_units}</td><td>{item.current_stock}</td><td>{item.expected_shortage}</td><td>{item.recommended_action}</td></tr>)}</tbody></table>
                         </div>
+                        <h4 className="mt-4">Admin Reorder Recommendations</h4>
+                        {recommendationError && <div className="alert alert-warning">{recommendationError}</div>}
+                        {recommendationLoading ? (
+                            <div className="py-3">Loading reorder recommendations...</div>
+                        ) : recommendations.length === 0 ? (
+                            <div className="alert alert-success">No replenishment requests are currently recommended.</div>
+                        ) : (
+                            <div className="table-responsive">
+                                <table className="table table-bordered align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Product</th>
+                                            <th>Supplier</th>
+                                            <th>Current Stock</th>
+                                            <th>Predicted Demand</th>
+                                            <th>Projected Stock</th>
+                                            <th>Risk</th>
+                                            <th>Reason</th>
+                                            <th>Quantity</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {recommendations.map((recommendation) => {
+                                            const draft = getDraft(recommendation);
+                                            const supplierUnavailable = !recommendation.supplier_available;
+                                            return (
+                                                <tr key={recommendation.product_id}>
+                                                    <td>{recommendation.product_name}</td>
+                                                    <td>
+                                                        <select
+                                                            className="form-select"
+                                                            value={draft.supplier}
+                                                            onChange={(event) => updateDraft(recommendation, "supplier", event.target.value)}
+                                                            disabled={supplierUnavailable || creatingProductId === recommendation.product_id}
+                                                        >
+                                                            <option value="">
+                                                                {supplierUnavailable ? "No active supplier" : "Select supplier"}
+                                                            </option>
+                                                            {!supplierUnavailable && (
+                                                                <option value={String(recommendation.supplier_id)}>
+                                                                    {recommendation.supplier_name || "Recommended supplier"}
+                                                                </option>
+                                                            )}
+                                                        </select>
+                                                    </td>
+                                                    <td>{recommendation.current_stock}</td>
+                                                    <td>{recommendation.predicted_demand}</td>
+                                                    <td>{recommendation.projected_stock}</td>
+                                                    <td>{recommendation.risk_level}</td>
+                                                    <td>{recommendation.reason}</td>
+                                                    <td>
+                                                        <input
+                                                            className="form-control"
+                                                            type="number"
+                                                            min="1"
+                                                            step="1"
+                                                            value={draft.quantity}
+                                                            onChange={(event) => updateDraft(recommendation, "quantity", event.target.value)}
+                                                            disabled={creatingProductId === recommendation.product_id}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-primary btn-sm"
+                                                            onClick={() => createRequestFromRecommendation(recommendation)}
+                                                            disabled={supplierUnavailable || creatingProductId === recommendation.product_id}
+                                                        >
+                                                            {creatingProductId === recommendation.product_id ? "Creating..." : "Create Replenishment Request"}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </>
                 )}
             </div>

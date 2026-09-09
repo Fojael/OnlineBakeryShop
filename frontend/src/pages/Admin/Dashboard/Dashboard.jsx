@@ -1,7 +1,32 @@
 import { useEffect, useState } from "react";
+import {
+    BarElement,
+    CategoryScale,
+    Chart as ChartJS,
+    Legend,
+    LinearScale,
+    LineElement,
+    PointElement,
+    Tooltip,
+} from "chart.js";
+import { Bar, Line } from "react-chartjs-2";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
 import api from "../../../services/api";
+import {
+    getAIPredictionSummary,
+    getAIReorderRecommendations,
+} from "../../../services/aiPredictionService";
+
+ChartJS.register(
+    BarElement,
+    CategoryScale,
+    Legend,
+    LinearScale,
+    LineElement,
+    PointElement,
+    Tooltip,
+);
 
 const INITIAL_STATS = {
     customers: 0,
@@ -21,6 +46,11 @@ const Dashboard = () => {
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [aiData, setAIData] = useState(null);
+    const [aiRecommendations, setAIRecommendations] = useState([]);
+    const [aiLoading, setAILoading] = useState(true);
+    const [aiError, setAIError] = useState("");
+    const [aiNoHistory, setAINoHistory] = useState(false);
 
     useEffect(() => {
         let ignore = false;
@@ -68,6 +98,40 @@ const Dashboard = () => {
         };
     }, []);
 
+    useEffect(() => {
+        let ignore = false;
+
+        Promise.all([
+            getAIPredictionSummary(),
+            getAIReorderRecommendations(),
+        ])
+            .then(([forecastResponse, recommendationResponse]) => {
+                if (ignore) return;
+                setAIData(forecastResponse.data);
+                setAIRecommendations(
+                    recommendationResponse.data?.recommendations || [],
+                );
+            })
+            .catch((requestError) => {
+                if (ignore) return;
+                if (requestError.response?.status === 503) {
+                    setAINoHistory(true);
+                    return;
+                }
+                setAIError(
+                    requestError.response?.data?.detail ||
+                    "Failed to load AI dashboard data.",
+                );
+            })
+            .finally(() => {
+                if (!ignore) setAILoading(false);
+            });
+
+        return () => {
+            ignore = true;
+        };
+    }, []);
+
     const cards = [
         {
             label: "Customers",
@@ -94,6 +158,47 @@ const Dashboard = () => {
             value: `৳${stats.sales}`,
         },
     ];
+
+    const forecast = aiData?.forecast;
+    const dailyForecast = forecast?.daily || [];
+    const productPredictions = forecast?.products || [];
+    const highRiskProducts = aiRecommendations.filter(
+        (item) => item.risk_level === "HIGH RISK",
+    );
+    const dailyChartData = {
+        labels: dailyForecast.slice(0, 14).map((item) => item.date.slice(5)),
+        datasets: [
+            {
+                label: "Predicted units",
+                data: dailyForecast.slice(0, 14).map((item) => item.predicted_units),
+                borderColor: "#176b87",
+                backgroundColor: "rgba(23, 107, 135, 0.15)",
+                fill: true,
+                tension: 0.3,
+            },
+        ],
+    };
+    const topProducts = productPredictions.slice(0, 6);
+    const productChartData = {
+        labels: topProducts.map((item) => item.product_name),
+        datasets: [
+            {
+                label: "Next 30 days",
+                data: topProducts.map((item) => item.next_30_days_units),
+                backgroundColor: "#e58f65",
+            },
+        ],
+    };
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+        },
+        scales: {
+            y: { beginAtZero: true },
+        },
+    };
 
     return (
         <DashboardLayout>
@@ -258,6 +363,86 @@ const Dashboard = () => {
                             </div>
 
                         </div>
+
+                        <section className="mt-5" aria-labelledby="ai-dashboard-heading">
+                            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                <div>
+                                    <h3 id="ai-dashboard-heading" className="mb-1">AI Demand Intelligence</h3>
+                                    <p className="text-muted mb-0">Forecasts and reorder guidance from realized delivered sales.</p>
+                                </div>
+                                {aiData && <span className="badge text-bg-light">Model {aiData.pipeline?.model_version || "fallback"}</span>}
+                            </div>
+
+                            {aiLoading && (
+                                <div className="border rounded p-4 text-center">Loading AI forecast...</div>
+                            )}
+                            {aiNoHistory && (
+                                <div className="alert alert-secondary">No historical sales forecast is available yet. Train the AI model after more delivered-sales history is collected.</div>
+                            )}
+                            {aiError && <div className="alert alert-danger">{aiError}</div>}
+
+                            {!aiLoading && !aiNoHistory && !aiError && aiData && (
+                                <>
+                                    <div className="row g-3 mb-4">
+                                        <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">Total predicted demand</div><h4 className="mb-0">{aiData.summary?.forecast_monthly_units ?? 0} units</h4><small className="text-muted">Next 30 days</small></div></div></div>
+                                        <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">Daily forecast</div><h4 className="mb-0">{dailyForecast[0]?.predicted_units ?? 0} units</h4><small className="text-muted">Tomorrow</small></div></div></div>
+                                        <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">Weekly forecast</div><h4 className="mb-0">{aiData.summary?.forecast_weekly_units ?? 0} units</h4><small className="text-muted">Next 7 days</small></div></div></div>
+                                        <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">High stockout risk</div><h4 className="mb-0">{highRiskProducts.length}</h4><small className="text-muted">Products needing review</small></div></div></div>
+                                    </div>
+
+                                    <div className="row g-3 mb-4">
+                                        <div className="col-xl-7">
+                                            <div className="card border-0 shadow-sm h-100">
+                                                <div className="card-header bg-white fw-bold">Daily forecast</div>
+                                                <div className="card-body" style={{ height: "280px" }}>
+                                                    {dailyForecast.length ? <Line data={dailyChartData} options={chartOptions} /> : <div className="text-muted">No daily forecast data.</div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-xl-5">
+                                            <div className="card border-0 shadow-sm h-100">
+                                                <div className="card-header bg-white fw-bold">Top predicted products</div>
+                                                <div className="card-body" style={{ height: "280px" }}>
+                                                    {topProducts.length ? <Bar data={productChartData} options={chartOptions} /> : <div className="text-muted">No product forecast data.</div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="card border-0 shadow-sm mb-4">
+                                        <div className="card-header bg-white fw-bold">Product demand and stock outlook</div>
+                                        <div className="table-responsive">
+                                            <table className="table table-sm table-hover mb-0">
+                                                <thead><tr><th>Product</th><th>Historical sales</th><th>Current stock</th><th>Predicted demand</th><th>Projected stock</th><th>Risk</th><th>Explanation</th></tr></thead>
+                                                <tbody>
+                                                    {productPredictions.length ? productPredictions.map((item) => {
+                                                        const recommendation = aiRecommendations.find((entry) => entry.product_id === item.product_id);
+                                                        return <tr key={item.product_id}><td>{item.product_name}</td><td>{item.historical_sales ?? 0}</td><td>{item.current_stock}</td><td>{item.next_30_days_units}</td><td>{recommendation?.projected_stock ?? item.current_stock - item.next_30_days_units}</td><td>{recommendation?.risk_level || "LOW RISK"}</td><td>{item.explanation || recommendation?.explanation || "Historical realized sales used."}</td></tr>;
+                                                    }) : <tr><td colSpan="7" className="text-center text-muted py-3">No product forecast data.</td></tr>}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div className="row g-3">
+                                        <div className="col-lg-6">
+                                            <div className="card border-0 shadow-sm h-100">
+                                                <div className="card-header bg-white fw-bold">High stockout risk</div>
+                                                <div className="list-group list-group-flush">
+                                                    {highRiskProducts.length ? highRiskProducts.map((item) => <div className="list-group-item d-flex justify-content-between gap-3" key={item.product_id}><span>{item.product_name}<small className="d-block text-muted">{item.reason}</small></span><strong>{item.recommended_reorder_quantity} units</strong></div>) : <div className="list-group-item text-muted">No products currently have high stockout risk.</div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-lg-6">
+                                            <div className="card border-0 shadow-sm h-100">
+                                                <div className="card-header bg-white fw-bold">AI recommendation explanation</div>
+                                                <div className="card-body"><p className="mb-2">Recommendations compare predicted demand with current stock and the existing inventory minimum-stock threshold.</p><p className="text-muted small mb-0">{aiData.pipeline?.cleaning || "Missing product-days are treated as zero realized sales."} {aiData.pipeline?.feature_engineering || "Date and lag features are used where history supports them."}</p></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </section>
                     </>
                 )}
 

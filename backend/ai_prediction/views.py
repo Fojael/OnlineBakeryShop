@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,10 +9,15 @@ from accounts.permissions import IsAdmin
 
 from .services import (
     InsufficientHistoricalData,
+    FORECAST_DAYS,
+    ForecastTrainingThrottled,
+    build_reorder_recommendations,
     build_forecast,
     load_forecast_model,
     train_forecast_model,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _summary(model):
@@ -53,7 +60,15 @@ class AdminAIPredictionSummaryView(APIView):
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        return Response(_summary(model), status=status.HTTP_200_OK)
+        try:
+            payload = _summary(model)
+        except Exception:
+            logger.exception("AI forecast summary generation failed.")
+            return Response(
+                {"detail": "AI forecast is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class AdminAIPredictionTrainView(APIView):
@@ -72,6 +87,21 @@ class AdminAIPredictionTrainView(APIView):
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+        except ForecastTrainingThrottled as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "retry_after": exc.retry_after,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={"Retry-After": str(exc.retry_after)},
+            )
+        except Exception:
+            logger.exception("AI forecast training failed.")
+            return Response(
+                {"detail": "AI forecast training is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(
             {
                 "message": "Sales forecast model trained successfully.",
@@ -79,4 +109,48 @@ class AdminAIPredictionTrainView(APIView):
                 "forecast": _summary(model),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminAIReorderRecommendationView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        model = load_forecast_model()
+        try:
+            horizon_days = int(request.query_params.get("horizon_days", 7))
+            if not 1 <= horizon_days <= FORECAST_DAYS:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    "detail": (
+                        f"horizon_days must be an integer between 1 and "
+                        f"{FORECAST_DAYS}."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            recommendations = build_reorder_recommendations(
+                model,
+                horizon_days=horizon_days,
+            )
+        except Exception:
+            logger.exception("AI reorder recommendation generation failed.")
+            return Response(
+                {"detail": "AI reorder recommendations are temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if not recommendations["available"]:
+            return Response(
+                recommendations,
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            recommendations,
+            status=status.HTTP_200_OK,
         )

@@ -35,6 +35,12 @@ class OrderItemSerializer(
         read_only=True,
     )
 
+    product_image = serializers.ImageField(
+        source="product.image",
+        read_only=True,
+        allow_null=True,
+    )
+
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
@@ -45,6 +51,7 @@ class OrderItemSerializer(
             "id",
             "product_id",
             "product_name",
+            "product_image",
             "quantity",
             "price",
             "subtotal",
