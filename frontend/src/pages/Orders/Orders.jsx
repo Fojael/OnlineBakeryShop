@@ -678,6 +678,7 @@ const Orders = () => {
                                                 {refundOrderId === order.id && (
                                                     <RefundRequestForm
                                                         orderId={order.id}
+                                                        order={order}
                                                         onSubmitted={() => {
                                                             setRefundOrderId(null);
                                                             void fetchOrders();

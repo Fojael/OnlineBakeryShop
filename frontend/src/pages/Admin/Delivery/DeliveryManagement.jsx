@@ -52,7 +52,31 @@ const DeliveryManagement = () => {
     };
 
     useEffect(() => {
-        load().catch(() => setLoading(false));
+        let mounted = true;
+
+        const fetchDeliveryData = async () => {
+            try {
+                const [ordersResponse, ridersResponse] = await Promise.all([
+                    getAdminOrders(),
+                    getDeliveryRiders(),
+                ]);
+                if (mounted) {
+                    setOrders(ordersResponse.data?.results || ordersResponse.data || []);
+                    setRiders(ridersResponse.data?.results || ridersResponse.data || []);
+                    setLoading(false);
+                }
+            } catch {
+                if (mounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        void fetchDeliveryData();
+
+        return () => {
+            mounted = false;
+        };
     }, []);
 
     const activeRiders = useMemo(

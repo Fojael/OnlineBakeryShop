@@ -8,7 +8,9 @@ const STATUS_STYLES = {
     Pending: "bg-warning text-dark",
     Approved: "bg-info text-dark",
     Rejected: "bg-danger",
+    Processing: "bg-primary",
     Completed: "bg-success",
+    Failed: "bg-danger",
 };
 
 const formatDate = (value) => (
@@ -118,7 +120,22 @@ const RefundRequests = () => {
                                         )}
                                         {refund.status === "Approved" && (
                                             <div className="alert alert-info mt-4 mb-0">
-                                                Your refund has been approved and is being processed.
+                                                Your refund has been approved and is ready for gateway processing.
+                                            </div>
+                                        )}
+                                        {refund.status === "Processing" && (
+                                            <div className="alert alert-info mt-4 mb-0">
+                                                Your refund is being processed by the payment gateway.
+                                            </div>
+                                        )}
+                                        {refund.status === "Completed" && (
+                                            <div className="alert alert-success mt-4 mb-0">
+                                                Your refund has been completed successfully.
+                                            </div>
+                                        )}
+                                        {refund.status === "Failed" && (
+                                            <div className="alert alert-danger mt-4 mb-0">
+                                                Refund processing failed. {refund.refund_failure_reason || "Please wait for review or retry."}
                                             </div>
                                         )}
                                         {refund.status === "Rejected" && refund.admin_notes && (

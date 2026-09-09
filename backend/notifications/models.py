@@ -19,7 +19,9 @@ class Notification(models.Model):
     TYPE_REFUND_REQUEST = "Refund Requested"
     TYPE_REFUND_APPROVED = "Refund Approved"
     TYPE_REFUND_REJECTED = "Refund Rejected"
+    TYPE_REFUND_PROCESSING = "Refund Processing"
     TYPE_REFUND_COMPLETED = "Refund Completed"
+    TYPE_REFUND_FAILED = "Refund Failed"
     TYPE_INFO = "Information"
 
     TYPE_CHOICES = [
@@ -34,7 +36,9 @@ class Notification(models.Model):
         (TYPE_REFUND_REQUEST, "Refund Requested"),
         (TYPE_REFUND_APPROVED, "Refund Approved"),
         (TYPE_REFUND_REJECTED, "Refund Rejected"),
+        (TYPE_REFUND_PROCESSING, "Refund Processing"),
         (TYPE_REFUND_COMPLETED, "Refund Completed"),
+        (TYPE_REFUND_FAILED, "Refund Failed"),
         (TYPE_INFO, "Information"),
     ]
 

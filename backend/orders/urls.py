@@ -30,6 +30,7 @@ from .views import (
     # CUSTOMER REFUND
     # ==========================================================
     CustomerRefundRequestView,
+    RefundPhotoUploadView,
     CustomerRefundListView,
 
     # ==========================================================
@@ -37,6 +38,7 @@ from .views import (
     # ==========================================================
     AdminRefundListView,
     AdminRefundUpdateView,
+    AdminRefundProcessView,
 )
 
 
@@ -180,6 +182,11 @@ urlpatterns = [
         name="customer-refund-request",
     ),
     path(
+        "refunds/<int:refund_id>/photos/",
+        RefundPhotoUploadView.as_view(),
+        name="refund-photo-upload",
+    ),
+    path(
         "refunds/",
         CustomerRefundListView.as_view(),
         name="customer-refund-list",
@@ -204,6 +211,11 @@ urlpatterns = [
         "refunds/admin/<int:refund_id>/update/",
         AdminRefundUpdateView.as_view(),
         name="admin-refund-update",
+    ),
+    path(
+        "refunds/admin/<int:refund_id>/process/",
+        AdminRefundProcessView.as_view(),
+        name="admin-refund-process",
     ),
 ]
 

@@ -1,9 +1,31 @@
 from decimal import Decimal
+from datetime import timedelta
+from pathlib import Path
+from uuid import uuid4
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
+from django.utils import timezone
 
 from products.models import Product
+
+
+CANCELLATION_WINDOW_HOURS = 72
+MAX_REFUND_PHOTOS = 5
+MAX_REFUND_PHOTO_SIZE = 5 * 1024 * 1024
+REFUND_PHOTO_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
+
+
+def validate_refund_photo_size(upload):
+    if upload.size > MAX_REFUND_PHOTO_SIZE:
+        raise ValidationError("Refund photos must be 5 MB or smaller.")
+
+
+def refund_photo_upload_path(instance, filename):
+    extension = Path(filename).suffix.lower()
+    return f"refunds/{instance.refund_id}/{uuid4().hex}{extension}"
 
 
 # ==========================================================
@@ -178,6 +200,13 @@ class Order(models.Model):
 
     @property
     def can_cancel(self):
+
+        if (
+            timezone.now()
+            > self.created_at
+            + timedelta(hours=CANCELLATION_WINDOW_HOURS)
+        ):
+            return False
 
         # ----------------------------------------------
         # Already cancelled
@@ -508,6 +537,14 @@ class OrderAddress(models.Model):
 
 class Refund(models.Model):
 
+    REFUND_TYPE_FULL = "FULL"
+    REFUND_TYPE_PARTIAL = "PARTIAL"
+
+    REFUND_TYPE_CHOICES = [
+        (REFUND_TYPE_FULL, "Full Refund"),
+        (REFUND_TYPE_PARTIAL, "Partial Refund"),
+    ]
+
     # ======================================================
     # REFUND STATUS
     # ======================================================
@@ -515,7 +552,9 @@ class Refund(models.Model):
     STATUS_PENDING = "Pending"
     STATUS_APPROVED = "Approved"
     STATUS_REJECTED = "Rejected"
+    STATUS_PROCESSING = "Processing"
     STATUS_COMPLETED = "Completed"
+    STATUS_FAILED = "Failed"
 
     STATUS_CHOICES = [
         (
@@ -531,8 +570,16 @@ class Refund(models.Model):
             "Rejected",
         ),
         (
+            STATUS_PROCESSING,
+            "Processing",
+        ),
+        (
             STATUS_COMPLETED,
             "Completed",
+        ),
+        (
+            STATUS_FAILED,
+            "Failed",
         ),
     ]
 
@@ -620,10 +667,23 @@ class Refund(models.Model):
         default="",
     )
 
+    refund_type = models.CharField(
+        max_length=10,
+        choices=REFUND_TYPE_CHOICES,
+        default=REFUND_TYPE_FULL,
+    )
+
     refund_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
+    )
+
+    approved_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
     )
 
     # ======================================================
@@ -645,6 +705,11 @@ class Refund(models.Model):
     )
 
     approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    reviewed_at = models.DateTimeField(
         null=True,
         blank=True,
     )
@@ -710,4 +775,92 @@ class Refund(models.Model):
             f"Refund #{self.id} - "
             f"Order #{self.order.id}"
         )
+
+
+class RefundItem(models.Model):
+
+    refund = models.ForeignKey(
+        Refund,
+        on_delete=models.CASCADE,
+        related_name="refund_items",
+    )
+
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.PROTECT,
+        related_name="refund_items",
+    )
+
+    quantity = models.PositiveIntegerField()
+
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["refund", "order_item"],
+                name="unique_refund_order_item",
+            ),
+        ]
+
+
+class RefundPhoto(models.Model):
+
+    refund = models.ForeignKey(
+        Refund,
+        on_delete=models.CASCADE,
+        related_name="refund_photos",
+    )
+
+    image = models.ImageField(
+        upload_to=refund_photo_upload_path,
+        validators=[
+            validate_refund_photo_size,
+            FileExtensionValidator(
+                allowed_extensions=REFUND_PHOTO_EXTENSIONS,
+            ),
+        ],
+    )
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+
+class RefundStatusHistory(models.Model):
+
+    refund = models.ForeignKey(
+        Refund,
+        on_delete=models.CASCADE,
+        related_name="status_history",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Refund.STATUS_CHOICES,
+    )
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="refund_status_changes",
+    )
+
+    note = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["created_at", "id"]
         

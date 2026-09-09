@@ -5,16 +5,7 @@ import MainLayout from "../../layouts/MainLayout";
 import { getOrder } from "../../services/orderService";
 import RefundRequestForm from "../../components/Orders/RefundRequestForm";
 import OrderStatusHistory from "../../components/Orders/OrderStatusHistory";
-
-const ORDER_STEPS = [
-    "Pending",
-    "Accepted",
-    "Processing",
-    "Ready",
-    "Assigned",
-    "Out for Delivery",
-    "Delivered",
-];
+import CustomerOrderTimeline from "../../components/Orders/CustomerOrderTimeline";
 
 const OrderDetails = () => {
     const { orderId } = useParams();
@@ -40,13 +31,7 @@ const OrderDetails = () => {
                     <>
                         <h2>Order #{order.id}</h2>
                         <p className="text-muted">Track your order status and delivery progress.</p>
-                        <div className="d-flex flex-wrap gap-2 mb-4">
-                            {ORDER_STEPS.map((step) => (
-                                <span key={step} className={`badge ${step === order.status ? "bg-primary" : "bg-light text-dark"}`}>
-                                    {step}
-                                </span>
-                            ))}
-                        </div>
+                        <CustomerOrderTimeline order={order} />
                         <div className="card border-0 shadow-sm p-4">
                             <p><strong>Status:</strong> {order.status}</p>
                             <p><strong>Payment:</strong> {order.payment_status || order.payment_method}</p>
@@ -55,6 +40,7 @@ const OrderDetails = () => {
                             {order.can_request_refund && (
                                 <RefundRequestForm
                                     orderId={order.id}
+                                    order={order}
                                     onSubmitted={() => setOrder({
                                         ...order,
                                         can_request_refund: false,

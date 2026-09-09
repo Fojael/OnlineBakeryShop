@@ -184,11 +184,27 @@ class AdminCreateDeliveryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        delivery = (
+            Delivery.objects
+            .select_for_update()
+            .filter(order=order)
+            .first()
+        )
+
         # ------------------------------------------------------
         # Order must be Ready
         # ------------------------------------------------------
 
-        if order.status != Order.STATUS_READY:
+        can_reassign_assigned_delivery = (
+            order.status == Order.STATUS_ASSIGNED
+            and delivery is not None
+            and delivery.status == Delivery.STATUS_ASSIGNED
+        )
+
+        if (
+            order.status != Order.STATUS_READY
+            and not can_reassign_assigned_delivery
+        ):
             return Response(
                 {
                     "detail": (
@@ -201,20 +217,10 @@ class AdminCreateDeliveryView(APIView):
             )
 
         # ------------------------------------------------------
-        # ------------------------------------------------------
-        # Get existing delivery
-        # ------------------------------------------------------
-
-        delivery = (
-            Delivery.objects
-            .select_for_update()
-            .filter(order=order)
-            .first()
-        )
-
-        # ------------------------------------------------------
         # Existing delivery handling
         # ------------------------------------------------------
+
+        delivery_created = False
 
         if delivery:
 
@@ -273,7 +279,8 @@ class AdminCreateDeliveryView(APIView):
             # Change assigned rider before acceptance.
             delivery.rider = rider
             delivery.status = Delivery.STATUS_ASSIGNED
-            delivery.assigned_at = timezone.now()
+            if delivery.assigned_at is None:
+                delivery.assigned_at = timezone.now()
             delivery.delivery_note = (
                 delivery.delivery_note or ""
             )
@@ -299,6 +306,7 @@ class AdminCreateDeliveryView(APIView):
                 status=Delivery.STATUS_ASSIGNED,
                 assigned_at=timezone.now(),
             )
+            delivery_created = True
 
         # ------------------------------------------------------
         # Update parent order
@@ -369,7 +377,11 @@ class AdminCreateDeliveryView(APIView):
             DeliverySerializer(
                 delivery
             ).data,
-            status=status.HTTP_201_CREATED,
+            status=(
+                status.HTTP_201_CREATED
+                if delivery_created
+                else status.HTTP_200_OK
+            ),
         )
 
 

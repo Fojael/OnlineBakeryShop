@@ -8,3 +8,19 @@ export const requestRefund = (orderId, payload) => (
         ...payload,
     })
 );
+
+export const uploadRefundPhotos = (refundId, photos) => {
+    const formData = new FormData();
+
+    photos.forEach((photo) => formData.append("photos", photo));
+
+    return api.post(
+        `/orders/refunds/${refundId}/photos/`,
+        formData,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        },
+    );
+};
