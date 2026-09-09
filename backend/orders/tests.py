@@ -151,6 +151,13 @@ class CustomerOrderTrackingTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username="tracking_admin",
+            email="tracking_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
         self.customer = User.objects.create_user(
             username="tracking_customer",
             email="tracking_customer@example.com",
@@ -216,7 +223,7 @@ class CustomerOrderTrackingTests(TestCase):
         self.assertEqual(response.data["rider_name"], self.rider.username)
         self.assertEqual(
             response.data["delivery_timestamps"]["out_for_delivery_at"],
-            self.delivery.out_for_delivery_at.isoformat().replace("+00:00", "Z"),
+            self.delivery.out_for_delivery_at,
         )
         self.assertEqual(
             [entry["new_status"] for entry in response.data["history"]],
@@ -230,11 +237,79 @@ class CustomerOrderTrackingTests(TestCase):
             ],
         )
 
+    def test_customer_can_view_own_history_but_not_another_customers_history(self):
+        self.client.force_authenticate(user=self.customer)
+
+        own_response = self.client.get(
+            reverse("orders:order-status-history", args=[self.order.id]),
+        )
+
+        self.assertEqual(own_response.status_code, 200)
+        self.assertEqual(len(own_response.data), 6)
+
+        self.client.force_authenticate(user=self.other_customer)
+
+        other_response = self.client.get(
+            reverse("orders:order-status-history", args=[self.order.id]),
+        )
+
+        self.assertEqual(other_response.status_code, 403)
+
+    def test_customer_does_not_see_delivery_metadata_before_assignment(self):
+        pending_order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Pending tracking address",
+            payment_method=Order.PAYMENT_COD,
+            status=Order.STATUS_PENDING,
+        )
+        Delivery.objects.create(
+            order=pending_order,
+            rider=self.rider,
+        )
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(
+            reverse("orders:order-detail", args=[pending_order.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["delivery_id"])
+        self.assertIsNone(response.data["delivery_status"])
+        self.assertIsNone(response.data["rider_name"])
+        self.assertEqual(
+            response.data["delivery_timestamps"],
+            {
+                "assigned_at": None,
+                "accepted_at": None,
+                "picked_up_at": None,
+                "out_for_delivery_at": None,
+                "delivered_at": None,
+            },
+        )
+
     def test_customer_cannot_view_another_customers_tracking(self):
         self.client.force_authenticate(user=self.other_customer)
 
         response = self.client.get(
             reverse("orders:order-detail", args=[self.order.id]),
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_unauthenticated_customer_cannot_view_tracking(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(
+            reverse("orders:order-detail", args=[self.order.id]),
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_invalid_order_id_is_handled_as_not_found(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(
+            reverse("orders:order-detail", args=[999999]),
         )
 
         self.assertEqual(response.status_code, 404)
@@ -1267,6 +1342,19 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertEqual(accept_response.status_code, 200)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.STATUS_ACCEPTED)
+        accepted_notification_count = Notification.objects.filter(
+            recipient=customer,
+        ).count()
+        duplicate_accept_response = self.client.post(
+            f"/api/orders/admin/{order.id}/accept/",
+        )
+        self.assertEqual(duplicate_accept_response.status_code, 400)
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=customer,
+            ).count(),
+            accepted_notification_count,
+        )
 
         self.client.force_authenticate(user=self.admin)
         processing_response = self.client.patch(
@@ -1315,6 +1403,24 @@ class CompleteOrderWorkflowTests(TestCase):
             self.assertEqual(response.status_code, 200)
             order.refresh_from_db()
             self.assertEqual(order.status, expected_order_status)
+
+        self.assertTrue(
+            {
+                "Order Accepted",
+                "Order Processing",
+                "Order Ready",
+                "Delivery Rider Assigned",
+                "Delivery Accepted",
+                "Order Out for Delivery",
+                "Order Delivered",
+            }.issubset(
+                set(
+                    Notification.objects.filter(
+                        recipient=customer,
+                    ).values_list("title", flat=True)
+                )
+            )
+        )
 
         self.client.force_authenticate(user=customer)
         customer_order_response = self.client.get(

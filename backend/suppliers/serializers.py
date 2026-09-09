@@ -7,6 +7,11 @@ from accounts.models import User
 from products.models import Product
 
 from .models import ReplenishmentRequest, Supplier
+from .models import (
+    ReplenishmentRequest,
+    ReplenishmentStatusHistory,
+    Supplier,
+)
 
 
 # ==========================================================
@@ -547,6 +552,7 @@ class ReplenishmentRequestSerializer(
         source="created_by.username",
         read_only=True,
     )
+    history = serializers.SerializerMethodField()
 
     class Meta:
         model = ReplenishmentRequest
@@ -560,6 +566,7 @@ class ReplenishmentRequestSerializer(
             "status",
             "created_by",
             "created_by_name",
+            "history",
             "notes",
             "inventory_applied_at",
             "delivered_at",
@@ -585,6 +592,64 @@ class ReplenishmentRequestSerializer(
                 "Requested quantity must be greater than zero."
             )
         return value
+
+    def get_history(self, obj):
+        return ReplenishmentStatusHistorySerializer(
+            obj.status_history.select_related("changed_by").all(),
+            many=True,
+            context=self.context,
+        ).data
+
+    def validate_supplier(self, value):
+        supplier_user = value.user
+
+        if (
+            supplier_user is None
+            or supplier_user.role != User.ROLE_SUPPLIER
+            or not supplier_user.is_active
+            or not value.is_active
+            or not value.is_approved
+        ):
+            raise serializers.ValidationError(
+                "The selected supplier is not active and approved."
+            )
+
+        return value
+
+
+class ReplenishmentStatusHistorySerializer(
+    serializers.ModelSerializer
+):
+    changed_by_name = serializers.SerializerMethodField()
+    changed_by_role = serializers.CharField(
+        source="changed_by.role",
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = ReplenishmentStatusHistory
+        fields = [
+            "id",
+            "replenishment_request",
+            "previous_status",
+            "new_status",
+            "changed_by",
+            "changed_by_name",
+            "changed_by_role",
+            "changed_at",
+        ]
+        read_only_fields = fields
+
+    def get_changed_by_name(self, obj):
+        if not obj.changed_by:
+            return "System"
+
+        return (
+            obj.changed_by.get_full_name()
+            or obj.changed_by.username
+            or obj.changed_by.email
+        )
 
 
 class ReplenishmentStatusSerializer(serializers.Serializer):

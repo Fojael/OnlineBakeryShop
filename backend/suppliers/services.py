@@ -1,6 +1,66 @@
 from django.db.models import Sum
 
+from accounts.models import User
 from notifications.models import Notification
+
+
+def _create_replenishment_notification(
+    recipient,
+    title,
+    message,
+):
+    if not recipient:
+        return None
+
+    try:
+        notification, _ = Notification.objects.get_or_create(
+            recipient=recipient,
+            title=title,
+            message=message,
+            notification_type=Notification.TYPE_INFO,
+        )
+        return notification
+    except Exception:
+        return None
+
+
+def notify_replenishment_created(replenishment_request):
+    supplier_user = replenishment_request.supplier.user
+    if not supplier_user:
+        return None
+
+    return _create_replenishment_notification(
+        supplier_user,
+        "Supplier Replenishment Request Created",
+        (
+            f"Replenishment request #{replenishment_request.id} "
+            f"for {replenishment_request.product.name} "
+            "has been assigned to you."
+        ),
+    )
+
+
+def notify_replenishment_status(replenishment_request, status_label):
+    title = f"Supplier Replenishment {status_label}"
+    message = (
+        f"Replenishment request #{replenishment_request.id} for "
+        f"{replenishment_request.product.name} is now {status_label}."
+    )
+
+    notifications = []
+    for admin in User.objects.filter(
+        role=User.ROLE_ADMIN,
+        is_active=True,
+    ):
+        notification = _create_replenishment_notification(
+            admin,
+            title,
+            message,
+        )
+        if notification:
+            notifications.append(notification)
+
+    return notifications
 
 
 class SupplierDashboardService:

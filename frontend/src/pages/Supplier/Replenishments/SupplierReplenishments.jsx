@@ -12,14 +12,27 @@ const nextStatus = {
     READY: "DELIVERED",
 };
 
+const statusLabels = {
+    PENDING: "Pending",
+    PROCESSING: "Processing",
+    READY: "Ready",
+    DELIVERED: "Delivered",
+};
+
+const formatDate = (value) => (
+    value ? new Date(value).toLocaleString() : "-"
+);
+
 const SupplierReplenishments = () => {
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [updatingId, setUpdatingId] = useState(null);
+    const [error, setError] = useState("");
 
     const loadRequests = async () => {
         try {
             setLoading(true);
+            setError("");
             const response = await getReplenishmentRequests();
             const data = response?.data;
             setRequests(
@@ -28,6 +41,10 @@ const SupplierReplenishments = () => {
                     : data?.results || [],
             );
         } catch (error) {
+            setError(
+                error?.response?.data?.detail ||
+                "Failed to load replenishment requests."
+            );
             toast.error(
                 error?.response?.data?.detail ||
                 "Failed to load replenishment requests.",
@@ -61,6 +78,16 @@ const SupplierReplenishments = () => {
         }
     };
 
+    const requestCounts = Object.keys(statusLabels).reduce(
+        (counts, status) => {
+            counts[status] = requests.filter(
+                (request) => request.status === status
+            ).length;
+            return counts;
+        },
+        {},
+    );
+
     return (
         <div className="container-fluid py-4">
             <div className="mb-4">
@@ -70,6 +97,27 @@ const SupplierReplenishments = () => {
                 </p>
             </div>
 
+            {error && (
+                <div className="alert alert-danger" role="alert">
+                    {error}
+                </div>
+            )}
+
+            <div className="row g-3 mb-4">
+                {Object.entries(statusLabels).map(([status, label]) => (
+                    <div className="col-6 col-xl-3" key={status}>
+                        <div className="card h-100 shadow-sm">
+                            <div className="card-body">
+                                <div className="small text-muted">{label}</div>
+                                <div className="fs-3 fw-bold">
+                                    {requestCounts[status] || 0}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             <div className="card shadow-sm">
                 <div className="table-responsive">
                     <table className="table table-hover align-middle mb-0">
@@ -77,19 +125,29 @@ const SupplierReplenishments = () => {
                             <tr>
                                 <th>Product</th>
                                 <th>Quantity</th>
+                                <th>Request date</th>
                                 <th>Status</th>
+                                <th>Delivered date</th>
                                 <th>Notes</th>
+                                <th>History</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {!loading && requests.length === 0 && (
                                 <tr>
-                                    <td colSpan="5" className="text-center py-4">
+                                        <td colSpan="8" className="text-center py-4">
                                         No replenishment requests assigned to you.
                                     </td>
                                 </tr>
                             )}
+                                {loading && (
+                                    <tr>
+                                        <td colSpan="8" className="text-center py-4">
+                                            Loading replenishment requests...
+                                        </td>
+                                    </tr>
+                                )}
                             {requests.map((request) => {
                                 const status = nextStatus[request.status];
                                 const isUpdating = updatingId === request.id;
@@ -98,12 +156,34 @@ const SupplierReplenishments = () => {
                                     <tr key={request.id}>
                                         <td>{request.product_name}</td>
                                         <td>{request.requested_quantity}</td>
+                                        <td>{formatDate(request.created_at)}</td>
                                         <td>
                                             <span className="badge bg-secondary">
-                                                {request.status}
+                                                {statusLabels[request.status] || request.status}
                                             </span>
                                         </td>
+                                        <td>{formatDate(request.delivered_at)}</td>
                                         <td>{request.notes || "-"}</td>
+                                        <td>
+                                            {request.history?.length ? (
+                                                <details>
+                                                    <summary>
+                                                        {request.history.length} event{request.history.length === 1 ? "" : "s"}
+                                                    </summary>
+                                                    <ul className="small text-muted ps-3 mb-0 mt-2">
+                                                        {request.history.map((entry) => (
+                                                            <li key={entry.id}>
+                                                                {statusLabels[entry.new_status] || entry.new_status}
+                                                                {" - "}
+                                                                {formatDate(entry.changed_at)}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </details>
+                                            ) : (
+                                                <span className="text-muted">No history</span>
+                                            )}
+                                        </td>
                                         <td>
                                             {status ? (
                                                 <button
@@ -123,7 +203,7 @@ const SupplierReplenishments = () => {
                                                 </button>
                                             ) : (
                                                 <span className="text-muted">
-                                                    Inventory received
+                                                    Delivered
                                                 </span>
                                             )}
                                         </td>

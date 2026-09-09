@@ -12,6 +12,7 @@ from orders.models import (
     OrderStatusHistory,
 )
 from products.models import Product
+from notifications.models import Notification
 from .models import Delivery
 from delivery.serializers import (
     DeliveryOrderSerializer,
@@ -45,6 +46,13 @@ class AdminRiderAssignmentTests(TestCase):
             role=User.ROLE_CUSTOMER,
             is_active=True,
         )
+        self.other_customer = User.objects.create_user(
+            username="assignment_other_customer",
+            email="assignment_other_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
         self.supplier = User.objects.create_user(
             username="assignment_supplier",
             email="assignment_supplier@example.com",
@@ -74,9 +82,13 @@ class AdminRiderAssignmentTests(TestCase):
             is_available=True,
         )
 
-    def create_order(self, order_status=Order.STATUS_READY):
+    def create_order(
+        self,
+        order_status=Order.STATUS_READY,
+        customer=None,
+    ):
         order = Order.objects.create(
-            customer=self.customer,
+            customer=customer or self.customer,
             shipping_address="Assignment address",
             payment_method=Order.PAYMENT_COD,
             subtotal=Decimal("50.00"),
@@ -207,6 +219,38 @@ class AdminRiderAssignmentTests(TestCase):
             self.other_rider.id,
         )
 
+    def test_rider_assignment_notifies_only_order_customer_once(self):
+        order = self.create_order()
+        other_order = self.create_order(customer=self.other_customer)
+        self.client.force_authenticate(user=self.admin)
+
+        first_response = self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        duplicate_response = self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(duplicate_response.status_code, 200)
+        customer_notifications = Notification.objects.filter(
+            title="Delivery Rider Assigned",
+        )
+        self.assertEqual(customer_notifications.count(), 1)
+        self.assertEqual(
+            customer_notifications.first().recipient_id,
+            order.customer_id,
+        )
+        self.assertFalse(
+            customer_notifications.filter(
+                recipient=other_order.customer,
+            ).exists()
+        )
+
     def test_assignment_cannot_reassign_after_delivery_started(self):
         order = self.create_order()
         delivery = Delivery.objects.create(
@@ -228,7 +272,7 @@ class AdminRiderAssignmentTests(TestCase):
 
     def test_rider_only_accesses_own_deliveries(self):
         own_order = self.create_order()
-        other_order = self.create_order()
+        other_order = self.create_order(customer=self.other_customer)
         own_delivery = Delivery.objects.create(
             order=own_order,
             rider=self.rider,
@@ -333,6 +377,159 @@ class AdminRiderAssignmentTests(TestCase):
             delivery.delivered_at,
             out_for_delivery_at,
         )
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_DELIVERED)
+        self.assertEqual(
+            OrderStatusHistory.objects.filter(
+                order=order,
+                new_status=Order.STATUS_OUT_FOR_DELIVERY,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            OrderStatusHistory.objects.filter(
+                order=order,
+                new_status=Order.STATUS_DELIVERED,
+            ).count(),
+            1,
+        )
+
+    def test_delivery_events_notify_owner_once_after_valid_transition(self):
+        order = self.create_order()
+        other_order = self.create_order(customer=self.other_customer)
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.rider)
+
+        self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+        duplicate_response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+
+        self.assertEqual(duplicate_response.status_code, 400)
+        accepted_notifications = Notification.objects.filter(
+            title="Delivery Accepted",
+        )
+        self.assertEqual(accepted_notifications.count(), 1)
+        self.assertEqual(
+            accepted_notifications.first().recipient_id,
+            order.customer_id,
+        )
+        self.assertFalse(
+            accepted_notifications.filter(
+                recipient=other_order.customer,
+            ).exists()
+        )
+
+    def test_rider_cannot_skip_or_move_delivery_backward(self):
+        order = self.create_order()
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.rider)
+
+        skipped_response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_OUT_FOR_DELIVERY},
+            format="json",
+        )
+        self.assertEqual(skipped_response.status_code, 400)
+
+        accepted_response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+        self.assertEqual(accepted_response.status_code, 200)
+
+        backward_response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ASSIGNED},
+            format="json",
+        )
+        self.assertEqual(backward_response.status_code, 400)
+
+    def test_wrong_rider_cannot_update_delivery(self):
+        order = self.create_order()
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.other_rider)
+
+        response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, Delivery.STATUS_ASSIGNED)
+
+    def test_unassigned_delivery_cannot_be_accepted_by_rider(self):
+        order = self.create_order()
+        delivery = Delivery.objects.create(
+            order=order,
+            status=Delivery.STATUS_ASSIGNED,
+        )
+        self.client.force_authenticate(user=self.rider)
+
+        response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        delivery.refresh_from_db()
+        self.assertIsNone(delivery.rider_id)
+        self.assertEqual(delivery.status, Delivery.STATUS_ASSIGNED)
+
+    def test_rider_field_tampering_does_not_change_assignment(self):
+        order = self.create_order()
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            self.assign_url(order),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.rider)
+
+        response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {
+                "status": Delivery.STATUS_ACCEPTED,
+                "rider": self.other_rider.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.rider_id, self.rider.id)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_ASSIGNED)
 
     def test_invalid_delivery_transition_does_not_create_timestamps(self):
         order = self.create_order()

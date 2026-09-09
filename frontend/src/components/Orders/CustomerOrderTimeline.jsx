@@ -13,9 +13,10 @@ const formatDateTime = (value) => (
 );
 
 const CustomerOrderTimeline = ({ order }) => {
-    const historyByStatus = new Map(
-        (order.history || []).map((entry) => [entry.new_status, entry])
-    );
+    const historyByStatus = (order.history || []).reduce((entries, entry) => {
+        entries.set(entry.new_status, entry);
+        return entries;
+    }, new Map());
     const currentIndex = ORDER_STEPS.indexOf(order.status);
     const riderVisible = currentIndex >= ORDER_STEPS.indexOf("Assigned");
 
@@ -27,7 +28,7 @@ const CustomerOrderTimeline = ({ order }) => {
                     {ORDER_STEPS.map((step, index) => {
                         const historyEntry = historyByStatus.get(step);
                         const isCurrent = step === order.status;
-                        const isComplete = index < currentIndex || Boolean(historyEntry && !isCurrent);
+                        const isComplete = index < currentIndex;
                         const stateClass = isCurrent
                             ? "border-primary bg-primary-subtle"
                             : isComplete
@@ -47,7 +48,11 @@ const CustomerOrderTimeline = ({ order }) => {
                                     <div className="d-flex flex-wrap justify-content-between gap-2">
                                         <strong>{step}</strong>
                                         <small className="text-muted">
-                                            {formatDateTime(historyEntry?.changed_at)}
+                                            {formatDateTime(
+                                                isComplete || isCurrent
+                                                    ? historyEntry?.changed_at
+                                                    : null
+                                            )}
                                         </small>
                                     </div>
                                     <div className="small text-muted">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 import DashboardLayout from "../../../layouts/DashboardLayout";
@@ -19,12 +19,29 @@ const normalizeList = (response) => {
     return data?.results || data?.products || data?.suppliers || [];
 };
 
+const statusLabels = {
+    PENDING: "Pending",
+    PROCESSING: "Processing",
+    READY: "Ready",
+    DELIVERED: "Delivered",
+};
+
+const formatDate = (value) => (
+    value ? new Date(value).toLocaleString() : "-"
+);
+
 const ReplenishmentRequests = () => {
     const [requests, setRequests] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const [filters, setFilters] = useState({
+        supplier: "",
+        product: "",
+        status: "",
+    });
     const [form, setForm] = useState({
         supplier: "",
         product: "",
@@ -35,6 +52,7 @@ const ReplenishmentRequests = () => {
     const loadData = async () => {
         try {
             setLoading(true);
+            setError("");
             const [requestsResponse, suppliersResponse, productsResponse] =
                 await Promise.all([
                     getReplenishmentRequests(),
@@ -45,6 +63,10 @@ const ReplenishmentRequests = () => {
             setSuppliers(normalizeList(suppliersResponse));
             setProducts(normalizeList(productsResponse));
         } catch (error) {
+            setError(
+                error?.response?.data?.detail ||
+                "Failed to load replenishment data."
+            );
             toast.error(
                 error?.response?.data?.detail ||
                 "Failed to load replenishment data.",
@@ -53,6 +75,14 @@ const ReplenishmentRequests = () => {
             setLoading(false);
         }
     };
+
+    const filteredRequests = useMemo(() => (
+        requests.filter((request) => (
+            (!filters.supplier || String(request.supplier) === filters.supplier)
+            && (!filters.product || String(request.product) === filters.product)
+            && (!filters.status || request.status === filters.status)
+        ))
+    ), [filters, requests]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -65,6 +95,11 @@ const ReplenishmentRequests = () => {
     const handleChange = (event) => {
         const { name, value } = event.target;
         setForm((previous) => ({ ...previous, [name]: value }));
+    };
+
+    const handleFilterChange = (event) => {
+        const { name, value } = event.target;
+        setFilters((previous) => ({ ...previous, [name]: value }));
     };
 
     const handleSubmit = async (event) => {
@@ -105,6 +140,12 @@ const ReplenishmentRequests = () => {
                         </p>
                     </div>
                 </div>
+
+                {error && (
+                    <div className="alert alert-danger" role="alert">
+                        {error}
+                    </div>
+                )}
 
                 <div className="card shadow-sm mb-4">
                     <div className="card-header fw-bold">Create Request</div>
@@ -185,41 +226,159 @@ const ReplenishmentRequests = () => {
                     </div>
                 </div>
 
+                <div className="card shadow-sm mb-4">
+                    <div className="card-header fw-bold">Filter Requests</div>
+                    <div className="card-body">
+                        <div className="row g-3">
+                            <div className="col-md-4">
+                                <label className="form-label" htmlFor="supplier-filter">
+                                    Supplier
+                                </label>
+                                <select
+                                    id="supplier-filter"
+                                    className="form-select"
+                                    name="supplier"
+                                    value={filters.supplier}
+                                    onChange={handleFilterChange}
+                                >
+                                    <option value="">All suppliers</option>
+                                    {suppliers.map((supplier) => (
+                                        <option key={supplier.id} value={supplier.id}>
+                                            {supplier.company || supplier.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-md-4">
+                                <label className="form-label" htmlFor="product-filter">
+                                    Product
+                                </label>
+                                <select
+                                    id="product-filter"
+                                    className="form-select"
+                                    name="product"
+                                    value={filters.product}
+                                    onChange={handleFilterChange}
+                                >
+                                    <option value="">All products</option>
+                                    {products.map((product) => (
+                                        <option key={product.id} value={product.id}>
+                                            {product.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-md-4">
+                                <label className="form-label" htmlFor="status-filter">
+                                    Status
+                                </label>
+                                <select
+                                    id="status-filter"
+                                    className="form-select"
+                                    name="status"
+                                    value={filters.status}
+                                    onChange={handleFilterChange}
+                                >
+                                    <option value="">All statuses</option>
+                                    {Object.entries(statusLabels).map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="card shadow-sm">
-                    <div className="card-header fw-bold">Replenishment Requests</div>
+                    <div className="card-header fw-bold d-flex justify-content-between">
+                        <span>Supplier Replenishment Requests</span>
+                        <span className="text-muted fw-normal">
+                            {filteredRequests.length} shown
+                        </span>
+                    </div>
                     <div className="table-responsive">
                         <table className="table table-hover align-middle mb-0">
                             <thead className="table-light">
                                 <tr>
+                                    <th>Request</th>
                                     <th>Product</th>
                                     <th>Supplier</th>
                                     <th>Quantity</th>
+                                    <th>Request date</th>
                                     <th>Status</th>
-                                    <th>Created</th>
+                                    <th>Delivered date</th>
+                                    <th>Inventory</th>
+                                    <th>Details</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {!loading && requests.length === 0 && (
+                                {loading && (
                                     <tr>
-                                        <td colSpan="5" className="text-center py-4">
-                                            No replenishment requests found.
+                                        <td colSpan="9" className="text-center py-4">
+                                            Loading replenishment requests...
                                         </td>
                                     </tr>
                                 )}
-                                {requests.map((request) => (
+                                {!loading && filteredRequests.length === 0 && (
+                                    <tr>
+                                        <td colSpan="9" className="text-center py-4">
+                                            {requests.length === 0
+                                                ? "No replenishment requests found."
+                                                : "No requests match the selected filters."
+                                            }
+                                        </td>
+                                    </tr>
+                                )}
+                                {!loading && filteredRequests.map((request) => (
                                     <tr key={request.id}>
+                                        <td>#{request.id}</td>
                                         <td>{request.product_name}</td>
                                         <td>{request.supplier_name}</td>
-                                        <td>{request.requested_quantity}</td>
+                                        <td>{request.requested_quantity} units</td>
+                                        <td>{formatDate(request.created_at)}</td>
                                         <td>
                                             <span className="badge bg-secondary">
-                                                {request.status}
+                                                {statusLabels[request.status] || request.status}
                                             </span>
                                         </td>
+                                        <td>{formatDate(request.delivered_at)}</td>
                                         <td>
-                                            {request.created_at
-                                                ? new Date(request.created_at).toLocaleDateString()
-                                                : "-"}
+                                            {request.inventory_applied_at ? (
+                                                <span className="text-success">
+                                                    Applied {formatDate(request.inventory_applied_at)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted">Not applied</span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            <details>
+                                                <summary>View details</summary>
+                                                <div className="small mt-2" style={{ minWidth: "14rem" }}>
+                                                    <div><strong>Notes:</strong> {request.notes || "-"}</div>
+                                                    <div><strong>Created by:</strong> {request.created_by_name || "-"}</div>
+                                                    <div className="mt-2"><strong>History</strong></div>
+                                                    {request.history?.length ? (
+                                                        <ul className="mb-0 ps-3">
+                                                            {request.history.map((entry) => (
+                                                                <li key={entry.id}>
+                                                                    {statusLabels[entry.new_status] || entry.new_status}
+                                                                    {" - "}
+                                                                    {formatDate(entry.changed_at)}
+                                                                    {entry.changed_by_name
+                                                                        ? ` by ${entry.changed_by_name}`
+                                                                        : ""
+                                                                    }
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : (
+                                                        <div className="text-muted">No status history yet.</div>
+                                                    )}
+                                                </div>
+                                            </details>
                                         </td>
                                     </tr>
                                 ))}

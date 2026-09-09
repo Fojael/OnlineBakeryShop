@@ -10,8 +10,17 @@ from django.shortcuts import get_object_or_404
 
 from accounts.permissions import IsAdmin, IsSupplier
 from inventory.services import receive_replenishment
+from .services import (
+    notify_replenishment_created,
+    notify_replenishment_status,
+)
 
 from .models import ReplenishmentRequest, Supplier
+from .models import (
+    ReplenishmentRequest,
+    ReplenishmentStatusHistory,
+    Supplier,
+)
 from .serializers import (
     ReplenishmentRequestSerializer,
     ReplenishmentStatusSerializer,
@@ -423,6 +432,9 @@ class ReplenishmentRequestListCreateView(APIView):
             return queryset
 
         if request.user.role == "SUPPLIER":
+            if not IsSupplier().has_permission(request, self):
+                return queryset.none()
+
             return queryset.filter(
                 supplier__user=request.user,
             )
@@ -436,14 +448,24 @@ class ReplenishmentRequestListCreateView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if (
+            request.user.role == "SUPPLIER"
+            and not IsSupplier().has_permission(request, self)
+        ):
+            return Response(
+                {"detail": "Active supplier access required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = ReplenishmentRequestSerializer(
             self.get_queryset(request),
             many=True,
         )
         return Response(serializer.data)
 
+    @transaction.atomic
     def post(self, request):
-        if request.user.role != "ADMIN":
+        if not IsAdmin().has_permission(request, self):
             return Response(
                 {"detail": "Admin permission required."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -456,6 +478,7 @@ class ReplenishmentRequestListCreateView(APIView):
         replenishment_request = serializer.save(
             created_by=request.user,
         )
+        notify_replenishment_created(replenishment_request)
 
         return Response(
             ReplenishmentRequestSerializer(
@@ -479,6 +502,11 @@ class ReplenishmentRequestDetailView(APIView):
             return get_object_or_404(queryset, id=request_id)
 
         if request.user.role == "SUPPLIER":
+            if not IsSupplier().has_permission(request, self):
+                raise PermissionDenied(
+                    "Active supplier access required."
+                )
+
             return get_object_or_404(
                 queryset,
                 id=request_id,
@@ -518,6 +546,7 @@ class ReplenishmentStatusUpdateView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         new_status = serializer.validated_data["status"]
+        previous_status = replenishment_request.status
 
         transitions = {
             ReplenishmentRequest.STATUS_PENDING: [
@@ -560,6 +589,18 @@ class ReplenishmentStatusUpdateView(APIView):
             replenishment_request = receive_replenishment(
                 replenishment_request,
             )
+
+        ReplenishmentStatusHistory.objects.create(
+            replenishment_request=replenishment_request,
+            previous_status=previous_status,
+            new_status=new_status,
+            changed_by=request.user,
+        )
+
+        notify_replenishment_status(
+            replenishment_request,
+            new_status,
+        )
 
         return Response(
             ReplenishmentRequestSerializer(

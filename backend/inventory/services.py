@@ -192,8 +192,16 @@ def receive_replenishment(replenishment_request):
         .get(pk=replenishment_request.pk)
     )
 
+    if replenishment_request.status != request_model.STATUS_DELIVERED:
+        return replenishment_request
+
     if replenishment_request.inventory_applied_at:
         return replenishment_request
+
+    if replenishment_request.requested_quantity <= 0:
+        raise ValueError(
+            "Replenishment quantity must be greater than zero."
+        )
 
     product = (
         replenishment_request.product.__class__.objects
@@ -203,6 +211,9 @@ def receive_replenishment(replenishment_request):
 
     inventory, _ = Inventory.objects.get_or_create(
         product=product,
+    )
+    inventory = Inventory.objects.select_for_update().get(
+        pk=inventory.pk,
     )
 
     previous_stock = product.stock_quantity

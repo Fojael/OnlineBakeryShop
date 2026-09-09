@@ -305,4 +305,48 @@ class ReplenishmentRequest(models.Model):
             f"Replenishment #{self.id} - "
             f"{self.product.name} ({self.requested_quantity})"
         )
+
+class ReplenishmentStatusHistory(models.Model):
+    replenishment_request = models.ForeignKey(
+        ReplenishmentRequest,
+        on_delete=models.CASCADE,
+        related_name="status_history",
+    )
+
+    previous_status = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+
+    new_status = models.CharField(
+        max_length=20,
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replenishment_status_changes",
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["changed_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["replenishment_request", "new_status"],
+                name="unique_replenishment_status_event",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"Replenishment #{self.replenishment_request_id}: "
+            f"{self.previous_status or 'Created'} -> {self.new_status}"
+        )
         

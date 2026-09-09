@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from accounts.models import User
 from payments.models import Payment
 
 from .models import (
@@ -249,6 +250,9 @@ class OrderSerializer(
         obj,
     ):
 
+        if not self._customer_can_see_delivery(obj):
+            return None
+
         try:
 
             delivery = obj.delivery
@@ -269,6 +273,9 @@ class OrderSerializer(
         self,
         obj,
     ):
+
+        if not self._customer_can_see_delivery(obj):
+            return None
 
         try:
 
@@ -291,6 +298,9 @@ class OrderSerializer(
         obj,
     ):
 
+        if not self._customer_can_see_delivery(obj):
+            return None
+
         try:
 
             delivery = obj.delivery
@@ -307,6 +317,15 @@ class OrderSerializer(
             return None
 
     def get_delivery_timestamps(self, obj):
+        if not self._customer_can_see_delivery(obj):
+            return {
+                "assigned_at": None,
+                "accepted_at": None,
+                "picked_up_at": None,
+                "out_for_delivery_at": None,
+                "delivered_at": None,
+            }
+
         try:
             delivery = obj.delivery
         except Exception:
@@ -325,6 +344,19 @@ class OrderSerializer(
             "out_for_delivery_at": delivery.out_for_delivery_at,
             "delivered_at": delivery.delivered_at,
         }
+
+    def _customer_can_see_delivery(self, obj):
+        request = self.context.get("request")
+        user = request.user if request else None
+
+        if getattr(user, "role", None) != User.ROLE_CUSTOMER:
+            return True
+
+        return obj.status in [
+            Order.STATUS_ASSIGNED,
+            Order.STATUS_OUT_FOR_DELIVERY,
+            Order.STATUS_DELIVERED,
+        ]
 
     def get_refund_status(
         self,
