@@ -35,7 +35,7 @@ def _get_inventory(product):
     inventory, _ = Inventory.objects.get_or_create(
         product=product,
     )
-    return inventory
+    return Inventory.objects.select_for_update().get(pk=inventory.pk)
 
 
 @transaction.atomic
@@ -81,8 +81,12 @@ def deduct_order_stock(order):
             quantity=-item.quantity,
             previous_stock=previous_stock,
             resulting_stock=resulting_stock,
-            reason=f"Customer order #{order.id}",
-            created_by=order.customer,
+            reason=(
+                f"Offline sale #{order.id}"
+                if order.order_source == order.SOURCE_OFFLINE
+                else f"Customer order #{order.id}"
+            ),
+            created_by=order.created_by or order.customer,
         )
         notify_low_stock(product, previous_stock)
 

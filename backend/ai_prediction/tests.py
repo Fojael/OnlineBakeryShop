@@ -155,6 +155,28 @@ class AIPredictionTests(TestCase):
 
         self.assertEqual(extract_sales_dataset(), [])
 
+    def test_extract_sales_dataset_excludes_offline_counter_sales(self):
+        order = Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            offline_customer_name="Counter Buyer",
+            shipping_address="Counter",
+            payment_method=Order.PAYMENT_CASH,
+            status=Order.STATUS_DELIVERED,
+            total_amount=self.product.price,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            product_name=self.product.name,
+            quantity=3,
+            price=self.product.price,
+        )
+
+        dataset = extract_sales_dataset()
+
+        self.assertEqual(dataset, [])
+
     def test_extract_sales_dataset_subtracts_completed_refunded_quantity(self):
         created_at = timezone.make_aware(
             timezone.datetime(2026, 9, 3, 10, 0),
@@ -983,6 +1005,7 @@ class AIPredictionTests(TestCase):
             response = getattr(self.client, method)(url)
             self.assertEqual(response.status_code, 401)
 
+
     def test_reorder_endpoint_rejects_malformed_horizons(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("ai_prediction:admin-ai-reorder-recommendations")
@@ -1071,3 +1094,70 @@ class AIPredictionTests(TestCase):
         self.assertFalse(evaluation["explainability"]["available"])
         self.assertIn("explanation", summary_response.data["predictions"][0])
         self.assertNotIn("artifact", summary_response.data)
+
+
+class CustomerRecommendationTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = User.objects.create_user(
+            username="recommendation_customer",
+            email="recommendation_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        supplier = Supplier.objects.create(
+            name="Recommendation Supplier",
+            email="recommendation_supplier@example.com",
+            phone="01722222222",
+            is_active=True,
+            is_approved=True,
+        )
+        self.product = Product.objects.create(
+            supplier=supplier,
+            name="Popular Cake",
+            category="Cake",
+            price=Decimal("250.00"),
+            stock_quantity=10,
+            is_available=True,
+        )
+        self.related_product = Product.objects.create(
+            supplier=supplier,
+            name="Related Pastry",
+            category="Cake",
+            price=Decimal("120.00"),
+            stock_quantity=10,
+            is_available=True,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Dhaka",
+            payment_method=Order.PAYMENT_COD,
+            total_amount=self.product.price,
+            status=Order.STATUS_DELIVERED,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            price=self.product.price,
+        )
+
+    def test_customer_recommendations_are_separate_from_admin_forecasting(self):
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get(
+            reverse("ai_prediction:customer-recommendations"),
+            {"product_id": self.product.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["recommended_products"][0]["id"], self.product.id)
+        self.assertEqual(response.data["related_products"][0]["id"], self.related_product.id)
+        self.assertNotIn("forecast", response.data)
+        self.assertNotIn("training", response.data)
+
+    def test_customer_cannot_access_admin_ai_endpoints(self):
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get(reverse("ai_prediction:admin-ai-summary"))
+        self.assertEqual(response.status_code, 403)

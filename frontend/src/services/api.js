@@ -1,5 +1,20 @@
 import axios from "axios";
 
+export const getApiErrorMessage = (error, fallback = "Something went wrong.") => {
+    const status = error?.response?.status;
+    const messages = {
+        400: "Please check the information and try again.",
+        401: "Your session has expired. Please sign in again.",
+        403: "You do not have permission to do that.",
+        404: "We could not find what you requested.",
+        409: "This request conflicts with the current order state.",
+        429: "Too many requests. Please wait a moment and try again.",
+        500: "The service encountered a problem. Please try again.",
+        503: "The service is temporarily unavailable. Please try again shortly.",
+    };
+    return messages[status] || fallback;
+};
+
 
 const api = axios.create({
 

@@ -38,7 +38,11 @@ class ForecastTrainingThrottled(ValueError):
         )
 
 def extract_sales_dataset():
-    """Return valid delivered sales aggregated by product and local date."""
+    """Return online delivered sales aggregated by product and local date.
+
+    Offline counter sales have a separate reporting workflow and are excluded
+    until forecasting is explicitly expanded to combine both sales channels.
+    """
     completed_refunds = Prefetch(
         "refunds",
         queryset=Refund.objects.filter(
@@ -65,7 +69,10 @@ def extract_sales_dataset():
     )
     orders = (
         Order.objects
-        .filter(status=Order.STATUS_DELIVERED)
+            .filter(
+                status=Order.STATUS_DELIVERED,
+                order_source=Order.SOURCE_ONLINE,
+            )
         .select_related("delivery")
         .prefetch_related(sales_items, completed_refunds)
         .order_by("created_at", "id")

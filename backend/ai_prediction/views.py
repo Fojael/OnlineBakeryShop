@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, IsCustomer
 
 from .services import (
     InsufficientHistoricalData,
@@ -16,6 +16,8 @@ from .services import (
     load_forecast_model,
     train_forecast_model,
 )
+from .recommendations import build_customer_recommendations
+from products.serializers import ProductSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -152,5 +154,36 @@ class AdminAIReorderRecommendationView(APIView):
 
         return Response(
             recommendations,
+            status=status.HTTP_200_OK,
+        )
+
+
+class CustomerRecommendationView(APIView):
+    permission_classes = [IsCustomer]
+
+    def get(self, request):
+        product_id = request.query_params.get("product_id")
+        if product_id is not None:
+            try:
+                product_id = int(product_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "product_id must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        recommendations = build_customer_recommendations(
+            request.user,
+            product_id=product_id,
+        )
+        return Response(
+            {
+                key: ProductSerializer(
+                    value,
+                    many=True,
+                    context={"request": request},
+                ).data
+                for key, value in recommendations.items()
+            },
             status=status.HTTP_200_OK,
         )

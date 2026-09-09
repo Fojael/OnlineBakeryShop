@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
     BarElement,
     CategoryScale,
@@ -262,6 +263,20 @@ const Dashboard = () => {
                                 </div>
                             ))}
 
+                        </div>
+
+                        <div className="card border-0 shadow-sm mb-4">
+                            <div className="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+                                <div>
+                                    <h5 className="mb-1">Offline Sales Reports</h5>
+                                    <p className="text-muted mb-0">
+                                        Generate daily, weekly, and monthly counter-sale reports from persisted offline orders.
+                                    </p>
+                                </div>
+                                <Link className="btn btn-outline-primary" to="/admin/offline-sales/history">
+                                    Open Reports
+                                </Link>
+                            </div>
                         </div>
 
 

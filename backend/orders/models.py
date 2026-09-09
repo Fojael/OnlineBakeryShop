@@ -34,6 +34,14 @@ def refund_photo_upload_path(instance, filename):
 
 class Order(models.Model):
 
+    SOURCE_ONLINE = "ONLINE"
+    SOURCE_OFFLINE = "OFFLINE"
+
+    SOURCE_CHOICES = [
+        (SOURCE_ONLINE, "Online order"),
+        (SOURCE_OFFLINE, "Offline admin sale"),
+    ]
+
     # ======================================================
     # ORDER STATUS
     # ======================================================
@@ -87,12 +95,17 @@ class Order(models.Model):
     # ======================================================
 
     PAYMENT_COD = "COD"
+    PAYMENT_CASH = "CASH"
     PAYMENT_SSLCOMMERZ = "SSLCommerz"
 
     PAYMENT_METHOD_CHOICES = [
         (
             PAYMENT_COD,
             "Cash on Delivery",
+        ),
+        (
+            PAYMENT_CASH,
+            "Cash",
         ),
         (
             PAYMENT_SSLCOMMERZ,
@@ -106,8 +119,36 @@ class Order(models.Model):
 
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="orders",
+    )
+
+    order_source = models.CharField(
+        max_length=10,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_ONLINE,
+    )
+
+    offline_customer_name = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+    )
+
+    offline_customer_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_orders",
     )
 
     # ======================================================
@@ -269,10 +310,14 @@ class Order(models.Model):
     # ======================================================
 
     def __str__(self):
-
+        customer_name = (
+            self.customer.username
+            if self.customer_id and self.customer
+            else self.offline_customer_name or "Walk-in customer"
+        )
         return (
             f"Order #{self.id} "
-            f"- {self.customer.username}"
+            f"- {customer_name}"
         )
 
 
@@ -383,6 +428,12 @@ class OrderItem(models.Model):
         Product,
         on_delete=models.PROTECT,
         related_name="order_items",
+    )
+
+    product_name = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
     )
 
     # ======================================================

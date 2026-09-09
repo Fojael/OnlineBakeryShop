@@ -30,10 +30,7 @@ class OrderItemSerializer(
         read_only=True,
     )
 
-    product_name = serializers.CharField(
-        source="product.name",
-        read_only=True,
-    )
+    product_name = serializers.SerializerMethodField()
 
     product_image = serializers.ImageField(
         source="product.image",
@@ -65,6 +62,9 @@ class OrderItemSerializer(
         obj,
     ):
         return obj.subtotal
+
+    def get_product_name(self, obj):
+        return obj.product_name or obj.product.name
 
 
 class OrderStatusHistorySerializer(
@@ -111,15 +111,11 @@ class OrderSerializer(
     serializers.ModelSerializer
 ):
 
-    customer_name = serializers.CharField(
-        source="customer.username",
-        read_only=True,
-    )
+    customer_name = serializers.SerializerMethodField()
 
-    customer_email = serializers.EmailField(
-        source="customer.email",
-        read_only=True,
-    )
+    customer_email = serializers.SerializerMethodField()
+
+    created_by_name = serializers.SerializerMethodField()
 
     items = OrderItemSerializer(
         many=True,
@@ -163,6 +159,11 @@ class OrderSerializer(
 
             "customer_name",
             "customer_email",
+            "order_source",
+            "offline_customer_name",
+            "offline_customer_phone",
+            "created_by",
+            "created_by_name",
 
             "shipping_address",
 
@@ -207,6 +208,21 @@ class OrderSerializer(
         obj,
     ):
         return obj.items.count()
+
+    def get_customer_name(self, obj):
+        if obj.customer_id and obj.customer:
+            return obj.customer.username
+        return obj.offline_customer_name or "Walk-in customer"
+
+    def get_customer_email(self, obj):
+        if obj.customer_id and obj.customer:
+            return obj.customer.email
+        return None
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by_id or not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
 
     # ======================================================
     # PAYMENT STATUS
@@ -577,6 +593,50 @@ class OrderCreateSerializer(
                 "Invalid payment method."
             )
 
+        return value
+
+
+class OfflineSaleItemInputSerializer(serializers.Serializer):
+
+    product_id = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class OfflineSaleCreateSerializer(serializers.Serializer):
+
+    customer_name = serializers.CharField(max_length=150, allow_blank=False)
+    phone = serializers.CharField(max_length=20, allow_blank=False)
+    address = serializers.CharField(max_length=500, allow_blank=False)
+    payment_method = serializers.ChoiceField(
+        choices=[Order.PAYMENT_CASH],
+        default=Order.PAYMENT_CASH,
+    )
+    items = OfflineSaleItemInputSerializer(many=True, allow_empty=False)
+
+    def validate_customer_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Customer name is required.")
+        return value
+
+    def validate_phone(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        return value
+
+    def validate_address(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Address is required.")
+        return value
+
+    def validate_items(self, value):
+        product_ids = [item["product_id"] for item in value]
+        if len(product_ids) != len(set(product_ids)):
+            raise serializers.ValidationError(
+                "A product can only appear once in a sale."
+            )
         return value
 
 
@@ -999,6 +1059,33 @@ class RefundSerializer(
         ]:
             return obj.status
         return None
+
+
+class CustomerRefundSerializer(RefundSerializer):
+
+    class Meta(RefundSerializer.Meta):
+        fields = [
+            "id",
+            "order",
+            "order_status",
+            "payment_method",
+            "payment_status",
+            "reason",
+            "description",
+            "refund_type",
+            "items",
+            "photos",
+            "history",
+            "refund_amount",
+            "approved_amount",
+            "status",
+            "reviewed_at",
+            "approved_at",
+            "completed_at",
+            "admin_decision",
+            "requested_at",
+        ]
+        read_only_fields = fields
 
 
 # ==========================================================

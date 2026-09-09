@@ -15,6 +15,7 @@ import { toast } from "react-toastify";
 import {
     getProducts,
 } from "../../services/productService";
+import { getApiErrorMessage } from "../../services/api";
 
 import {
     addToCart,
@@ -131,8 +132,7 @@ const Products = () => {
                 console.error(error);
 
                 toast.error(
-                    error?.response?.data?.detail ||
-                        "Unable to load products."
+                    getApiErrorMessage(error, "Unable to load products.")
                 );
 
                 setProducts([]);

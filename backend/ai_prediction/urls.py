@@ -4,6 +4,7 @@ from .views import (
     AdminAIPredictionSummaryView,
     AdminAIPredictionTrainView,
     AdminAIReorderRecommendationView,
+    CustomerRecommendationView,
 )
 
 app_name = "ai_prediction"
@@ -23,5 +24,10 @@ urlpatterns = [
         "admin/reorder-recommendations/",
         AdminAIReorderRecommendationView.as_view(),
         name="admin-ai-reorder-recommendations",
+    ),
+    path(
+        "customer/recommendations/",
+        CustomerRecommendationView.as_view(),
+        name="customer-recommendations",
     ),
 ]

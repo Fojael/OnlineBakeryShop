@@ -191,6 +191,12 @@ import Customers
 import Reports
     from "../pages/Admin/Reports/Reports";
 
+import OfflineSales
+    from "../pages/Admin/OfflineSales/OfflineSales";
+
+import OfflineSalesHistory
+    from "../pages/Admin/OfflineSales/OfflineSalesHistory";
+
 import AIPrediction
     from "../pages/Admin/AIPrediction/AIPrediction";
 
@@ -721,6 +727,24 @@ const AppRoutes = () => {
                 element={
                     <ProtectedAdminRoute>
                         <Reports />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/offline-sales"
+                element={
+                    <ProtectedAdminRoute>
+                        <OfflineSales />
+                    </ProtectedAdminRoute>
+                }
+            />
+
+            <Route
+                path="/admin/offline-sales/history"
+                element={
+                    <ProtectedAdminRoute>
+                        <OfflineSalesHistory />
                     </ProtectedAdminRoute>
                 }
             />

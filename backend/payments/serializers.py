@@ -10,15 +10,9 @@ class PaymentSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
-    customer_name = serializers.CharField(
-        source="order.customer.username",
-        read_only=True,
-    )
+    customer_name = serializers.SerializerMethodField()
 
-    customer_email = serializers.EmailField(
-        source="order.customer.email",
-        read_only=True,
-    )
+    customer_email = serializers.SerializerMethodField()
 
     payment_method = serializers.CharField(
         source="order.payment_method",
@@ -60,3 +54,13 @@ class PaymentSerializer(serializers.ModelSerializer):
         if obj.status == Payment.STATUS_SUCCESS:
             return "Paid"
         return obj.status
+
+    def get_customer_name(self, obj):
+        if obj.order.customer_id and obj.order.customer:
+            return obj.order.customer.username
+        return obj.order.offline_customer_name or "Walk-in customer"
+
+    def get_customer_email(self, obj):
+        if obj.order.customer_id and obj.order.customer:
+            return obj.order.customer.email
+        return None

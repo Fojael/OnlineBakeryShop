@@ -104,6 +104,24 @@ const Sidebar = () => {
                     </NavLink>
                 </li>
 
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/offline-sales"
+                        className={linkClass}
+                    >
+                        Create Offline Sale
+                    </NavLink>
+                </li>
+
+                <li className="nav-item mb-1">
+                    <NavLink
+                        to="/admin/offline-sales/history"
+                        className={linkClass}
+                    >
+                        Offline Sales History
+                    </NavLink>
+                </li>
+
                 {/* Delivery */}
 
                 <li className="nav-item mb-1">

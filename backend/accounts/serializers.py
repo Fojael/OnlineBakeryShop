@@ -247,6 +247,7 @@ class AdminCustomerOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id",
+            "order_source",
             "status",
             "payment_method",
             "total_amount",

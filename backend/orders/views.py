@@ -14,7 +14,7 @@ from django.db.models import (
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -34,6 +34,7 @@ from inventory.services import (
 )
 
 from accounts.permissions import (
+    IsAdmin,
     IsCustomer,
     IsSupplier,
 )
@@ -71,10 +72,12 @@ from .serializers import (
     SupplierOrderSerializer,
     SupplierOrderItemStatusSerializer,
     RefundSerializer,
+    CustomerRefundSerializer,
     CustomerRefundRequestSerializer,
     RefundPhotoSerializer,
     RefundPhotoUploadSerializer,
     AdminRefundUpdateSerializer,
+    OfflineSaleCreateSerializer,
 )
 
 
@@ -582,6 +585,100 @@ class OrderListCreateView(APIView):
         )
 
 
+class AdminOfflineSaleCreateView(APIView):
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = OfflineSaleCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        validated = serializer.validated_data
+        requested_items = validated["items"]
+        product_ids = [item["product_id"] for item in requested_items]
+        products = {
+            product.id: product
+            for product in Product.objects.select_for_update().filter(
+                id__in=product_ids,
+            )
+        }
+
+        if len(products) != len(product_ids):
+            missing_ids = [product_id for product_id in product_ids if product_id not in products]
+            raise serializers.ValidationError({
+                "items": [f"Product {missing_ids[0]} does not exist."]
+            })
+
+        subtotal = Decimal("0.00")
+        for item in requested_items:
+            product = products[item["product_id"]]
+            try:
+                validate_product_quantity(product, item["quantity"])
+            except ValueError as exc:
+                raise serializers.ValidationError({"items": [str(exc)]}) from exc
+            subtotal += product.price * item["quantity"]
+
+        order = Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            offline_customer_name=validated["customer_name"],
+            offline_customer_phone=validated["phone"],
+            created_by=request.user,
+            shipping_address=validated["address"],
+            payment_method=validated["payment_method"],
+            subtotal=subtotal,
+            delivery_charge=Decimal("0.00"),
+            total_amount=subtotal,
+            status=Order.STATUS_DELIVERED,
+            stock_deducted=False,
+        )
+
+        OrderItem.objects.bulk_create([
+            OrderItem(
+                order=order,
+                product=products[item["product_id"]],
+                product_name=products[item["product_id"]].name,
+                quantity=item["quantity"],
+                price=products[item["product_id"]].price,
+            )
+            for item in requested_items
+        ])
+
+        Payment.objects.create(
+            order=order,
+            transaction_id=(f"OFFLINE{order.id}{uuid4().hex.upper()}")[:30],
+            amount=order.total_amount,
+            currency="BDT",
+            status=Payment.STATUS_SUCCESS,
+        )
+
+        deduct_order_stock(order)
+        record_order_status_change(
+            order=order,
+            previous_status="",
+            new_status=Order.STATUS_DELIVERED,
+            changed_by=request.user,
+            note="Offline counter sale completed.",
+        )
+
+        order = (
+            Order.objects.select_related("payment", "created_by")
+            .prefetch_related("items__product")
+            .get(pk=order.pk)
+        )
+        return Response(
+            {
+                "message": "Offline sale created successfully.",
+                "order": OrderSerializer(
+                    order,
+                    context={"request": request},
+                ).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 # ==========================================================
 # CUSTOMER - ORDER DETAIL
 # ==========================================================
@@ -1065,6 +1162,67 @@ class AdminOrderDetailView(APIView):
 
         return Response(
             serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminOfflineSaleListView(APIView):
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        orders = (
+            Order.objects.filter(order_source=Order.SOURCE_OFFLINE)
+            .select_related("payment", "created_by")
+            .prefetch_related("items__product")
+            .order_by("-created_at")
+        )
+        search = request.query_params.get("search", "").strip()
+        if search:
+            orders = orders.filter(
+                Q(offline_customer_name__icontains=search)
+                | Q(offline_customer_phone__icontains=search)
+                | Q(id__icontains=search)
+            )
+
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if start_date:
+            orders = orders.filter(created_at__date__gte=start_date)
+        if end_date:
+            orders = orders.filter(created_at__date__lte=end_date)
+
+        if "page" not in request.query_params:
+            return Response(
+                OrderSerializer(orders, many=True, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
+
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        paginator.page_size_query_param = "page_size"
+        paginator.max_page_size = 100
+        page = paginator.paginate_queryset(orders, request, view=self)
+        return paginator.get_paginated_response(
+            OrderSerializer(page, many=True, context={"request": request}).data,
+        )
+
+
+class AdminOfflineSaleDetailView(APIView):
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request, order_id):
+        order = get_object_or_404(
+            Order.objects.filter(
+                id=order_id,
+                order_source=Order.SOURCE_OFFLINE,
+            )
+            .select_related("payment", "created_by")
+            .prefetch_related("items__product"),
+        )
+        return Response(
+            OrderSerializer(order, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
 
@@ -1616,6 +1774,7 @@ class SupplierOrderListView(APIView):
             Order.objects
             .filter(
                 items__product__supplier=supplier,
+                order_source=Order.SOURCE_ONLINE,
             )
             .select_related(
                 "customer",
@@ -1687,6 +1846,7 @@ class SupplierOrderDetailView(APIView):
             )
             .filter(
                 items__product__supplier=supplier,
+                order_source=Order.SOURCE_ONLINE,
             )
             .distinct(),
             id=order_id,
@@ -1748,6 +1908,7 @@ class SupplierOrderItemStatusUpdateView(APIView):
             .select_for_update(),
             id=item_id,
             product__supplier=supplier,
+            order__order_source=Order.SOURCE_ONLINE,
         )
 
         order = order_item.order
@@ -2991,7 +3152,7 @@ class CustomerRefundRequestView(APIView):
                 ),
             )
 
-        response_serializer = RefundSerializer(
+        response_serializer = CustomerRefundSerializer(
             refund,
         )
 
@@ -3101,7 +3262,7 @@ class CustomerRefundListView(APIView):
         )
 
         return Response(
-            RefundSerializer(refunds, many=True).data,
+            CustomerRefundSerializer(refunds, many=True).data,
             status=status.HTTP_200_OK,
         )
 

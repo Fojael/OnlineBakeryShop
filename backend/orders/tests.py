@@ -2390,3 +2390,375 @@ class BuyNowOrderTests(TestCase):
         self.assertFalse(finalized_again)
         self.assertEqual(self.product.stock_quantity, stock_after_first)
 
+
+class OfflineOrderModelTests(TestCase):
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="offline_order_admin",
+            email="offline_order_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+        )
+        supplier_user = User.objects.create_user(
+            username="offline_order_supplier",
+            email="offline_order_supplier@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_SUPPLIER,
+        )
+        supplier = Supplier.objects.create(
+            user=supplier_user,
+            name="Offline Test Supplier",
+            email="offline_supplier@example.com",
+            phone="01700000000",
+            is_active=True,
+            is_approved=True,
+        )
+        self.product = Product.objects.create(
+            supplier=supplier,
+            name="Counter Cake",
+            category="Cake",
+            price=Decimal("250.00"),
+            stock_quantity=8,
+            is_available=True,
+        )
+
+    def test_offline_order_supports_walk_in_customer_and_paid_cash(self):
+        order = Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            offline_customer_name="Walk-in Customer",
+            offline_customer_phone="01711111111",
+            created_by=self.admin,
+            shipping_address="Counter pickup",
+            payment_method=Order.PAYMENT_CASH,
+            subtotal=Decimal("500.00"),
+            delivery_charge=Decimal("0.00"),
+            total_amount=Decimal("500.00"),
+            status=Order.STATUS_DELIVERED,
+        )
+        item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            price=self.product.price,
+        )
+        payment = Payment.objects.create(
+            order=order,
+            transaction_id=f"OFFLINE{order.id}",
+            amount=order.total_amount,
+            currency="BDT",
+            status=Payment.STATUS_SUCCESS,
+        )
+
+        self.assertEqual(str(order), f"Order #{order.id} - Walk-in Customer")
+        self.assertTrue(order.is_paid)
+        self.assertEqual(payment.status, Payment.STATUS_SUCCESS)
+        self.assertEqual(item.subtotal, Decimal("500.00"))
+
+    def test_offline_item_keeps_historical_price_and_product_reference(self):
+        order = Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            offline_customer_name="Historical Customer",
+            shipping_address="Counter pickup",
+            payment_method=Order.PAYMENT_CASH,
+            status=Order.STATUS_DELIVERED,
+        )
+        item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            product_name=self.product.name,
+            quantity=1,
+            price=Decimal("225.00"),
+        )
+
+        self.product.name = "Renamed Counter Cake"
+        self.product.price = Decimal("275.00")
+        self.product.save()
+        item.refresh_from_db()
+
+        self.assertEqual(item.price, Decimal("225.00"))
+        self.assertEqual(item.product_name, "Counter Cake")
+        self.assertEqual(item.product_id, self.product.id)
+
+
+class OfflineSaleApiTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username="offline_api_admin",
+            email="offline_api_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+        )
+        self.customer = User.objects.create_user(
+            username="offline_api_customer",
+            email="offline_api_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+        )
+        self.supplier_user = User.objects.create_user(
+            username="offline_api_supplier_user",
+            email="offline_api_supplier_user@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_SUPPLIER,
+        )
+        self.rider = User.objects.create_user(
+            username="offline_api_rider",
+            email="offline_api_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+        )
+        self.supplier = Supplier.objects.create(
+            name="Offline API Supplier",
+            email="offline_api_supplier@example.com",
+            phone="01700000001",
+            is_active=True,
+            is_approved=True,
+        )
+        self.product = Product.objects.create(
+            supplier=self.supplier,
+            name="Offline API Cake",
+            category="Cake",
+            price=Decimal("125.50"),
+            stock_quantity=5,
+            is_available=True,
+        )
+        self.second_product = Product.objects.create(
+            supplier=self.supplier,
+            name="Offline API Bread",
+            category="Bread",
+            price=Decimal("40.00"),
+            stock_quantity=3,
+            is_available=True,
+        )
+
+    def test_admin_creates_paid_offline_sale_and_deducts_stock(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "Counter Buyer",
+                "phone": "01711111111",
+                "address": "Main counter",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 2},
+                    {"product_id": self.second_product.id, "quantity": 1},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(order_source=Order.SOURCE_OFFLINE)
+        self.assertIsNone(order.customer)
+        self.assertEqual(order.created_by_id, self.admin.id)
+        self.assertEqual(order.status, Order.STATUS_DELIVERED)
+        self.assertEqual(order.payment_method, Order.PAYMENT_CASH)
+        self.assertEqual(order.subtotal, Decimal("291.00"))
+        self.assertEqual(order.delivery_charge, Decimal("0.00"))
+        self.assertEqual(order.total_amount, Decimal("291.00"))
+        self.assertTrue(order.is_paid)
+        self.product.refresh_from_db()
+        self.second_product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 3)
+        self.assertEqual(self.second_product.stock_quantity, 2)
+        transactions = InventoryTransaction.objects.filter(
+            transaction_type=InventoryTransaction.TYPE_STOCK_OUT,
+        )
+        self.assertEqual(transactions.count(), 2)
+        self.assertTrue(all(transaction.created_by_id == self.admin.id for transaction in transactions))
+        self.assertEqual(response.data["order"]["order_source"], Order.SOURCE_OFFLINE)
+        self.assertEqual(response.data["order"]["items"][0]["product_name"], "Offline API Cake")
+
+    def test_non_admin_roles_cannot_create_offline_sale(self):
+        for user in [self.customer, self.supplier_user, self.rider]:
+            self.client.force_authenticate(user=user)
+            response = self.client.post(
+                reverse("orders:admin-offline-sale-create"),
+                {
+                    "customer_name": "Counter Buyer",
+                    "phone": "01711111111",
+                    "address": "Main counter",
+                    "items": [{"product_id": self.product.id, "quantity": 1}],
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, 403)
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(
+            self.client.post(reverse("orders:admin-offline-sale-create")).status_code,
+            401,
+        )
+
+    def test_required_fields_and_items_are_validated(self):
+        self.client.force_authenticate(user=self.admin)
+        endpoint = reverse("orders:admin-offline-sale-create")
+        valid_item = [{"product_id": self.product.id, "quantity": 1}]
+        invalid_payloads = [
+            ({"phone": "01711111111", "address": "Counter", "items": valid_item}, "customer_name"),
+            ({"customer_name": "Buyer", "address": "Counter", "items": valid_item}, "phone"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": []}, "items"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": [{"product_id": self.product.id, "quantity": 0}]}, "items"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": [{"product_id": self.product.id, "quantity": -1}]}, "items"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": [{"product_id": self.product.id, "quantity": "not-a-number"}]}, "items"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": [{"product_id": 999999, "quantity": 1}]}, "items"),
+            ({"customer_name": "Buyer", "phone": "01711111111", "address": "Counter", "items": [{"product_id": self.product.id, "quantity": 1}, {"product_id": self.product.id, "quantity": 1}]}, "items"),
+        ]
+        for payload, field in invalid_payloads:
+            with self.subTest(payload=payload):
+                response = self.client.post(endpoint, payload, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.data)
+        self.assertFalse(Order.objects.filter(order_source=Order.SOURCE_OFFLINE).exists())
+
+    def test_unavailable_and_insufficient_stock_are_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+        endpoint = reverse("orders:admin-offline-sale-create")
+        self.product.stock_quantity = 0
+        self.product.save()
+        response = self.client.post(endpoint, {
+            "customer_name": "Buyer",
+            "phone": "01711111111",
+            "address": "Counter",
+            "items": [{"product_id": self.product.id, "quantity": 1}],
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        self.product.stock_quantity = 1
+        self.product.save()
+        response = self.client.post(endpoint, {
+            "customer_name": "Buyer",
+            "phone": "01711111111",
+            "address": "Counter",
+            "items": [{"product_id": self.product.id, "quantity": 2}],
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Order.objects.filter(order_source=Order.SOURCE_OFFLINE).exists())
+
+    def test_backend_ignores_client_price_and_calculates_all_totals(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "Tamper Buyer",
+                "phone": "01711111111",
+                "address": "Counter",
+                "subtotal": "0.01",
+                "total_amount": "0.01",
+                "items": [{"product_id": self.product.id, "quantity": 2, "price": "0.01"}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(order_source=Order.SOURCE_OFFLINE)
+        item = order.items.get()
+        self.assertEqual(item.price, Decimal("125.50"))
+        self.assertEqual(item.subtotal, Decimal("251.00"))
+        self.assertEqual(order.subtotal, Decimal("251.00"))
+        self.assertEqual(order.total_amount, Decimal("251.00"))
+
+    def test_second_sale_cannot_oversell_last_stock(self):
+        self.product.stock_quantity = 1
+        self.product.save()
+        self.client.force_authenticate(user=self.admin)
+        endpoint = reverse("orders:admin-offline-sale-create")
+        payload = {
+            "customer_name": "Buyer",
+            "phone": "01711111111",
+            "address": "Counter",
+            "items": [{"product_id": self.product.id, "quantity": 1}],
+        }
+        first = self.client.post(endpoint, payload, format="json")
+        second = self.client.post(endpoint, payload, format="json")
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 0)
+        self.assertEqual(Order.objects.filter(order_source=Order.SOURCE_OFFLINE).count(), 1)
+
+    def test_invalid_item_rolls_back_order_stock_and_transactions(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "Counter Buyer",
+                "phone": "01711111111",
+                "address": "Main counter",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 1},
+                    {"product_id": self.second_product.id, "quantity": 99},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Order.objects.filter(order_source=Order.SOURCE_OFFLINE).exists())
+        self.product.refresh_from_db()
+        self.second_product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 5)
+        self.assertEqual(self.second_product.stock_quantity, 3)
+        self.assertFalse(InventoryTransaction.objects.exists())
+
+    def test_duplicate_product_lines_are_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "Counter Buyer",
+                "phone": "01711111111",
+                "address": "Main counter",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 1},
+                    {"product_id": self.product.id, "quantity": 1},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Order.objects.filter(order_source=Order.SOURCE_OFFLINE).exists())
+
+    def test_history_and_detail_expose_only_offline_orders(self):
+        self.client.force_authenticate(user=self.admin)
+        create_response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "History Buyer",
+                "phone": "01711111111",
+                "address": "Main counter",
+                "items": [{"product_id": self.product.id, "quantity": 1}],
+            },
+            format="json",
+        )
+        offline_order_id = create_response.data["order"]["id"]
+        online_order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Online address",
+            payment_method=Order.PAYMENT_COD,
+            status=Order.STATUS_DELIVERED,
+        )
+
+        history_response = self.client.get(
+            reverse("orders:admin-offline-sale-list"),
+            {"search": "History Buyer"},
+        )
+        detail_response = self.client.get(
+            reverse("orders:admin-offline-sale-detail", args=[offline_order_id]),
+        )
+        online_detail_response = self.client.get(
+            reverse("orders:admin-offline-sale-detail", args=[online_order.id]),
+        )
+
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual([item["id"] for item in history_response.data], [offline_order_id])
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.data["order_source"], Order.SOURCE_OFFLINE)
+        self.assertEqual(online_detail_response.status_code, 404)
+

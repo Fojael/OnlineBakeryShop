@@ -16,6 +16,8 @@ import {
     getProduct,
     getProducts,
 } from "../../services/productService";
+import { getCustomerRecommendations } from "../../services/aiPredictionService";
+import { getApiErrorMessage } from "../../services/api";
 
 import {
     addToCart,
@@ -101,8 +103,7 @@ const ProductDetails = () => {
             console.error(error);
 
             toast.error(
-                error?.response?.data?.detail ||
-                "Unable to load product."
+                getApiErrorMessage(error, "Unable to load product.")
             );
 
             setProduct(null);
@@ -186,14 +187,19 @@ const ProductDetails = () => {
     useEffect(() => {
         if (!product?.category) return undefined;
         let mounted = true;
-        getProducts({
-            category: product.category,
-            availability: "in_stock",
-            page_size: 5,
-        }).then((response) => {
+        const request = isLoggedIn
+            ? getCustomerRecommendations(product.id)
+            : getProducts({
+                category: product.category,
+                availability: "in_stock",
+                page_size: 5,
+            });
+        request.then((response) => {
             if (!mounted) return;
             const data = response.data;
-            const items = Array.isArray(data) ? data : data.results || [];
+            const items = isLoggedIn
+                ? data.related_products || []
+                : Array.isArray(data) ? data : data.results || [];
             setRelatedProducts(items.filter((item) => item.id !== product.id));
         }).catch(() => {
             if (mounted) setRelatedProducts([]);

@@ -1,0 +1,124 @@
+.offline-receipt-sheet {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px;
+    background: #fff;
+    color: #1d2733;
+    border: 1px solid #dfe5eb;
+}
+
+.offline-receipt-header,
+.offline-receipt-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 2px solid #1d2733;
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+}
+
+.offline-receipt-header h1 {
+    font-size: 1.65rem;
+    margin-bottom: 4px;
+}
+
+.offline-receipt-meta {
+    font-size: 0.95rem;
+}
+
+.offline-receipt-items th {
+    background: #f2f5f7;
+}
+
+.offline-receipt-summary {
+    width: min(100%, 320px);
+    margin-left: auto;
+}
+
+.offline-receipt-summary > div {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+}
+
+.offline-receipt-summary .grand-total {
+    border-top: 2px solid #1d2733;
+    font-size: 1.2rem;
+    margin-top: 6px;
+    padding-top: 10px;
+}
+
+.offline-receipt-footer {
+    border-bottom: 0;
+    border-top: 1px solid #dfe5eb;
+    margin-top: 32px;
+    margin-bottom: 0;
+    padding-top: 20px;
+    padding-bottom: 0;
+}
+
+@media print {
+    .offline-receipt-actions,
+    .admin-sidebar,
+    .admin-topbar,
+    nav,
+    aside,
+    header:not(.offline-receipt-header) {
+        display: none !important;
+    }
+
+    body,
+    .offline-receipt-page,
+    .offline-receipt-sheet {
+        background: #fff !important;
+    }
+
+    .offline-receipt-page {
+        margin: 0;
+    }
+
+    .offline-receipt-sheet {
+        border: 0;
+        max-width: none;
+        padding: 0;
+    }
+
+    .offline-report-actions,
+    .offline-report-page > .row:first-of-type,
+    .offline-history-table,
+    .admin-sidebar,
+    .admin-topbar,
+    nav,
+    aside {
+        display: none !important;
+    }
+
+    .offline-report-page {
+        margin: 0;
+        padding: 0 !important;
+    }
+
+    .offline-report-page table {
+        width: 100%;
+        font-size: 9pt;
+    }
+
+    .offline-report-page thead {
+        display: table-header-group;
+    }
+
+    .offline-report-page tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .offline-report-page .card {
+        box-shadow: none !important;
+        border: 1px solid #dfe5eb !important;
+        break-inside: avoid;
+    }
+
+    .offline-report-generated {
+        display: block !important;
+    }
+}

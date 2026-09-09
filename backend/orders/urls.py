@@ -39,6 +39,9 @@ from .views import (
     AdminRefundListView,
     AdminRefundUpdateView,
     AdminRefundProcessView,
+    AdminOfflineSaleCreateView,
+    AdminOfflineSaleListView,
+    AdminOfflineSaleDetailView,
 )
 
 
@@ -50,6 +53,22 @@ urlpatterns = [
     # ==========================================================
     # ADMIN — ORDER MANAGEMENT
     # ==========================================================
+
+    path(
+        "admin/offline/",
+        AdminOfflineSaleCreateView.as_view(),
+        name="admin-offline-sale-create",
+    ),
+    path(
+        "admin/offline/history/",
+        AdminOfflineSaleListView.as_view(),
+        name="admin-offline-sale-list",
+    ),
+    path(
+        "admin/offline/<int:order_id>/",
+        AdminOfflineSaleDetailView.as_view(),
+        name="admin-offline-sale-detail",
+    ),
 
     # GET
     # All customer orders

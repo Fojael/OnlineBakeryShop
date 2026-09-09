@@ -8,7 +8,8 @@ import { getWishlist } from "../../services/wishlistService";
 import { getAddresses } from "../../services/addressService";
 import { getRefunds } from "../../services/refundService";
 import { getNotifications } from "../../services/notificationService";
-import { getProducts } from "../../services/productService";
+import { getCustomerRecommendations } from "../../services/aiPredictionService";
+import { getApiErrorMessage } from "../../services/api";
 
 const CustomerDashboard = () => {
     // ==========================================================
@@ -141,15 +142,11 @@ const CustomerDashboard = () => {
                 }
 
                 try {
-                    const productResponse = await getProducts({
-                        availability: "in_stock",
-                        ordering: "-created_at",
-                        page_size: 4,
-                    });
-                    const productData = productResponse.data;
+                    const recommendationResponse = await getCustomerRecommendations();
+                    const productData = recommendationResponse.data;
                     if (mounted) {
                         setRecommendedProducts(
-                            (Array.isArray(productData) ? productData : productData.results || []).slice(0, 4)
+                            (productData.recommended_products || productData.popular_products || []).slice(0, 4)
                         );
                     }
                 } catch {
@@ -233,8 +230,7 @@ const CustomerDashboard = () => {
                 }
 
                 toast.error(
-                    err?.response?.data?.detail ||
-                        "Unable to load dashboard."
+                    getApiErrorMessage(err, "Unable to load dashboard.")
                 );
             } finally {
                 if (mounted) {
