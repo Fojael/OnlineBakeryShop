@@ -4,6 +4,8 @@ from accounts.models import User
 from notifications.models import Notification
 from notifications.services import create_notification
 
+from .models import ReplenishmentRequest
+
 
 def _create_replenishment_notification(
     recipient,
@@ -296,4 +298,56 @@ class SupplierDashboardService:
             })
 
         return activities
+
+    # ==========================================================
+    # REPLENISHMENT REQUESTS
+    # ==========================================================
+
+    def get_replenishment_requests(self):
+        requests = (
+            ReplenishmentRequest.objects
+            .select_related(
+                "supplier",
+                "product",
+                "created_by",
+            )
+            .filter(
+                supplier=self.supplier,
+            )
+            .order_by("-created_at")
+        )
+
+        return [
+            {
+                "id": request.id,
+                "supplier": request.supplier_id,
+                "product": request.product_id,
+                "product_name": request.product.name,
+                "requested_quantity": request.requested_quantity,
+                "status": request.status,
+                "notes": request.notes,
+                "created_by": request.created_by_id,
+                "created_at": request.created_at,
+                "updated_at": request.updated_at,
+                "delivered_at": request.delivered_at,
+                "inventory_applied_at": request.inventory_applied_at,
+                "history": [
+                    {
+                        "id": history.id,
+                        "previous_status": history.previous_status,
+                        "new_status": history.new_status,
+                        "changed_by": history.changed_by_id,
+                        "changed_by_name": (
+                            history.changed_by.get_full_name()
+                            or history.changed_by.username
+                            or history.changed_by.email
+                            if history.changed_by else "System"
+                        ),
+                        "changed_at": history.changed_at,
+                    }
+                    for history in request.status_history.select_related("changed_by").all()
+                ],
+            }
+            for request in requests
+        ]
     

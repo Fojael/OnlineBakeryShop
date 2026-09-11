@@ -150,6 +150,10 @@ class SupplierDashboardView(
                 service.get_notifications(),
 
 
+            "replenishment_requests":
+                service.get_replenishment_requests(),
+
+
             "recent_activity":
                 service.get_recent_activity(),
 

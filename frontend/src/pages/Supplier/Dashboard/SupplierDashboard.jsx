@@ -4,6 +4,12 @@ import {
     useState,
 } from "react";
 
+import { toast } from "react-toastify";
+
+import {
+    getReplenishmentRequests,
+    updateReplenishmentStatus,
+} from "../../../services/replenishmentService";
 import {
     getSupplierDashboard,
 } from "../../../services/supplierService";
@@ -54,17 +60,26 @@ function StatusBadge({
     let className =
         "badge bg-secondary";
 
-    if (normalizedStatus === "Pending") {
+    if (
+        normalizedStatus === "Pending" ||
+        normalizedStatus === "PENDING"
+    ) {
         className =
             "badge bg-warning text-dark";
     }
 
-    if (normalizedStatus === "Processing") {
+    if (
+        normalizedStatus === "Processing" ||
+        normalizedStatus === "PROCESSING"
+    ) {
         className =
             "badge bg-primary";
     }
 
-    if (normalizedStatus === "Ready") {
+    if (
+        normalizedStatus === "Ready" ||
+        normalizedStatus === "READY"
+    ) {
         className =
             "badge bg-success";
     }
@@ -79,7 +94,10 @@ function StatusBadge({
             "badge bg-dark";
     }
 
-    if (normalizedStatus === "Delivered") {
+    if (
+        normalizedStatus === "Delivered" ||
+        normalizedStatus === "DELIVERED"
+    ) {
         className =
             "badge bg-success";
     }
@@ -893,6 +911,17 @@ export default function SupplierDashboard() {
     const [error, setError] =
         useState("");
 
+    const [replenishmentRequests, setReplenishmentRequests] =
+        useState([]);
+
+    const [replenishmentLoading, setReplenishmentLoading] =
+        useState(true);
+
+    const [replenishmentError, setReplenishmentError] =
+        useState("");
+
+    const [updatingReplenishmentId, setUpdatingReplenishmentId] =
+        useState(null);
 
 
     // ==========================================================
@@ -974,6 +1003,51 @@ export default function SupplierDashboard() {
     );
 
 
+    const loadReplenishmentRequests = useCallback(
+        async () => {
+
+            try {
+
+                setReplenishmentLoading(true);
+                setReplenishmentError("");
+
+                const response =
+                    await getReplenishmentRequests();
+
+                const data =
+                    Array.isArray(response?.data)
+                        ? response.data
+                        : response?.data?.results || [];
+
+                setReplenishmentRequests(data);
+
+            } catch (error) {
+
+                console.error(
+                    "Supplier replenishment loads failed:",
+                    error
+                );
+
+                setReplenishmentError(
+                    "Unable to load replenishment requests."
+                );
+
+                toast.error(
+                    error?.response?.data?.detail ||
+                    "Unable to load replenishment requests."
+                );
+
+            } finally {
+
+                setReplenishmentLoading(false);
+
+            }
+
+        },
+        []
+    );
+
+
     // ==========================================================
     // INITIAL LOAD
     // ==========================================================
@@ -984,6 +1058,7 @@ export default function SupplierDashboard() {
             setTimeout(() => {
 
                 void loadDashboard();
+                void loadReplenishmentRequests();
 
             }, 0);
 
@@ -995,6 +1070,7 @@ export default function SupplierDashboard() {
 
     }, [
         loadDashboard,
+        loadReplenishmentRequests,
     ]);
 
 
@@ -1112,6 +1188,81 @@ export default function SupplierDashboard() {
             ? dashboard.sales_overview
             : [];
 
+    const pendingReplenishments =
+        replenishmentRequests.filter(
+            (request) =>
+                request?.status === "PENDING"
+        ).length;
+
+    const getReplenishmentAction = (request) => {
+        const status = request?.status;
+
+        if (status === "PENDING") {
+            return {
+                nextStatus: "PROCESSING",
+                label: "Process Request",
+                loadingLabel: "Processing...",
+            };
+        }
+
+        if (status === "PROCESSING") {
+            return {
+                nextStatus: "READY",
+                label: "Mark Ready",
+                loadingLabel: "Marking Ready...",
+            };
+        }
+
+        if (status === "READY") {
+            return {
+                nextStatus: "DELIVERED",
+                label: "Confirm Delivery",
+                loadingLabel: "Confirming Delivery...",
+            };
+        }
+
+        return null;
+    };
+
+
+    const handleReplenishmentAction = async (request) => {
+        const action = getReplenishmentAction(request);
+
+        if (!action) {
+            return;
+        }
+
+        try {
+
+            setUpdatingReplenishmentId(request.id);
+            await updateReplenishmentStatus(
+                request.id,
+                action.nextStatus,
+            );
+
+            toast.success(
+                `${action.label} completed successfully.`
+            );
+
+            await Promise.all([
+                loadDashboard(),
+                loadReplenishmentRequests(),
+            ]);
+
+        } catch (error) {
+
+            toast.error(
+                error?.response?.data?.detail ||
+                "Unable to update replenishment request."
+            );
+
+        } finally {
+
+            setUpdatingReplenishmentId(null);
+
+        }
+    };
+
 
     // ==========================================================
     // HELPERS
@@ -1193,19 +1344,22 @@ export default function SupplierDashboard() {
         }
 
         if (
-            status === "Pending"
+            status === "Pending" ||
+            status === "PENDING"
         ) {
             return "badge bg-warning text-dark";
         }
 
         if (
-            status === "Processing"
+            status === "Processing" ||
+            status === "PROCESSING"
         ) {
             return "badge bg-info text-dark";
         }
 
         if (
-            status === "Ready"
+            status === "Ready" ||
+            status === "READY"
         ) {
             return "badge bg-success";
         }
@@ -1223,7 +1377,8 @@ export default function SupplierDashboard() {
         }
 
         if (
-            status === "Delivered"
+            status === "Delivered" ||
+            status === "DELIVERED"
         ) {
             return "badge bg-success";
         }
@@ -1342,6 +1497,167 @@ export default function SupplierDashboard() {
                         notifications.length
                     }
                 />
+
+                <StatCard
+                    title="Pending Replenishments"
+                    value={
+                        pendingReplenishments
+                    }
+                />
+
+            </div>
+
+
+            {/* ==================================================
+                REPLENISHMENT REQUESTS
+            ================================================== */}
+
+            <div className="row mt-3">
+
+                <div className="col-12 mb-4">
+
+                    <div className="card border-0 shadow-sm h-100">
+
+                        <div className="card-header bg-white d-flex justify-content-between align-items-center">
+
+                            <h5 className="mb-0">
+                                Replenishment Requests
+                            </h5>
+
+                            <span className="badge bg-primary-subtle text-primary">
+                                {pendingReplenishments} pending
+                            </span>
+
+                        </div>
+
+                        <div className="card-body p-0">
+
+                            {replenishmentLoading ? (
+
+                                <div className="p-4 text-center text-muted">
+                                    Loading replenishment requests...
+                                </div>
+
+                            ) : replenishmentError ? (
+
+                                <div className="p-4 text-center text-danger">
+                                    {replenishmentError}
+                                </div>
+
+                            ) : replenishmentRequests.length === 0 ? (
+
+                                <div className="p-4 text-center text-muted">
+                                    No replenishment requests.
+                                </div>
+
+                            ) : (
+
+                                <div className="table-responsive">
+
+                                    <table className="table align-middle mb-0">
+
+                                        <thead>
+
+                                            <tr>
+
+                                                <th>Request ID</th>
+                                                <th>Product</th>
+                                                <th>Quantity</th>
+                                                <th>Status</th>
+                                                <th>Created</th>
+                                                <th className="text-end">Action</th>
+
+                                            </tr>
+
+                                        </thead>
+
+                                        <tbody>
+
+                                            {replenishmentRequests.map(
+                                                (request) => {
+
+                                                    const action =
+                                                        getReplenishmentAction(
+                                                            request
+                                                        );
+
+                                                    const isUpdating =
+                                                        updatingReplenishmentId ===
+                                                        request.id;
+
+                                                    return (
+                                                        <tr key={request.id}>
+
+                                                            <td>
+                                                                #{request.id}
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    request.product_name ||
+                                                                    request.product ||
+                                                                    "Product"
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    request.requested_quantity ??
+                                                                    0
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                <span className={statusBadgeClass(request.status)}>
+                                                                    {request.status || "Unknown"}
+                                                                </span>
+                                                            </td>
+
+                                                            <td>
+                                                                {formatDate(request.created_at)}
+                                                            </td>
+
+                                                            <td className="text-end">
+                                                                {action ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-primary btn-sm"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleReplenishmentAction(
+                                                                                request
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        {isUpdating
+                                                                            ? action.loadingLabel
+                                                                            : action.label}
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-success small fw-semibold">
+                                                                        Delivered
+                                                                    </span>
+                                                                )}
+                                                            </td>
+
+                                                        </tr>
+                                                    );
+                                                }
+                                            )}
+
+                                        </tbody>
+
+                                    </table>
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    </div>
+
+                </div>
 
             </div>
 

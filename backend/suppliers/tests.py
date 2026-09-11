@@ -227,6 +227,29 @@ class ReplenishmentRequestTests(TestCase):
         self.assertEqual(supplier_response.status_code, 200)
         self.assertEqual(len(supplier_response.data), 1)
 
+    def test_supplier_dashboard_includes_assigned_replenishment_requests(self):
+        ReplenishmentRequest.objects.create(
+            supplier=self.supplier,
+            product=self.product,
+            requested_quantity=10,
+            created_by=self.admin,
+            status=ReplenishmentRequest.STATUS_PENDING,
+        )
+
+        self.client.force_authenticate(user=self.supplier_user)
+        response = self.client.get(reverse("supplier-dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("replenishment_requests", response.data["dashboard"])
+        self.assertEqual(
+            len(response.data["dashboard"]["replenishment_requests"]),
+            1,
+        )
+        self.assertEqual(
+            response.data["dashboard"]["replenishment_requests"][0]["status"],
+            ReplenishmentRequest.STATUS_PENDING,
+        )
+
     def test_admin_sees_all_replenishment_requests(self):
         first_request = ReplenishmentRequest.objects.create(
             supplier=self.supplier,

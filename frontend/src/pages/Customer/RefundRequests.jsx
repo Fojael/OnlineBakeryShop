@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import { getApiErrorMessage } from "../../services/api";
 import { getRefunds } from "../../services/refundService";
 
 const STATUS_STYLES = {
@@ -29,13 +29,21 @@ const RefundRequests = () => {
 
         getRefunds()
             .then((response) => {
-                if (mounted) setRefunds(response.data || []);
+                if (mounted) {
+                    setRefunds(
+                        Array.isArray(response.data)
+                            ? response.data
+                            : []
+                    );
+                }
             })
             .catch((requestError) => {
                 if (mounted) {
                     setError(
-                        requestError.response?.data?.detail ||
-                        "Failed to load refund requests."
+                        getApiErrorMessage(
+                            requestError,
+                            "Failed to load refund requests."
+                        )
                     );
                 }
             })
@@ -49,8 +57,7 @@ const RefundRequests = () => {
     }, []);
 
     return (
-        <DashboardLayout>
-            <div className="container py-4">
+        <div className="container py-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
                     <div>
                         <h2 className="mb-1">Refund Requests</h2>
@@ -154,8 +161,7 @@ const RefundRequests = () => {
                         ))}
                     </div>
                 )}
-            </div>
-        </DashboardLayout>
+        </div>
     );
 };
 

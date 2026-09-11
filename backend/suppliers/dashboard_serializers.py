@@ -125,6 +125,8 @@ class SupplierDashboardSerializer(serializers.Serializer):
 
     notifications = serializers.ListField()
 
+    replenishment_requests = serializers.ListField()
+
     recent_activity = serializers.ListField()
 
     recent_products = SupplierProductSerializer(
