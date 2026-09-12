@@ -1,0 +1,49 @@
+.online-sales-report-printable {
+    margin-top: 2rem;
+}
+
+@media print {
+    .admin-sidebar,
+    .admin-topbar,
+    nav,
+    aside,
+    header,
+    .online-sales-report-actions,
+    .reports-filters {
+        display: none !important;
+    }
+
+    body,
+    .online-sales-report-printable {
+        background: #fff !important;
+    }
+
+    .online-sales-report-printable {
+        margin: 0;
+        padding: 0 !important;
+    }
+
+    .online-sales-report-printable .card {
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .online-sales-report-printable table {
+        width: 100%;
+        font-size: 8pt;
+    }
+
+    .online-sales-report-printable thead {
+        display: table-header-group;
+    }
+
+    .online-sales-report-printable tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+}

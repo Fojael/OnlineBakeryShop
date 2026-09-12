@@ -99,7 +99,7 @@ const OrderDetails = () => {
         if (order?.can_cancel) return "This order is currently eligible for cancellation.";
         if (order?.status === "Cancelled") return "This order has already been cancelled.";
         if (order?.status === "Delivered") return "Delivered orders cannot be cancelled.";
-        if (!["Pending", "Accepted", "Processing"].includes(order?.status)) {
+        if (!["Pending", "Accepted"].includes(order?.status)) {
             return "This order can no longer be cancelled at its current status.";
         }
         return "This order is outside the cancellation policy or has a payment restriction.";

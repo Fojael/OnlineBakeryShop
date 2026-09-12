@@ -157,6 +157,175 @@ def _offline_csv_response(payload):
     return response
 
 
+def _online_report_dates(request):
+    today = timezone.localdate()
+    period = request.query_params.get("period", "daily").lower()
+
+    if period == "daily":
+        start_date = end_date = _parse_report_date(
+            request.query_params.get("date"), "date"
+        )
+    elif period == "weekly":
+        selected = _parse_report_date(
+            request.query_params.get("date"), "date"
+        )
+        start_date = selected - timedelta(days=selected.weekday())
+        end_date = start_date + timedelta(days=6)
+    elif period == "monthly":
+        try:
+            year = int(request.query_params.get("year"))
+            month = int(request.query_params.get("month"))
+            start_date = datetime(year, month, 1).date()
+        except (TypeError, ValueError):
+            raise ValueError("year and month are required; month must be between 1 and 12.")
+        end_date = datetime(year, month, monthrange(year, month)[1]).date()
+    elif period == "yearly":
+        try:
+            year = int(request.query_params.get("year"))
+            start_date = datetime(year, 1, 1).date()
+            end_date = datetime(year, 12, 31).date()
+        except (TypeError, ValueError):
+            raise ValueError("year is required and must be valid.")
+    elif period == "custom":
+        start_date = _parse_report_date(
+            request.query_params.get("start_date"), "start_date"
+        )
+        end_date = _parse_report_date(
+            request.query_params.get("end_date"), "end_date"
+        )
+    else:
+        raise ValueError("period must be daily, weekly, monthly, yearly, or custom.")
+
+    if start_date > end_date:
+        raise ValueError("start_date cannot be after end_date.")
+    if start_date > today:
+        raise ValueError("period cannot be in the future.")
+    return start_date, min(end_date, today), period
+
+
+def _online_report_payload(start_date, end_date, period):
+    orders = (
+        Order.objects
+        .filter(
+            order_source=Order.SOURCE_ONLINE,
+            created_at__date__range=(start_date, end_date),
+        )
+        .select_related("customer", "payment", "shipping_details")
+        .prefetch_related("items__product")
+        .order_by("created_at", "id")
+    )
+    order_list = list(orders)
+    transactions = []
+    total_quantity = 0
+    for order in order_list:
+        shipping_details = getattr(order, "shipping_details", None)
+        customer = order.customer
+        customer_name = (
+            shipping_details.full_name
+            if shipping_details and shipping_details.full_name
+            else customer.get_full_name() if customer else ""
+        )
+        phone = (
+            shipping_details.phone
+            if shipping_details and shipping_details.phone
+            else customer.phone if customer else ""
+        )
+        email = (
+            shipping_details.email
+            if shipping_details and shipping_details.email
+            else customer.email if customer else ""
+        )
+        address = order.shipping_address
+        if shipping_details:
+            address = ", ".join(
+                value for value in [
+                    shipping_details.street_address,
+                    shipping_details.area,
+                    shipping_details.city,
+                    shipping_details.district,
+                    shipping_details.division,
+                    shipping_details.postal_code,
+                ]
+                if value
+            ) or address
+        payment = getattr(order, "payment", None)
+        for item in order.items.all():
+            total_quantity += item.quantity
+            transactions.append({
+                "order_id": order.id,
+                "customer_name": customer_name,
+                "phone": phone or "",
+                "email": email or "",
+                "address": address or "",
+                "product_name": item.product_name or item.product.name,
+                "quantity": item.quantity,
+                "date": timezone.localtime(order.created_at).isoformat(),
+                "order_status": order.status,
+                "payment_status": payment.status if payment else "Pending",
+                "revenue": str(item.subtotal),
+            })
+
+    total_revenue = sum(
+        (order.total_amount for order in order_list),
+        Decimal("0.00"),
+    )
+    return {
+        "report": "Detailed Online Sales Report",
+        "period": {
+            "name": period,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        },
+        "summary": {
+            "total_orders": len(order_list),
+            "total_rows": len(transactions),
+            "total_quantity": total_quantity,
+            "total_revenue": str(total_revenue),
+        },
+        "transactions": transactions,
+        "totals": {
+            "quantity": total_quantity,
+            "revenue": str(total_revenue),
+        },
+    }
+
+
+def _online_csv_response(payload):
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    period = payload["period"]
+    filename_period = period["name"]
+    if filename_period == "daily":
+        filename = f"online_sales_daily_{period['start_date']}.csv"
+    elif filename_period == "weekly":
+        filename = f"online_sales_weekly_{period['start_date']}.csv"
+    elif filename_period == "monthly":
+        filename = f"online_sales_monthly_{period['start_date'][:7]}.csv"
+    elif filename_period == "yearly":
+        filename = f"online_sales_yearly_{period['start_date'][:4]}.csv"
+    else:
+        filename = f"online_sales_custom_{period['start_date']}_to_{period['end_date']}.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+    writer.writerow([
+        "Order ID", "Customer Name", "Phone", "Email", "Address",
+        "Product Name", "Quantity", "Date", "Order Status",
+        "Payment Status", "Revenue",
+    ])
+    for transaction in payload["transactions"]:
+        writer.writerow([
+            transaction[key]
+            for key in [
+                "order_id", "customer_name", "phone", "email", "address",
+                "product_name", "quantity", "date", "order_status",
+                "payment_status", "revenue",
+            ]
+        ])
+    writer.writerow([])
+    writer.writerow(["Total quantity", payload["totals"]["quantity"]])
+    writer.writerow(["Total revenue", payload["totals"]["revenue"]])
+    return response
+
+
 class AdminOfflinePeriodReportView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     report_name = "Offline Sales Report"
@@ -209,6 +378,24 @@ class AdminOfflineMonthlyReportView(AdminOfflinePeriodReportView):
         if start_date > timezone.localdate():
             raise ValueError("month cannot be in the future.")
         return start_date, min(end_date, timezone.localdate()), f"offline_sales_monthly_{year:04d}-{month:02d}.csv"
+
+
+class AdminOnlineSalesReportView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        try:
+            start_date, end_date, period = _online_report_dates(request)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = _online_report_payload(start_date, end_date, period)
+        if request.query_params.get("download") == "csv":
+            return _online_csv_response(payload)
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class AdminSalesSummaryView(APIView):

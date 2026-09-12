@@ -5,6 +5,7 @@ from .views import (
     AdminOfflineMonthlyReportView,
     AdminOfflineSalesReportView,
     AdminOfflineWeeklyReportView,
+    AdminOnlineSalesReportView,
     AdminReportsSummaryView,
     AdminSalesSummaryView,
 )
@@ -30,4 +31,9 @@ urlpatterns = [
     path("admin/offline/daily/", AdminOfflineDailyReportView.as_view(), name="admin-offline-daily-report"),
     path("admin/offline/weekly/", AdminOfflineWeeklyReportView.as_view(), name="admin-offline-weekly-report"),
     path("admin/offline/monthly/", AdminOfflineMonthlyReportView.as_view(), name="admin-offline-monthly-report"),
+    path(
+        "admin/online-sales/",
+        AdminOnlineSalesReportView.as_view(),
+        name="admin-online-sales-report",
+    ),
 ]

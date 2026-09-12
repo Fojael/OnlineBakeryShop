@@ -31,7 +31,6 @@ const ORDER_TABS = [
     "All",
     "Pending",
     "Accepted",
-    "Processing",
     "Ready",
     "Assigned",
     "Out for Delivery",
@@ -347,9 +346,6 @@ const AdminOrders = () => {
 
             case "Accepted":
                 return "badge bg-primary";
-
-            case "Processing":
-                return "badge bg-info text-dark";
 
             case "Ready":
                 return "badge bg-success";
@@ -955,7 +951,7 @@ const AdminOrders = () => {
                     </strong>
 
                     <span className="ms-2">
-                        Pending → Accepted → Processing → Ready
+                        Pending → Accepted → Ready
                         → Assigned → Out for Delivery → Delivered
                     </span>
 
@@ -965,7 +961,7 @@ const AdminOrders = () => {
                             Important:
                         </strong>{" "}
 
-                        Admin controls Processing and Ready.
+                        Admin controls Accept and Ready.
                         Admin selects a specific active rider only
                         after the order becomes Ready.
 
@@ -1269,9 +1265,7 @@ const AdminOrders = () => {
 
                                                                     {/* ACCEPT */}
 
-                                                                    {["Pending", "Accepted", "Processing"].includes(
-                                                                        order.status
-                                                                    ) && (
+                                                                    {order.status === "Pending" && (
                                                                         <button
                                                                             type="button"
                                                                             className="btn btn-success btn-sm"
@@ -1294,8 +1288,9 @@ const AdminOrders = () => {
 
                                                                     {/* UPDATE */}
 
-                                                                    {order.status ===
-                                                                        "Pending" && (
+                                                                    {["Pending", "Accepted"].includes(
+                                                                        order.status
+                                                                    ) && (
                                                                         <button
                                                                             type="button"
                                                                             className="btn btn-warning btn-sm"

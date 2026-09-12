@@ -816,6 +816,14 @@ class Refund(models.Model):
             and not self.order.refunds.exists()
         )
 
+    @property
+    def refund_percentage(self):
+        return 25 if self.refund_type == self.REFUND_TYPE_PARTIAL else 100
+
+    @property
+    def is_recorded_internally(self):
+        return "Refund approved and recorded internally" in self.admin_notes
+
     # ======================================================
     # STRING
     # ======================================================

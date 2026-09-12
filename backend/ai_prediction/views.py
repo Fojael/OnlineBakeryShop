@@ -34,6 +34,10 @@ def _summary(model):
             "data_start": model.data_start,
             "data_end": model.data_end,
             "is_forecast": True,
+            "history_message": (
+                "Forecast generated using the available delivered sales "
+                f"history ({model.training_days} days)."
+            ),
         },
         "pipeline": {
             "status": "ready",

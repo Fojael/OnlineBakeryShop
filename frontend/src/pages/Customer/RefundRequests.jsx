@@ -96,9 +96,16 @@ const RefundRequests = () => {
                                                 </div>
                                             </div>
                                             <div className="text-end">
-                                                <div className="fs-5 fw-semibold">
-                                                    ৳{Number(refund.refund_amount).toFixed(2)}
-                                                </div>
+                                                {refund.approved_amount && (
+                                                    <div className="fs-5 fw-semibold">
+                                                        ৳{Number(refund.approved_amount).toFixed(2)}
+                                                    </div>
+                                                )}
+                                                {refund.status === "Approved" && (
+                                                    <div className="small text-muted">
+                                                        {refund.refund_type === "PARTIAL" ? "Partial Refund (25%)" : "Full Refund (100%)"}
+                                                    </div>
+                                                )}
                                                 <span className={`badge ${STATUS_STYLES[refund.status] || "bg-secondary"}`}>
                                                     {refund.status}
                                                 </span>
@@ -127,22 +134,7 @@ const RefundRequests = () => {
                                         )}
                                         {refund.status === "Approved" && (
                                             <div className="alert alert-info mt-4 mb-0">
-                                                Your refund has been approved and is ready for gateway processing.
-                                            </div>
-                                        )}
-                                        {refund.status === "Processing" && (
-                                            <div className="alert alert-info mt-4 mb-0">
-                                                Your refund is being processed by the payment gateway.
-                                            </div>
-                                        )}
-                                        {refund.status === "Completed" && (
-                                            <div className="alert alert-success mt-4 mb-0">
-                                                Your refund has been completed successfully.
-                                            </div>
-                                        )}
-                                        {refund.status === "Failed" && (
-                                            <div className="alert alert-danger mt-4 mb-0">
-                                                Refund processing failed. {refund.refund_failure_reason || "Please wait for review or retry."}
+                                                Your refund has been approved by an admin. Money has not been returned automatically.
                                             </div>
                                         )}
                                         {refund.status === "Rejected" && refund.admin_notes && (

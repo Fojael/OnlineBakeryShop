@@ -23,7 +23,6 @@ from rest_framework.pagination import PageNumberPagination
 
 from cart.models import Cart, CartItem
 from payments.models import Payment
-from payments.services import SSLCommerzError, refund_payment
 from products.models import Product
 from notifications.models import Notification
 from notifications.services import create_notification
@@ -1391,7 +1390,6 @@ class AdminOrderUpdateView(APIView):
             allowed_statuses = [
                 Order.STATUS_PENDING,
                 Order.STATUS_ACCEPTED,
-                Order.STATUS_PROCESSING,
                 Order.STATUS_READY,
                 Order.STATUS_CANCELLED,
             ]
@@ -1444,12 +1442,11 @@ class AdminOrderUpdateView(APIView):
                 ],
 
                 Order.STATUS_ACCEPTED: [
-                    Order.STATUS_PROCESSING,
+                    Order.STATUS_READY,
                     Order.STATUS_CANCELLED,
                 ],
 
                 Order.STATUS_PROCESSING: [
-                    Order.STATUS_READY,
                     Order.STATUS_CANCELLED,
                 ],
 
@@ -1646,18 +1643,7 @@ class AdminOrderUpdateView(APIView):
                             ]
                         )
 
-            if new_status == Order.STATUS_PROCESSING:
-                notify_customer(
-                    customer=order.customer,
-                    title="Order Processing",
-                    message=(
-                        f"Your Order #{order.id} "
-                        "is now being processed by the bakery."
-                    ),
-                    notification_type=Notification.TYPE_INFO,
-                )
-
-            elif new_status == Order.STATUS_READY:
+            if new_status == Order.STATUS_READY:
                 notify_customer(
                     customer=order.customer,
                     title="Order Ready",
@@ -2071,33 +2057,9 @@ class SupplierOrderItemStatusUpdateView(APIView):
         )
 
         # --------------------------------------------------
-        # FIRST ITEM PROCESSING
-        #
-        # Accepted → Processing
-        # --------------------------------------------------
-
-        if (
-            new_status
-            == OrderItem.STATUS_PROCESSING
-            and order.status
-            == Order.STATUS_ACCEPTED
-        ):
-
-            order.status = (
-                Order.STATUS_PROCESSING
-            )
-
-            order.save(
-                update_fields=[
-                    "status",
-                    "updated_at",
-                ]
-            )
-
-        # --------------------------------------------------
         # CHECK ALL ITEMS READY
         #
-        # Processing → Ready
+        # Accepted → Ready
         # --------------------------------------------------
 
         if (
@@ -2149,23 +2111,6 @@ class SupplierOrderItemStatusUpdateView(APIView):
         # --------------------------------------------------
 
         if (
-            new_status
-            == OrderItem.STATUS_PROCESSING
-        ):
-
-            notify_customer(
-                customer=order.customer,
-                title="Order Processing",
-                message=(
-                    f"Your Order #{order.id} "
-                    "is being processed."
-                ),
-                notification_type=(
-                    Notification.TYPE_INFO
-                ),
-            )
-
-        elif (
             new_status
             == OrderItem.STATUS_READY
             and order.status != Order.STATUS_READY
@@ -3104,9 +3049,7 @@ class CustomerRefundRequestView(APIView):
                 "description",
                 "",
             ),
-            refund_type=serializer.validated_data[
-                "refund_type"
-            ],
+            refund_type=Refund.REFUND_TYPE_FULL,
             refund_amount=serializer.validated_data[
                 "refund_amount"
             ],
@@ -3421,6 +3364,24 @@ class AdminRefundUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        decision = serializer.validated_data.get("refund_type")
+        if new_status == Refund.STATUS_APPROVED:
+            if decision not in [
+                Refund.REFUND_TYPE_FULL,
+                Refund.REFUND_TYPE_PARTIAL,
+            ]:
+                return Response(
+                    {"detail": "Choose either a full or 25% partial refund."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            eligible_amount = refund.refund_amount
+            refund.refund_type = decision
+            refund.approved_amount = (
+                eligible_amount
+                if decision == Refund.REFUND_TYPE_FULL
+                else (eligible_amount * Decimal("25") / Decimal("100")).quantize(Decimal("0.01"))
+            )
+
         refund.admin = request.user
         reviewed_at = timezone.now()
 
@@ -3431,32 +3392,17 @@ class AdminRefundUpdateView(APIView):
         else:
             update_fields = ["admin"]
 
-        if (
-            "approved_amount"
-            in serializer.validated_data
-        ):
-
-            refund.approved_amount = (
-                serializer.validated_data[
-                    "approved_amount"
-                ]
-            )
-
         if "admin_notes" in serializer.validated_data:
             refund.admin_notes = serializer.validated_data["admin_notes"]
 
-        update_fields.extend(["approved_amount", "admin_notes"])
+        update_fields.extend(["approved_amount", "admin_notes", "refund_type"])
 
         if (
             new_status
             == Refund.STATUS_APPROVED
         ):
 
-            approved_amount = (
-                refund.approved_amount
-                if refund.approved_amount is not None
-                else refund.refund_amount
-            )
+            approved_amount = refund.approved_amount
 
             if approved_amount <= Decimal("0.00"):
                 return Response(
@@ -3507,7 +3453,7 @@ class AdminRefundUpdateView(APIView):
             note=(
                 refund.admin_notes
                 if new_status == Refund.STATUS_REJECTED
-                else "Admin Approved"
+                else f"Admin Approved: {refund.refund_type} ({refund.refund_percentage}%) - {refund.approved_amount}"
             ),
         )
 
@@ -3519,6 +3465,9 @@ class AdminRefundUpdateView(APIView):
             new_value={
                 "status": new_status,
                 "refund_amount": str(refund.refund_amount),
+                "refund_type": refund.refund_type,
+                "refund_percentage": refund.refund_percentage,
+                "approved_amount": str(refund.approved_amount or "0.00"),
             },
         )
 
@@ -3561,230 +3510,59 @@ class AdminRefundUpdateView(APIView):
 
 
 class AdminRefundProcessView(APIView):
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, refund_id):
-
         if request.user.role != User.ROLE_ADMIN:
             return Response(
-                {
-                    "detail":
-                        "Admin permission required.",
-                },
+                {"detail": "Admin permission required."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         refund = get_object_or_404(
-            Refund.objects
-            .select_for_update()
-            .select_related("order", "customer"),
+            Refund.objects.select_for_update().select_related("order", "customer"),
             id=refund_id,
         )
-
-        if refund.status not in [
-            Refund.STATUS_APPROVED,
-            Refund.STATUS_PROCESSING,
-            Refund.STATUS_FAILED,
-        ]:
+        if refund.status != Refund.STATUS_APPROVED:
             return Response(
-                {
-                    "detail":
-                        "Only approved or failed refunds can be processed.",
-                    "allowed_source_statuses": [
-                        Refund.STATUS_APPROVED,
-                        Refund.STATUS_PROCESSING,
-                        Refund.STATUS_FAILED,
-                    ],
-                },
+                {"detail": "Only approved refunds can be recorded."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payment = (
-            Payment.objects
-            .select_for_update()
-            .filter(order=refund.order)
-            .first()
-        )
-        amount = refund.approved_amount or refund.refund_amount
-
-        if amount <= Decimal("0.00"):
+        if refund.is_recorded_internally:
             return Response(
-                {
-                    "detail":
-                        "Refund amount must be greater than zero."
-                },
+                {"detail": "This refund approval has already been recorded."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if amount > refund.refund_amount:
-            return Response(
-                {
-                    "detail":
-                        "Refund amount cannot exceed the refundable amount."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if payment and payment.status == Payment.STATUS_REFUNDED:
-            return Response(
-                {
-                    "detail": "This payment has already been refunded."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if payment and payment.status == Payment.STATUS_SUCCESS and not str(
-            payment.bank_transaction_id or ""
-        ).strip():
-            return Response(
-                {
-                    "detail":
-                        "A bank transaction ID is required to refund this payment."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        previous_status = refund.status
-        refund.status = Refund.STATUS_PROCESSING
         refund.admin = request.user
         refund.refund_attempt_count += 1
-        refund.refund_failure_reason = ""
-        refund.save(update_fields=[
-            "status",
-            "admin",
-            "refund_attempt_count",
-            "refund_failure_reason",
-        ])
+        refund.admin_notes = (
+            f"{refund.admin_notes}\n" if refund.admin_notes else ""
+        ) + "Refund approved and recorded internally; no external payout provider was called."
+        refund.save(update_fields=["admin", "refund_attempt_count", "admin_notes"])
         record_refund_status_change(
             refund=refund,
-            new_status=Refund.STATUS_PROCESSING,
+            new_status=Refund.STATUS_APPROVED,
             actor=request.user,
-            note="Refund Processing",
+            note="Refund recorded internally; money return is not automated.",
         )
-        notify_refund_customer(refund, Refund.STATUS_PROCESSING)
-
-        try:
-            if not payment or payment.status != Payment.STATUS_SUCCESS:
-                raise SSLCommerzError(
-                    "A successful SSLCOMMERZ payment is required for a refund."
-                )
-
-            gateway_response = refund_payment(
-                payment,
-                amount,
-                remarks=f"Refund for Order #{refund.order.id}",
-            )
-            refund.refund_gateway_response = gateway_response
-            refund.refund_reference_id = str(
-                gateway_response.get("refund_ref_id")
-                or gateway_response.get("refund_reference_id")
-                or ""
-            )[:100]
-
-            gateway_status = str(
-                gateway_response.get("status", "")
-            ).lower()
-
-            if gateway_status in [
-                "success",
-                "completed",
-            ]:
-                refund.status = Refund.STATUS_COMPLETED
-                refund.completed_at = timezone.now()
-                refund.save(update_fields=[
-                    "status",
-                    "refund_gateway_response",
-                    "refund_reference_id",
-                    "completed_at",
-                ])
-                record_refund_status_change(
-                    refund=refund,
-                    new_status=Refund.STATUS_COMPLETED,
-                    actor=request.user,
-                    note="Refund Completed",
-                )
-                notify_refund_customer(refund, Refund.STATUS_COMPLETED)
-                payment.mark_refunded()
-                payment.save(update_fields=[
-                    "status",
-                    "failure_reason",
-                    "updated_at",
-                ])
-            elif gateway_status in [
-                "processing",
-                "pending",
-            ]:
-                refund.status = Refund.STATUS_PROCESSING
-                refund.save(update_fields=[
-                    "status",
-                    "refund_gateway_response",
-                    "refund_reference_id",
-                ])
-            else:
-                refund.status = Refund.STATUS_FAILED
-                refund.refund_failure_reason = str(
-                    gateway_response.get(
-                        "failedreason",
-                        "Gateway refund did not complete.",
-                    )
-                )[:255]
-                refund.save(update_fields=[
-                    "status",
-                    "refund_gateway_response",
-                    "refund_reference_id",
-                    "refund_failure_reason",
-                ])
-                record_refund_status_change(
-                    refund=refund,
-                    new_status=Refund.STATUS_FAILED,
-                    actor=request.user,
-                    note=refund.refund_failure_reason,
-                )
-                notify_refund_customer(
-                    refund,
-                    Refund.STATUS_FAILED,
-                    detail=refund.refund_failure_reason,
-                )
-        except SSLCommerzError as exc:
-            refund.status = Refund.STATUS_FAILED
-            refund.refund_failure_reason = str(exc)[:255]
-            refund.save(update_fields=[
-                "status",
-                "refund_failure_reason",
-            ])
-            record_refund_status_change(
-                refund=refund,
-                new_status=Refund.STATUS_FAILED,
-                actor=request.user,
-                note=refund.refund_failure_reason,
-            )
-            notify_refund_customer(
-                refund,
-                Refund.STATUS_FAILED,
-                detail=refund.refund_failure_reason,
-            )
-
         record_audit(
             actor=request.user,
-            action="refund_status_changed",
+            action="refund_recorded_internally",
             obj=refund,
-            old_value={"status": previous_status},
-            new_value={"status": refund.status},
-        )
-
-        response_serializer = RefundSerializer(
-            refund,
-            context={"request": request},
+            old_value={"status": Refund.STATUS_APPROVED},
+            new_value={
+                "status": Refund.STATUS_APPROVED,
+                "approved_amount": str(refund.approved_amount),
+            },
         )
 
         return Response(
             {
-                "message": "Refund processing completed.",
-                "refund": response_serializer.data,
+                "message": "Refund approval recorded internally. No external payout was performed.",
+                "refund": RefundSerializer(refund, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,
         )

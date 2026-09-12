@@ -18,7 +18,6 @@ const REFUND_REASONS = [
 const RefundRequestForm = ({ orderId, order, onSubmitted }) => {
     const [reason, setReason] = useState("");
     const [description, setDescription] = useState("");
-    const [refundType, setRefundType] = useState("FULL");
     const [selectedItems, setSelectedItems] = useState({});
     const [photos, setPhotos] = useState([]);
     const [pendingRefundId, setPendingRefundId] = useState(null);
@@ -43,8 +42,8 @@ const RefundRequestForm = ({ orderId, order, onSubmitted }) => {
                 quantity: Number(quantity),
             }));
 
-        if (refundType === "PARTIAL" && items.length === 0) {
-            toast.error("Select at least one item for a partial refund.");
+        if (items.length === 0) {
+            toast.error("Select at least one product and quantity.");
             return;
         }
 
@@ -57,8 +56,7 @@ const RefundRequestForm = ({ orderId, order, onSubmitted }) => {
                 const response = await requestRefund(orderId, {
                     reason,
                     description,
-                    refund_type: refundType,
-                    ...(refundType === "PARTIAL" ? { items } : {}),
+                    items,
                 });
                 refundId = response.data.refund.id;
                 setPendingRefundId(refundId);
@@ -98,41 +96,27 @@ const RefundRequestForm = ({ orderId, order, onSubmitted }) => {
                     <option key={option} value={option}>{option}</option>
                 ))}
             </select>
-            <label className="form-label" htmlFor={`refund-type-${orderId}`}>
-                Refund type
-            </label>
-            <select
-                id={`refund-type-${orderId}`}
-                className="form-select mb-2"
-                value={refundType}
-                onChange={(event) => setRefundType(event.target.value)}
-            >
-                <option value="FULL">Full refund</option>
-                <option value="PARTIAL">Partial refund</option>
-            </select>
-            {refundType === "PARTIAL" && (
-                <div className="mb-2">
-                    <span className="form-label d-block">Products and quantities</span>
-                    {(order?.items || []).map((item) => (
-                        <div className="input-group mb-2" key={item.id}>
-                            <span className="input-group-text flex-grow-1">
-                                {item.product_name} (max {item.quantity})
-                            </span>
-                            <input
-                                className="form-control"
-                                type="number"
-                                min="0"
-                                max={item.quantity}
-                                value={selectedItems[item.id] || ""}
-                                onChange={(event) => setSelectedItems({
-                                    ...selectedItems,
-                                    [item.id]: event.target.value,
-                                })}
-                            />
-                        </div>
-                    ))}
-                </div>
-            )}
+            <div className="mb-2">
+                <span className="form-label d-block">Products and quantities</span>
+                {(order?.items || []).map((item) => (
+                    <div className="input-group mb-2" key={item.id}>
+                        <span className="input-group-text flex-grow-1">
+                            {item.product_name} (max {item.quantity})
+                        </span>
+                        <input
+                            className="form-control"
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={selectedItems[item.id] || ""}
+                            onChange={(event) => setSelectedItems({
+                                ...selectedItems,
+                                [item.id]: event.target.value,
+                            })}
+                        />
+                    </div>
+                ))}
+            </div>
             <label className="form-label" htmlFor={`refund-photos-${orderId}`}>
                 Product photos (up to 5)
             </label>

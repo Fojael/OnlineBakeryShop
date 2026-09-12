@@ -12,7 +12,8 @@ from suppliers.models import ReplenishmentRequest
 
 from .models import ForecastModel
 
-MIN_HISTORY_DAYS = 14
+# One valid delivered-sales day is enough for a recent-demand fallback.
+MIN_HISTORY_DAYS = 1
 FORECAST_DAYS = 30
 DEFAULT_LOW_STOCK_HORIZON_DAYS = 7
 TRAINING_COOLDOWN_SECONDS = 300

@@ -9,7 +9,6 @@ const Refunds = () => {
     const [error, setError] = useState("");
     const [updatingId, setUpdatingId] = useState(null);
     const [expandedId, setExpandedId] = useState(null);
-    const [approvedAmounts, setApprovedAmounts] = useState({});
     const [adminNotes, setAdminNotes] = useState({});
 
     const formatDate = (value) => value
@@ -75,8 +74,8 @@ const Refunds = () => {
 
         try {
             const payload = { status };
-            if (status === "Approved" && approvedAmount) {
-                payload.approved_amount = approvedAmount;
+            if (status === "Approved") {
+                payload.refund_type = approvedAmount;
             }
             if (status === "Rejected") {
                 payload.admin_notes = adminNotes[refundId] || "";
@@ -131,8 +130,8 @@ const Refunds = () => {
                                     <th>Order</th>
                                     <th>Customer</th>
                                     <th>Requested</th>
-                                    <th>Type</th>
-                                    <th>Amount</th>
+                                                    <th>Requested products</th>
+                                                    <th>Eligible amount</th>
                                     <th>Status</th>
                                     <th>Admin decision</th>
                                 </tr>
@@ -166,7 +165,7 @@ const Refunds = () => {
                                                 <small className="text-muted">{refund.customer_email || "-"}</small>
                                             </td>
                                             <td>{formatDate(refund.requested_at)}</td>
-                                            <td>{refund.refund_type}</td>
+                                            <td>{refund.items?.length || "All selected"}</td>
                                             <td>৳{refund.refund_amount}</td>
                                             <td>
                                                 <span className={`badge ${statusClass(refund.status)}`}>
@@ -182,10 +181,21 @@ const Refunds = () => {
                                                             onClick={() => updateRefund(
                                                                 refund.id,
                                                                 "Approved",
-                                                                approvedAmounts[refund.id] || refund.refund_amount,
+                                                                "FULL",
                                                             )}
                                                         >
-                                                            Approve
+                                                            Approve Full Refund
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-outline-success btn-sm"
+                                                            disabled={updatingId === refund.id}
+                                                            onClick={() => updateRefund(
+                                                                refund.id,
+                                                                "Approved",
+                                                                "PARTIAL",
+                                                            )}
+                                                        >
+                                                            Approve 25% Partial
                                                         </button>
                                                         <button
                                                             className="btn btn-outline-danger btn-sm"
@@ -199,19 +209,13 @@ const Refunds = () => {
                                                         </button>
                                                     </div>
                                                 )}
-                                                {(refund.status === "Approved" ||
-                                                    refund.status === "Processing" ||
-                                                    refund.status === "Failed") && (
+                                                {refund.status === "Approved" && !refund.is_recorded_internally && (
                                                     <button
                                                         className="btn btn-primary btn-sm"
                                                         disabled={updatingId === refund.id}
                                                         onClick={() => processRefund(refund.id)}
                                                     >
-                                                        {refund.status === "Failed"
-                                                            ? "Retry Refund"
-                                                            : refund.status === "Processing"
-                                                                ? "Check Processing"
-                                                                : "Process Refund"}
+                                                        Record Refund
                                                     </button>
                                                 )}
                                             </td>
@@ -230,8 +234,8 @@ const Refunds = () => {
                                                             <div className="col-lg-6">
                                                                 <h6>Customer Request</h6>
                                                                 <dl className="row mb-0">
-                                                                    <dt className="col-sm-5">Refund type</dt>
-                                                                    <dd className="col-sm-7">{refund.refund_type}</dd>
+                                                                    <dt className="col-sm-5">Admin decision</dt>
+                                                                    <dd className="col-sm-7">{refund.status === "Approved" ? `${refund.refund_type === "PARTIAL" ? "Partial Refund (25%)" : "Full Refund (100%)"}` : "Pending admin decision"}</dd>
                                                                     <dt className="col-sm-5">Reason</dt>
                                                                     <dd className="col-sm-7">{refund.reason}</dd>
                                                                     <dt className="col-sm-5">Description</dt>
@@ -261,8 +265,8 @@ const Refunds = () => {
                                                                     <dd className="col-sm-7">{refund.payment_method || "-"}</dd>
                                                                     <dt className="col-sm-5">Payment status</dt>
                                                                     <dd className="col-sm-7">{refund.payment_status || "-"}</dd>
-                                                                    <dt className="col-sm-5">SSLCommerz reference</dt>
-                                                                    <dd className="col-sm-7">{refund.transaction_reference || "-"}</dd>
+                                                                    <dt className="col-sm-5">Internal record</dt>
+                                                                    <dd className="col-sm-7">{refund.is_recorded_internally ? "Recorded by Admin" : "Not recorded"}</dd>
                                                                     <dt className="col-sm-5">Requested</dt>
                                                                     <dd className="col-sm-7">{formatDate(refund.requested_at)}</dd>
                                                                 </dl>
@@ -295,27 +299,7 @@ const Refunds = () => {
                                                             <h6>Admin Decision</h6>
                                                             {refund.status === "Pending" ? (
                                                                 <div className="row align-items-end g-2">
-                                                                    <div className="col-md-4">
-                                                                        <label
-                                                                            className="form-label"
-                                                                            htmlFor={`approved-amount-${refund.id}`}
-                                                                        >
-                                                                            Approved amount
-                                                                        </label>
-                                                                        <input
-                                                                            id={`approved-amount-${refund.id}`}
-                                                                            className="form-control"
-                                                                            type="number"
-                                                                            min="0.01"
-                                                                            max={refund.refund_amount}
-                                                                            step="0.01"
-                                                                            value={approvedAmounts[refund.id] ?? refund.refund_amount}
-                                                                            onChange={(event) => setApprovedAmounts({
-                                                                                ...approvedAmounts,
-                                                                                [refund.id]: event.target.value,
-                                                                            })}
-                                                                        />
-                                                                    </div>
+                                                                    <div className="col-md-4 text-muted small">Choose exactly one approval decision: Full Refund (100%) or Partial Refund (25%).</div>
                                                                     <div className="col-md-8 text-muted small">
                                                                         <label
                                                                             className="form-label"
@@ -340,7 +324,7 @@ const Refunds = () => {
                                                                 <div className="text-muted">
                                                                     <div>Decision recorded as {refund.admin_decision || refund.status}.</div>
                                                                     {refund.approved_amount && (
-                                                                        <div>Approved amount: ৳{refund.approved_amount}</div>
+                                                                        <div>{refund.refund_type === "PARTIAL" ? "Partial Refund (25%)" : "Full Refund (100%)"}: ৳{refund.approved_amount}</div>
                                                                     )}
                                                                     {refund.reviewer_name && (
                                                                         <div>Reviewed by {refund.reviewer_name} on {formatDate(refund.reviewed_at)}</div>

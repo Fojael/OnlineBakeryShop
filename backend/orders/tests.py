@@ -199,7 +199,6 @@ class CustomerOrderTrackingTests(TestCase):
         for status_value in [
             Order.STATUS_PENDING,
             Order.STATUS_ACCEPTED,
-            Order.STATUS_PROCESSING,
             Order.STATUS_READY,
             Order.STATUS_ASSIGNED,
             Order.STATUS_OUT_FOR_DELIVERY,
@@ -230,7 +229,6 @@ class CustomerOrderTrackingTests(TestCase):
             [
                 Order.STATUS_PENDING,
                 Order.STATUS_ACCEPTED,
-                Order.STATUS_PROCESSING,
                 Order.STATUS_READY,
                 Order.STATUS_ASSIGNED,
                 Order.STATUS_OUT_FOR_DELIVERY,
@@ -245,7 +243,7 @@ class CustomerOrderTrackingTests(TestCase):
         )
 
         self.assertEqual(own_response.status_code, 200)
-        self.assertEqual(len(own_response.data), 6)
+        self.assertEqual(len(own_response.data), 5)
 
         self.client.force_authenticate(user=self.other_customer)
 
@@ -458,6 +456,18 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             total_amount=260,
             status=Order.STATUS_DELIVERED,
         )
+        product = Product.objects.create(
+            name="Requested Refund Product",
+            category="Cake",
+            price=200,
+            stock_quantity=10,
+        )
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=1,
+            price=200,
+        )
 
         self.client.force_authenticate(user=customer)
 
@@ -467,7 +477,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
                 "order_id": order.id,
                 "reason": Refund.REASON_WRONG_PRODUCT,
                 "description": "Wrong item delivered",
-                "refund_type": Refund.REFUND_TYPE_FULL,
+                "items": [{"order_item_id": order_item.id, "quantity": 1}],
             },
             format="json",
         )
@@ -481,9 +491,9 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             ).exists()
         )
         refund = Refund.objects.get(order=order)
-        self.assertEqual(refund.refund_amount, order.total_amount)
+        self.assertEqual(refund.refund_amount, Decimal("200.00"))
         self.assertEqual(refund.refund_type, Refund.REFUND_TYPE_FULL)
-        self.assertFalse(RefundItem.objects.filter(refund=refund).exists())
+        self.assertEqual(RefundItem.objects.get(refund=refund).quantity, 1)
 
         duplicate_response = self.client.post(
             reverse("orders:customer-refund-request"),
@@ -532,7 +542,6 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
                 "order_id": order.id,
                 "reason": Refund.REASON_DAMAGED_PRODUCT,
                 "description": "One item was damaged.",
-                "refund_type": Refund.REFUND_TYPE_PARTIAL,
                 "items": [
                     {
                         "order_item_id": order_item.id,
@@ -587,14 +596,14 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             {
                 "order_id": order.id,
                 "reason": Refund.REASON_OTHER,
-                "refund_type": Refund.REFUND_TYPE_FULL,
+                "items": [{"order_item_id": order_item.id, "quantity": 2}],
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, 201)
         refund = Refund.objects.get(order=order)
-        self.assertEqual(refund.refund_amount, Decimal("210.00"))
+        self.assertEqual(refund.refund_amount, Decimal("150.00"))
         self.assertEqual(
             refund.refund_items.get().quantity,
             order_item.quantity,
@@ -1362,9 +1371,9 @@ class CompleteOrderWorkflowTests(TestCase):
             {"status": Order.STATUS_PROCESSING},
             format="json",
         )
-        self.assertEqual(processing_response.status_code, 200)
+        self.assertEqual(processing_response.status_code, 400)
         order.refresh_from_db()
-        self.assertEqual(order.status, Order.STATUS_PROCESSING)
+        self.assertEqual(order.status, Order.STATUS_ACCEPTED)
 
         ready_response = self.client.patch(
             f"/api/orders/admin/{order.id}/update/",
@@ -1407,7 +1416,6 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertTrue(
             {
                 "Order Accepted",
-                "Order Processing",
                 "Order Ready",
                 "Delivery Rider Assigned",
                 "Delivery Accepted",
@@ -1438,7 +1446,6 @@ class CompleteOrderWorkflowTests(TestCase):
             [
                 Order.STATUS_PENDING,
                 Order.STATUS_ACCEPTED,
-                Order.STATUS_PROCESSING,
                 Order.STATUS_READY,
                 Order.STATUS_ASSIGNED,
                 Order.STATUS_OUT_FOR_DELIVERY,
@@ -1477,7 +1484,7 @@ class CompleteOrderWorkflowTests(TestCase):
 
         self.assertEqual(
             OrderStatusHistory.objects.filter(order=order).count(),
-            7,
+            6,
         )
 
         self.client.force_authenticate(user=customer)
@@ -1506,7 +1513,10 @@ class CompleteOrderWorkflowTests(TestCase):
         ):
             response = self.client.patch(
                 f"/api/orders/refunds/admin/{refund.id}/update/",
-                {"status": Refund.STATUS_APPROVED},
+                {
+                    "status": Refund.STATUS_APPROVED,
+                    "refund_type": Refund.REFUND_TYPE_FULL,
+                },
                 format="json",
             )
             self.assertEqual(response.status_code, 200)
@@ -1616,29 +1626,20 @@ class CompleteOrderWorkflowTests(TestCase):
             },
             format="json",
         )
-        zero_response = self.client.patch(
-            url,
-            {
-                "status": Refund.STATUS_APPROVED,
-                "approved_amount": "0.00",
-            },
-            format="json",
-        )
         approved_response = self.client.patch(
             url,
             {
                 "status": Refund.STATUS_APPROVED,
-                "approved_amount": "45.00",
+                "refund_type": Refund.REFUND_TYPE_PARTIAL,
             },
             format="json",
         )
 
         self.assertEqual(over_limit_response.status_code, 400)
-        self.assertEqual(zero_response.status_code, 400)
         self.assertEqual(approved_response.status_code, 200)
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.STATUS_APPROVED)
-        self.assertEqual(refund.approved_amount, Decimal("45.00"))
+        self.assertEqual(refund.approved_amount, Decimal("15.00"))
         self.assertIsNotNone(refund.reviewed_at)
 
     def test_admin_cannot_skip_order_states_or_mark_delivered(self):
@@ -1660,12 +1661,12 @@ class CompleteOrderWorkflowTests(TestCase):
 
         self.client.force_authenticate(user=self.admin)
 
-        skip_response = self.client.patch(
+        ready_response = self.client.patch(
             f"/api/orders/admin/{order.id}/update/",
             {"status": Order.STATUS_READY},
             format="json",
         )
-        self.assertEqual(skip_response.status_code, 400)
+        self.assertEqual(ready_response.status_code, 200)
 
         order.status = Order.STATUS_READY
         order.save(update_fields=["status", "updated_at"])
@@ -1678,7 +1679,7 @@ class CompleteOrderWorkflowTests(TestCase):
         self.assertEqual(delivered_response.status_code, 400)
         self.assertEqual(
             OrderStatusHistory.objects.filter(order=order).count(),
-            0,
+            1,
         )
 
 
@@ -1825,6 +1826,36 @@ class RefundStatusWorkflowTests(TestCase):
             status=Refund.STATUS_APPROVED,
         )
 
+    def test_admin_approval_calculates_exact_twenty_five_percent(self):
+        self.refund.status = Refund.STATUS_PENDING
+        self.refund.approved_amount = None
+        self.refund.save(update_fields=["status", "approved_amount"])
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("orders:admin-refund-update", args=[self.refund.id])
+
+        arbitrary_response = self.client.patch(
+            url,
+            {
+                "status": Refund.STATUS_APPROVED,
+                "approved_amount": "99.99",
+            },
+            format="json",
+        )
+        self.assertEqual(arbitrary_response.status_code, 400)
+
+        partial_response = self.client.patch(
+            url,
+            {
+                "status": Refund.STATUS_APPROVED,
+                "refund_type": Refund.REFUND_TYPE_PARTIAL,
+            },
+            format="json",
+        )
+        self.assertEqual(partial_response.status_code, 200)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.refund_percentage, 25)
+        self.assertEqual(self.refund.approved_amount, Decimal("25.00"))
+
     def test_processing_then_completed_marks_payment_refunded(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("orders:admin-refund-process", args=[self.refund.id])
@@ -1899,7 +1930,10 @@ class RefundStatusWorkflowTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         approve_response = self.client.patch(
             reverse("orders:admin-refund-update", args=[refund.id]),
-            {"status": Refund.STATUS_APPROVED},
+            {
+                "status": Refund.STATUS_APPROVED,
+                "refund_type": Refund.REFUND_TYPE_FULL,
+            },
             format="json",
         )
         self.assertEqual(approve_response.status_code, 200)
@@ -2008,9 +2042,9 @@ class RefundStatusWorkflowTests(TestCase):
             side_effect=SSLCommerzError("A successful payment is required."),
         ) as unsuccessful_gateway:
             unsuccessful_response = self.client.post(url)
-        self.assertEqual(unsuccessful_response.status_code, 200)
+        self.assertEqual(unsuccessful_response.status_code, 400)
         self.refund.refresh_from_db()
-        self.assertEqual(self.refund.status, Refund.STATUS_FAILED)
+        self.assertEqual(self.refund.status, Refund.STATUS_APPROVED)
         unsuccessful_gateway.assert_not_called()
 
         self.refund.status = Refund.STATUS_APPROVED

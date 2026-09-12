@@ -12,12 +12,6 @@ const TIMELINE_STEPS = [
         historyStatus: "Accepted",
     },
     {
-        key: "processing",
-        label: "Processing",
-        description: "Your order is being prepared.",
-        historyStatus: "Processing",
-    },
-    {
         key: "ready",
         label: "Ready",
         description: "Your order is ready for delivery assignment.",
@@ -28,20 +22,6 @@ const TIMELINE_STEPS = [
         label: "Rider Assigned",
         description: "A delivery rider has been assigned.",
         timestamp: "assigned_at",
-    },
-    {
-        key: "accepted_delivery",
-        label: "Delivery Accepted",
-        description: "The rider has accepted the delivery.",
-        timestamp: "accepted_at",
-        deliveryStatus: "ACCEPTED",
-    },
-    {
-        key: "picked_up",
-        label: "Picked Up",
-        description: "The rider has collected your order.",
-        timestamp: "picked_up_at",
-        deliveryStatus: "PICKED_UP",
     },
     {
         key: "out_for_delivery",

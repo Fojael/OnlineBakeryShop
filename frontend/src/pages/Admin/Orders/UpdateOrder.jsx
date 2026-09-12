@@ -26,8 +26,8 @@ import {
 // =========================================================
 // Admin directly controls:
 //
-// Pending -> Accepted -> Processing -> Ready
-// Pending/Accepted/Processing -> Cancelled
+// Pending -> Accepted -> Ready
+// Pending/Accepted -> Cancelled
 //
 // Assigned is controlled by Admin Rider Assignment.
 // Out for Delivery and Delivered are controlled by the Rider.
@@ -49,18 +49,6 @@ const getAvailableStatuses = (currentStatus) => {
             ];
 
         case "Accepted":
-            return [
-                {
-                    value: "Processing",
-                    label: "Start Processing",
-                },
-                {
-                    value: "Cancelled",
-                    label: "Cancel Order",
-                },
-            ];
-
-        case "Processing":
             return [
                 {
                     value: "Ready",
@@ -178,9 +166,6 @@ const UpdateOrder = () => {
             case "Accepted":
                 return "badge bg-primary";
 
-            case "Processing":
-                return "badge bg-info text-dark";
-
             case "Ready":
                 return "badge bg-success";
 
@@ -288,9 +273,7 @@ const UpdateOrder = () => {
 
             await updateAdminOrderStatus(
                 id,
-                {
-                    status,
-                }
+                status
             );
 
             toast.success(
@@ -571,22 +554,6 @@ const UpdateOrder = () => {
                                             </strong>
 
                                             <div className="small mt-2">
-                                                Start processing this accepted
-                                                order or cancel it.
-                                            </div>
-
-                                        </div>
-                                    )}
-
-
-                                    {order.status === "Processing" && (
-                                        <div className="alert alert-info">
-
-                                            <strong>
-                                                Admin action available
-                                            </strong>
-
-                                            <div className="small mt-2">
                                                 Mark the order Ready when bakery
                                                 preparation is complete, or
                                                 cancel it.
@@ -594,6 +561,7 @@ const UpdateOrder = () => {
 
                                         </div>
                                     )}
+
 
 
                                     {order.status === "Ready" && (

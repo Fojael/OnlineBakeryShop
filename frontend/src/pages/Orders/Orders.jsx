@@ -362,7 +362,6 @@ const Orders = () => {
                         <option value="">All statuses</option>
                         <option value="Pending">Pending</option>
                         <option value="Accepted">Accepted</option>
-                        <option value="Processing">Processing</option>
                         <option value="Ready">Ready</option>
                         <option value="Assigned">Assigned</option>
                         <option value="Out for Delivery">Out for Delivery</option>

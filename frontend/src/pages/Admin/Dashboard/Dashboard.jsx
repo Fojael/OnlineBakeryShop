@@ -392,7 +392,7 @@ const Dashboard = () => {
                                 <div className="border rounded p-4 text-center">Loading AI forecast...</div>
                             )}
                             {aiNoHistory && (
-                                <div className="alert alert-secondary">No historical sales forecast is available yet. Train the AI model after more delivered-sales history is collected.</div>
+                                <div className="alert alert-secondary">No valid delivered online sales history is available yet. The forecast will use a recent-demand fallback as soon as sales data exists.</div>
                             )}
                             {aiError && <div className="alert alert-danger">{aiError}</div>}
 
@@ -404,6 +404,7 @@ const Dashboard = () => {
                                         <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">Weekly forecast</div><h4 className="mb-0">{aiData.summary?.forecast_weekly_units ?? 0} units</h4><small className="text-muted">Next 7 days</small></div></div></div>
                                         <div className="col-sm-6 col-xl-3"><div className="card h-100 border-0 shadow-sm"><div className="card-body"><div className="text-muted small">High stockout risk</div><h4 className="mb-0">{highRiskProducts.length}</h4><small className="text-muted">Products needing review</small></div></div></div>
                                     </div>
+                                    <div className="alert alert-info">{aiData.summary?.history_message || "Forecast generated using the available delivered sales history."}</div>
 
                                     <div className="row g-3 mb-4">
                                         <div className="col-xl-7">

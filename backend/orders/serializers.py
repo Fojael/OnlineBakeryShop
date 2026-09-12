@@ -955,8 +955,6 @@ class RefundSerializer(
 
     payment_status = serializers.SerializerMethodField()
 
-    transaction_reference = serializers.SerializerMethodField()
-
     reviewer_name = serializers.CharField(
         source="admin.username",
         read_only=True,
@@ -964,6 +962,10 @@ class RefundSerializer(
     )
 
     admin_decision = serializers.SerializerMethodField()
+
+    refund_percentage = serializers.IntegerField(read_only=True)
+
+    is_recorded_internally = serializers.BooleanField(read_only=True)
 
     items = RefundItemSerializer(
         source="refund_items",
@@ -996,11 +998,11 @@ class RefundSerializer(
             "order_status",
             "payment_method",
             "payment_status",
-            "transaction_reference",
             "reviewer_name",
             "reason",
             "description",
             "refund_type",
+            "refund_percentage",
             "items",
             "photos",
             "history",
@@ -1015,8 +1017,7 @@ class RefundSerializer(
             "admin",
             "admin_notes",
             "refund_failure_reason",
-            "refund_reference_id",
-            "refund_gateway_response",
+            "is_recorded_internally",
             "refund_attempt_count",
         ]
 
@@ -1032,20 +1033,13 @@ class RefundSerializer(
             "completed_at",
             "admin",
             "refund_failure_reason",
-            "refund_reference_id",
-            "refund_gateway_response",
+            "is_recorded_internally",
             "refund_attempt_count",
         ]
 
     def get_payment_status(self, obj):
         try:
             return obj.order.payment.status
-        except Payment.DoesNotExist:
-            return None
-
-    def get_transaction_reference(self, obj):
-        try:
-            return obj.order.payment.transaction_id
         except Payment.DoesNotExist:
             return None
 
@@ -1057,6 +1051,8 @@ class RefundSerializer(
             Refund.STATUS_COMPLETED,
             Refund.STATUS_FAILED,
         ]:
+            if obj.status == Refund.STATUS_APPROVED:
+                return f"{obj.refund_type} ({obj.refund_percentage}%)"
             return obj.status
         return None
 
@@ -1072,7 +1068,6 @@ class CustomerRefundSerializer(RefundSerializer):
             "payment_status",
             "reason",
             "description",
-            "refund_type",
             "items",
             "photos",
             "history",
@@ -1103,14 +1098,10 @@ class CustomerRefundRequestSerializer(
         required=False,
     )
 
-    refund_type = serializers.ChoiceField(
-        choices=Refund.REFUND_TYPE_CHOICES,
-    )
-
     items = serializers.ListField(
         child=serializers.DictField(),
-        required=False,
-        allow_empty=True,
+        required=True,
+        allow_empty=False,
     )
 
     class Meta:
@@ -1121,7 +1112,6 @@ class CustomerRefundRequestSerializer(
             "order_id",
             "reason",
             "description",
-            "refund_type",
             "items",
         ]
 
@@ -1133,6 +1123,10 @@ class CustomerRefundRequestSerializer(
                     "refund_amount":
                         "Refund amount is calculated by the server."
                 }
+            )
+        if "refund_type" in self.initial_data:
+            raise serializers.ValidationError(
+                {"refund_type": "Refund type is selected by an admin."}
             )
 
         order = attrs["order"]
@@ -1153,7 +1147,6 @@ class CustomerRefundRequestSerializer(
                 "Refund can only be requested after the order is delivered."
             )
 
-        refund_type = attrs["refund_type"]
         requested_items = attrs.get("items", [])
 
         refundable_statuses = [
@@ -1169,54 +1162,6 @@ class CustomerRefundRequestSerializer(
                     order_item=order_item,
                     refund__status__in=refundable_statuses,
                 )
-            )
-
-        if refund_type == Refund.REFUND_TYPE_FULL:
-            if requested_items:
-                raise serializers.ValidationError(
-                    {"items": "Full refunds must not include items."}
-                )
-
-            refund_items = []
-            for order_item in order.items.all():
-                remaining_quantity = (
-                    order_item.quantity
-                    - refunded_quantity(order_item)
-                )
-                if remaining_quantity > 0:
-                    refund_items.append(
-                        {
-                            "order_item": order_item,
-                            "quantity": remaining_quantity,
-                            "amount": (
-                                order_item.price
-                                * remaining_quantity
-                            ),
-                        }
-                    )
-
-            if order.items.exists() and not refund_items:
-                raise serializers.ValidationError(
-                    {"items": "No refundable items remain for this order."}
-                )
-
-            completed_amount = sum(
-                refund.refund_amount
-                for refund in Refund.objects.filter(
-                    order=order,
-                    status=Refund.STATUS_COMPLETED,
-                )
-            )
-            attrs["refund_amount"] = max(
-                order.total_amount - completed_amount,
-                Decimal("0.00"),
-            ) if completed_amount else order.total_amount
-            attrs["refund_items"] = refund_items
-            return attrs
-
-        if not requested_items:
-            raise serializers.ValidationError(
-                {"items": "Partial refunds require at least one item."}
             )
 
         refund_items = []
@@ -1266,10 +1211,15 @@ class CustomerRefundRequestSerializer(
                 }
             )
 
-        attrs["refund_amount"] = sum(
+        eligible_amount = sum(
             (item["amount"] for item in refund_items),
             Decimal("0.00"),
         )
+        if eligible_amount <= Decimal("0.00"):
+            raise serializers.ValidationError(
+                {"items": "The selected items have no refundable amount."}
+            )
+        attrs["refund_amount"] = eligible_amount
         attrs["refund_items"] = refund_items
         return attrs
 
@@ -1361,11 +1311,9 @@ class AdminRefundUpdateSerializer(
         ]
     )
 
-    approved_amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
+    refund_type = serializers.ChoiceField(
+        choices=Refund.REFUND_TYPE_CHOICES,
         required=False,
-        min_value=Decimal("0.01"),
     )
 
     admin_notes = serializers.CharField(
@@ -1374,6 +1322,14 @@ class AdminRefundUpdateSerializer(
     )
 
     def validate(self, attrs):
+        if "approved_amount" in self.initial_data:
+            raise serializers.ValidationError(
+                {"approved_amount": "Approved amount is calculated by the server."}
+            )
+        if attrs.get("status") == Refund.STATUS_APPROVED and not attrs.get("refund_type"):
+            raise serializers.ValidationError(
+                {"refund_type": "Choose a full or partial refund decision."}
+            )
         if (
             attrs.get("status") == Refund.STATUS_REJECTED
             and not attrs.get("admin_notes", "").strip()

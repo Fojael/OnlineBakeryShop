@@ -934,15 +934,32 @@ class AIPredictionTests(TestCase):
         self.assertEqual(remaining["recommendations"], [])
         self.assertEqual(ReplenishmentRequest.objects.count(), 1)
 
-    def test_training_raises_for_insufficient_history(self):
+    def test_training_uses_available_history_with_moving_average_fallback(self):
         self.make_delivered_order(
             self.product,
             1,
             timezone.now() - timedelta(days=2),
         )
+        self.make_delivered_order(
+            self.product,
+            2,
+            timezone.now() - timedelta(days=1),
+        )
 
-        with self.assertRaises(InsufficientHistoricalData):
-            train_forecast_model()
+        model = train_forecast_model()
+
+        self.assertEqual(model.training_days, 2)
+        self.assertEqual(
+            model.artifact["products"][str(self.product.id)]["model_type"],
+            "moving_average",
+        )
+        self.assertTrue(
+            all(
+                value >= 0
+                for value in model.artifact["products"][str(self.product.id)].values()
+                if isinstance(value, (int, float))
+            )
+        )
 
     def test_admin_can_fetch_ai_prediction_summary(self):
         self.client.force_authenticate(user=self.admin)
@@ -962,7 +979,7 @@ class AIPredictionTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.data["required_days"], 14)
+        self.assertEqual(response.data["required_days"], 1)
 
     def test_only_admin_can_access_administrative_ai_endpoints(self):
         users = [

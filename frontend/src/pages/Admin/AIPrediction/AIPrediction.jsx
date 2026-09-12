@@ -159,6 +159,10 @@ const AIPrediction = () => {
                             <div className="col-md-3"><div className="card p-3"><small>30-day forecast</small><strong>{data.summary.forecast_monthly_units} units</strong></div></div>
                             <div className="col-md-3"><div className="card p-3"><small>Model MAE</small><strong>{data.pipeline.evaluation.mae ?? "N/A"}</strong></div></div>
                         </div>
+                        <div className="alert alert-info">
+                            {data.summary.history_message ||
+                                `Forecast generated using the available delivered sales history (${data.summary.historical_days} days).`}
+                        </div>
                         <div className="card mb-4 p-3"><strong>Pipeline:</strong> {data.pipeline.extraction} / {data.pipeline.model}</div>
                         <h4>Daily Forecast</h4>
                         <div className="d-flex align-items-end gap-1 border rounded p-3 mb-3" style={{ minHeight: "180px" }}>

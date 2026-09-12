@@ -7,7 +7,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from orders.models import Order, OrderItem
+from orders.models import Order, OrderAddress, OrderItem
+from payments.models import Payment
 from products.models import Product
 from suppliers.models import Supplier
 
@@ -250,3 +251,146 @@ class AdminOfflineSalesReportsTests(TestCase):
         self.assertEqual(response.data["summary"]["total_offline_orders"], 0)
         self.assertEqual(response.data["summary"]["total_items_sold"], 0)
         self.assertEqual(response.data["transactions"], [])
+
+
+class AdminOnlineSalesReportsTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username="online_report_admin",
+            email="online_report_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+        self.customer = User.objects.create_user(
+            username="online_report_customer",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            email="online_customer@example.com",
+            phone="01700000001",
+            is_active=True,
+        )
+        supplier = Supplier.objects.create(
+            name="Online Report Supplier",
+            email="online_report_supplier@example.com",
+            phone="01700000002",
+            is_active=True,
+            is_approved=True,
+        )
+        self.product = Product.objects.create(
+            supplier=supplier,
+            name="Online Report Cake",
+            category="Cake",
+            price=Decimal("100.00"),
+            stock_quantity=10,
+            is_available=True,
+        )
+        self.second_product = Product.objects.create(
+            supplier=supplier,
+            name="Online Report Tart",
+            category="Tart",
+            price=Decimal("50.00"),
+            stock_quantity=10,
+            is_available=True,
+        )
+        self.order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Fallback address",
+            payment_method=Order.PAYMENT_COD,
+            subtotal=Decimal("250.00"),
+            total_amount=Decimal("250.00"),
+            status=Order.STATUS_ACCEPTED,
+            order_source=Order.SOURCE_ONLINE,
+        )
+        OrderAddress.objects.create(
+            order=self.order,
+            full_name="Online Customer",
+            phone="01800000002",
+            email="checkout@example.com",
+            division="Dhaka",
+            district="Dhaka",
+            city="Dhaka",
+            area="Dhanmondi",
+            street_address="12 Report Road",
+            postal_code="1205",
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            product_name=self.product.name,
+            quantity=2,
+            price=Decimal("100.00"),
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            product=self.second_product,
+            product_name=self.second_product.name,
+            quantity=1,
+            price=Decimal("50.00"),
+        )
+        Payment.objects.create(
+            order=self.order,
+            status=Payment.STATUS_SUCCESS,
+            transaction_id="ONLINE-REPORT-1",
+            amount=Decimal("250.00"),
+        )
+
+    def test_online_report_returns_detail_rows_for_all_periods(self):
+        self.client.force_authenticate(user=self.admin)
+        endpoint = reverse("reports:admin-online-sales-report")
+        requests = [
+            {"period": "daily", "date": timezone.localdate().isoformat()},
+            {"period": "weekly", "date": timezone.localdate().isoformat()},
+            {"period": "monthly", "year": timezone.localdate().year, "month": timezone.localdate().month},
+            {"period": "yearly", "year": timezone.localdate().year},
+            {"period": "custom", "start_date": "2026-09-01", "end_date": timezone.localdate().isoformat()},
+        ]
+        for params in requests:
+            response = self.client.get(endpoint, params)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.data["transactions"]), 2)
+            self.assertEqual(response.data["summary"]["total_quantity"], 3)
+            self.assertEqual(response.data["summary"]["total_revenue"], "250.00")
+
+        first = self.client.get(endpoint, requests[0]).data["transactions"][0]
+        self.assertEqual(first["customer_name"], "Online Customer")
+        self.assertEqual(first["phone"], "01800000002")
+        self.assertEqual(first["email"], "checkout@example.com")
+        self.assertIn("12 Report Road", first["address"])
+        self.assertEqual(first["order_status"], Order.STATUS_ACCEPTED)
+        self.assertEqual(first["payment_status"], Payment.STATUS_SUCCESS)
+
+    def test_online_report_excludes_offline_orders_and_supports_csv(self):
+        Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            shipping_address="Counter",
+            payment_method=Order.PAYMENT_CASH,
+            total_amount=Decimal("999.00"),
+            status=Order.STATUS_DELIVERED,
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            reverse("reports:admin-online-sales-report"),
+            {"period": "daily", "date": timezone.localdate().isoformat(), "download": "csv"},
+        )
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8")
+        self.assertIn("Customer Name", content)
+        self.assertIn("Online Report Cake", content)
+        self.assertNotIn("999.00", content)
+
+    def test_online_report_is_admin_only(self):
+        response = self.client.get(
+            reverse("reports:admin-online-sales-report"),
+            {"period": "daily", "date": timezone.localdate().isoformat()},
+        )
+        self.assertEqual(response.status_code, 401)
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get(
+            reverse("reports:admin-online-sales-report"),
+            {"period": "daily", "date": timezone.localdate().isoformat()},
+        )
+        self.assertEqual(response.status_code, 403)
