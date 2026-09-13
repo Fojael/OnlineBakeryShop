@@ -88,6 +88,51 @@ User = get_user_model()
 # ==========================================================
 
 DELIVERY_CHARGE = Decimal("60.00")
+MONEY_QUANTUM = Decimal("0.01")
+
+
+def calculate_refund_eligible_amount(refund):
+    """Return the eligible amount from the persisted order-item snapshot."""
+    eligible_amount = Decimal("0.00")
+    refund_items = list(
+        refund.refund_items
+        .select_related("order_item")
+        .select_for_update()
+    )
+
+    if not refund_items:
+        order_items = list(
+            refund.order.items.select_for_update()
+        )
+        if not order_items:
+            if refund.refund_amount > Decimal("0.00"):
+                return refund.refund_amount.quantize(MONEY_QUANTUM)
+            raise ValueError("A refund must contain at least one order item.")
+        return sum(
+            (item.price * item.quantity for item in order_items),
+            Decimal("0.00"),
+        ).quantize(MONEY_QUANTUM)
+
+    for refund_item in refund_items:
+        order_item = refund_item.order_item
+        if order_item.order_id != refund.order_id:
+            raise ValueError("A refund item does not belong to the order.")
+        if refund_item.quantity <= 0 or refund_item.quantity > order_item.quantity:
+            raise ValueError("Refund quantity exceeds the purchased quantity.")
+
+        refunded_quantity = RefundItem.objects.filter(
+            order_item=order_item,
+            refund__status__in=[
+                Refund.STATUS_APPROVED,
+                Refund.STATUS_COMPLETED,
+            ],
+        ).exclude(refund=refund).aggregate(total=Sum("quantity"))["total"] or 0
+        if refund_item.quantity + refunded_quantity > order_item.quantity:
+            raise ValueError("Refund quantity exceeds the remaining eligible quantity.")
+
+        eligible_amount += order_item.price * refund_item.quantity
+
+    return eligible_amount.quantize(MONEY_QUANTUM)
 
 
 def notify_customer(
@@ -3010,9 +3055,11 @@ class CustomerRefundRequestView(APIView):
             raise_exception=True,
         )
 
-        order = serializer.validated_data[
-            "order"
-        ]
+        order = (
+            Order.objects
+            .select_for_update()
+            .get(id=serializer.validated_data["order"].id)
+        )
 
         existing = (
             Refund.objects
@@ -3039,6 +3086,32 @@ class CustomerRefundRequestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        locked_items = {
+            item.id: item
+            for item in order.items.select_for_update()
+        }
+        refund_items = []
+        eligible_amount = Decimal("0.00")
+        for item_data in serializer.validated_data["refund_items"]:
+            order_item = locked_items.get(item_data["order_item"].id)
+            if order_item is None:
+                return Response(
+                    {"detail": "Selected item does not belong to this order."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            quantity = item_data["quantity"]
+            if quantity > order_item.quantity:
+                return Response(
+                    {"detail": "Refund quantity exceeds the purchased quantity."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            eligible_amount += order_item.price * quantity
+            refund_items.append({
+                "order_item": order_item,
+                "quantity": quantity,
+                "amount": order_item.price * quantity,
+            })
+
         refund = Refund.objects.create(
             order=order,
             customer=request.user,
@@ -3050,9 +3123,7 @@ class CustomerRefundRequestView(APIView):
                 "",
             ),
             refund_type=Refund.REFUND_TYPE_FULL,
-            refund_amount=serializer.validated_data[
-                "refund_amount"
-            ],
+            refund_amount=eligible_amount.quantize(MONEY_QUANTUM),
             status=Refund.STATUS_PENDING,
         )
 
@@ -3063,9 +3134,7 @@ class CustomerRefundRequestView(APIView):
                 quantity=item_data["quantity"],
                 amount=item_data["amount"],
             )
-            for item_data in serializer.validated_data[
-                "refund_items"
-            ]
+            for item_data in refund_items
         ])
 
         record_refund_status_change(
@@ -3264,6 +3333,55 @@ class AdminRefundListView(APIView):
         )
 
 
+class AdminRefundDetailView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @transaction.atomic
+    def get(self, request, refund_id):
+        if request.user.role != User.ROLE_ADMIN:
+            return Response(
+                {"detail": "Admin permission required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        locked_refund = get_object_or_404(
+            Refund.objects.select_for_update(),
+            id=refund_id,
+        )
+        refund = get_object_or_404(
+            Refund.objects
+            .select_related(
+                "order",
+                "order__payment",
+                "order__shipping_details",
+                "customer",
+                "admin",
+            )
+            .prefetch_related(
+                "refund_items__order_item__product",
+                "refund_photos",
+                "status_history__actor",
+            ),
+            id=locked_refund.id,
+        )
+
+        try:
+            refund.refund_amount = calculate_refund_eligible_amount(refund)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            RefundSerializer(refund, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
 # ==========================================================
 # ADMIN - UPDATE REFUND
 # ==========================================================
@@ -3275,10 +3393,11 @@ class AdminRefundUpdateView(APIView):
     ]
 
     @transaction.atomic
-    def patch(
+    def _update(
         self,
         request,
         refund_id,
+        decision=None,
     ):
 
         if request.user.role != User.ROLE_ADMIN:
@@ -3301,11 +3420,21 @@ class AdminRefundUpdateView(APIView):
             id=refund_id,
         )
 
-        serializer = (
-            AdminRefundUpdateSerializer(
-                data=request.data,
-            )
-        )
+        payload = dict(request.data)
+        if decision in {"full", "approve-full"}:
+            payload.update({
+                "status": Refund.STATUS_APPROVED,
+                "refund_type": Refund.REFUND_TYPE_FULL,
+            })
+        elif decision in {"partial", "approve-partial"}:
+            payload.update({
+                "status": Refund.STATUS_APPROVED,
+                "refund_type": Refund.REFUND_TYPE_PARTIAL,
+            })
+        elif decision == "reject":
+            payload["status"] = Refund.STATUS_REJECTED
+
+        serializer = AdminRefundUpdateSerializer(data=payload)
 
         serializer.is_valid(
             raise_exception=True,
@@ -3329,9 +3458,7 @@ class AdminRefundUpdateView(APIView):
                 Refund.STATUS_APPROVED,
                 Refund.STATUS_REJECTED,
             ],
-            Refund.STATUS_APPROVED: [
-                Refund.STATUS_APPROVED,
-            ],
+            Refund.STATUS_APPROVED: [],
             Refund.STATUS_REJECTED: [],
 
             Refund.STATUS_COMPLETED: [],
@@ -3374,12 +3501,19 @@ class AdminRefundUpdateView(APIView):
                     {"detail": "Choose either a full or 25% partial refund."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            eligible_amount = refund.refund_amount
+            try:
+                eligible_amount = calculate_refund_eligible_amount(refund)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            refund.refund_amount = eligible_amount
             refund.refund_type = decision
             refund.approved_amount = (
                 eligible_amount
                 if decision == Refund.REFUND_TYPE_FULL
-                else (eligible_amount * Decimal("25") / Decimal("100")).quantize(Decimal("0.01"))
+                else (eligible_amount * Decimal("25") / Decimal("100")).quantize(MONEY_QUANTUM)
             )
 
         refund.admin = request.user
@@ -3434,13 +3568,12 @@ class AdminRefundUpdateView(APIView):
             )
 
             refund.status = Refund.STATUS_APPROVED
-            refund.refund_attempt_count += 1
             refund.refund_failure_reason = ""
             update_fields.extend([
                 "status",
-                "refund_attempt_count",
                 "refund_failure_reason",
                 "approved_amount",
+                "refund_amount",
                 "reviewed_at",
             ])
 
@@ -3490,13 +3623,6 @@ class AdminRefundUpdateView(APIView):
             context={"request": request},
         )
 
-        response_status = (
-            status.HTTP_200_OK
-            if refund.status != Refund.STATUS_APPROVED
-            or not refund.refund_failure_reason
-            else status.HTTP_502_BAD_GATEWAY
-        )
-
         return Response(
             {
                 "message":
@@ -3505,64 +3631,21 @@ class AdminRefundUpdateView(APIView):
                 "refund":
                     response_serializer.data,
             },
-            status=response_status,
-        )
-
-
-class AdminRefundProcessView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @transaction.atomic
-    def post(self, request, refund_id):
-        if request.user.role != User.ROLE_ADMIN:
-            return Response(
-                {"detail": "Admin permission required."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        refund = get_object_or_404(
-            Refund.objects.select_for_update().select_related("order", "customer"),
-            id=refund_id,
-        )
-        if refund.status != Refund.STATUS_APPROVED:
-            return Response(
-                {"detail": "Only approved refunds can be recorded."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if refund.is_recorded_internally:
-            return Response(
-                {"detail": "This refund approval has already been recorded."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        refund.admin = request.user
-        refund.refund_attempt_count += 1
-        refund.admin_notes = (
-            f"{refund.admin_notes}\n" if refund.admin_notes else ""
-        ) + "Refund approved and recorded internally; no external payout provider was called."
-        refund.save(update_fields=["admin", "refund_attempt_count", "admin_notes"])
-        record_refund_status_change(
-            refund=refund,
-            new_status=Refund.STATUS_APPROVED,
-            actor=request.user,
-            note="Refund recorded internally; money return is not automated.",
-        )
-        record_audit(
-            actor=request.user,
-            action="refund_recorded_internally",
-            obj=refund,
-            old_value={"status": Refund.STATUS_APPROVED},
-            new_value={
-                "status": Refund.STATUS_APPROVED,
-                "approved_amount": str(refund.approved_amount),
-            },
-        )
-
-        return Response(
-            {
-                "message": "Refund approval recorded internally. No external payout was performed.",
-                "refund": RefundSerializer(refund, context={"request": request}).data,
-            },
             status=status.HTTP_200_OK,
         )
+
+
+    def patch(self, request, refund_id):
+        return self._update(request, refund_id)
+
+
+class AdminRefundDecisionView(AdminRefundUpdateView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, refund_id, decision):
+        if decision not in {"approve-full", "approve-partial", "reject"}:
+            return Response(
+                {"detail": "Invalid refund decision."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return self._update(request, refund_id, decision=decision)

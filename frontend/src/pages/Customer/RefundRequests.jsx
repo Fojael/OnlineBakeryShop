@@ -101,11 +101,6 @@ const RefundRequests = () => {
                                                         ৳{Number(refund.approved_amount).toFixed(2)}
                                                     </div>
                                                 )}
-                                                {refund.status === "Approved" && (
-                                                    <div className="small text-muted">
-                                                        {refund.refund_type === "PARTIAL" ? "Partial Refund (25%)" : "Full Refund (100%)"}
-                                                    </div>
-                                                )}
                                                 <span className={`badge ${STATUS_STYLES[refund.status] || "bg-secondary"}`}>
                                                     {refund.status}
                                                 </span>

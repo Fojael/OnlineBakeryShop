@@ -1,9 +1,12 @@
+from datetime import timedelta
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import User
 from payments.models import Payment
+from delivery.models import Delivery
 
 from .models import (
     Order,
@@ -144,6 +147,10 @@ class OrderSerializer(
 
     can_request_refund = serializers.SerializerMethodField()
 
+    refund_deadline = serializers.SerializerMethodField()
+
+    refund_window_expired = serializers.SerializerMethodField()
+
     history = OrderStatusHistorySerializer(
         many=True,
         source="status_history",
@@ -192,6 +199,8 @@ class OrderSerializer(
 
             "refund_status",
             "can_request_refund",
+            "refund_deadline",
+            "refund_window_expired",
 
             "created_at",
             "updated_at",
@@ -398,6 +407,15 @@ class OrderSerializer(
         if obj.status != Order.STATUS_DELIVERED:
             return False
 
+        delivery = getattr(obj, "delivery", None)
+        if (
+            delivery is None
+            or delivery.status != Delivery.STATUS_DELIVERED
+            or delivery.delivered_at is None
+            or timezone.now() >= delivery.delivered_at + timedelta(hours=72)
+        ):
+            return False
+
         if obj.refunds.filter(
             status__in=[
                 Refund.STATUS_PENDING,
@@ -428,6 +446,19 @@ class OrderSerializer(
                 return True
 
         return False
+
+    def _get_refund_deadline(self, obj):
+        delivery = getattr(obj, "delivery", None)
+        if not delivery or not delivery.delivered_at:
+            return None
+        return delivery.delivered_at + timedelta(hours=72)
+
+    def get_refund_deadline(self, obj):
+        return self._get_refund_deadline(obj)
+
+    def get_refund_window_expired(self, obj):
+        deadline = self._get_refund_deadline(obj)
+        return bool(deadline and timezone.now() >= deadline)
 
 
 # ==========================================================
@@ -887,12 +918,26 @@ class RefundItemSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    purchased_quantity = serializers.IntegerField(
+        source="order_item.quantity",
+        read_only=True,
+    )
+
+    product_price = serializers.DecimalField(
+        source="order_item.price",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
     class Meta:
         model = RefundItem
         fields = [
             "order_item_id",
             "product_name",
+            "purchased_quantity",
             "quantity",
+            "product_price",
             "amount",
         ]
         read_only_fields = fields
@@ -965,6 +1010,33 @@ class RefundSerializer(
 
     refund_percentage = serializers.IntegerField(read_only=True)
 
+    eligible_amount = serializers.DecimalField(
+        source="refund_amount",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    order_date = serializers.DateTimeField(
+        source="order.created_at",
+        read_only=True,
+    )
+
+    original_order_total = serializers.DecimalField(
+        source="order.total_amount",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    customer_phone = serializers.SerializerMethodField()
+
+    customer_address = serializers.SerializerMethodField()
+
+    calculated_full_amount = serializers.SerializerMethodField()
+
+    calculated_partial_amount = serializers.SerializerMethodField()
+
     is_recorded_internally = serializers.BooleanField(read_only=True)
 
     items = RefundItemSerializer(
@@ -996,13 +1068,20 @@ class RefundSerializer(
             "customer_name",
             "customer_email",
             "order_status",
+            "order_date",
+            "original_order_total",
             "payment_method",
             "payment_status",
+            "customer_phone",
+            "customer_address",
             "reviewer_name",
             "reason",
             "description",
             "refund_type",
             "refund_percentage",
+            "eligible_amount",
+            "calculated_full_amount",
+            "calculated_partial_amount",
             "items",
             "photos",
             "history",
@@ -1043,6 +1122,37 @@ class RefundSerializer(
         except Payment.DoesNotExist:
             return None
 
+    def get_customer_phone(self, obj):
+        try:
+            return obj.order.shipping_details.phone
+        except OrderAddress.DoesNotExist:
+            return getattr(obj.customer, "phone", None)
+
+    def get_customer_address(self, obj):
+        try:
+            address = obj.order.shipping_details
+            return ", ".join(
+                value
+                for value in [
+                    address.street_address,
+                    address.area,
+                    address.city,
+                    address.district,
+                    address.division,
+                    address.postal_code,
+                ]
+                if value
+            )
+        except OrderAddress.DoesNotExist:
+            return obj.order.shipping_address
+
+    def get_calculated_full_amount(self, obj):
+        return f"{obj.refund_amount:.2f}"
+
+    def get_calculated_partial_amount(self, obj):
+        amount = (obj.refund_amount * Decimal("0.25")).quantize(Decimal("0.01"))
+        return f"{amount:.2f}"
+
     def get_admin_decision(self, obj):
         if obj.status in [
             Refund.STATUS_APPROVED,
@@ -1071,13 +1181,12 @@ class CustomerRefundSerializer(RefundSerializer):
             "items",
             "photos",
             "history",
-            "refund_amount",
             "approved_amount",
             "status",
             "reviewed_at",
             "approved_at",
             "completed_at",
-            "admin_decision",
+            "admin_notes",
             "requested_at",
         ]
         read_only_fields = fields
@@ -1145,6 +1254,23 @@ class CustomerRefundRequestSerializer(
         if order.status != Order.STATUS_DELIVERED:
             raise serializers.ValidationError(
                 "Refund can only be requested after the order is delivered."
+            )
+
+        delivery = getattr(order, "delivery", None)
+        if (
+            delivery is None
+            or delivery.status != Delivery.STATUS_DELIVERED
+            or delivery.delivered_at is None
+        ):
+            raise serializers.ValidationError(
+                "Refund can only be requested after delivery is confirmed."
+            )
+
+        refund_deadline = delivery.delivered_at + timedelta(hours=72)
+        if timezone.now() >= refund_deadline:
+            raise serializers.ValidationError(
+                "Refund requests are only allowed within 72 hours of delivery. "
+                "The refund window has expired."
             )
 
         requested_items = attrs.get("items", [])
@@ -1219,6 +1345,8 @@ class CustomerRefundRequestSerializer(
             raise serializers.ValidationError(
                 {"items": "The selected items have no refundable amount."}
             )
+        # This is an internal eligibility snapshot only. The admin approval
+        # path recalculates it from the locked order items before deciding.
         attrs["refund_amount"] = eligible_amount
         attrs["refund_items"] = refund_items
         return attrs

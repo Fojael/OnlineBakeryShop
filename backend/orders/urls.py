@@ -37,8 +37,9 @@ from .views import (
     # ADMIN REFUND
     # ==========================================================
     AdminRefundListView,
+    AdminRefundDetailView,
     AdminRefundUpdateView,
-    AdminRefundProcessView,
+    AdminRefundDecisionView,
     AdminOfflineSaleCreateView,
     AdminOfflineSaleListView,
     AdminOfflineSaleDetailView,
@@ -223,18 +224,22 @@ urlpatterns = [
         AdminRefundListView.as_view(),
         name="admin-refund-list",
     ),
+    path(
+        "refunds/admin/<int:refund_id>/",
+        AdminRefundDetailView.as_view(),
+        name="admin-refund-detail",
+    ),
 
-    # PATCH / PUT
-    # Approve / reject / complete refund
+    # PATCH / PUT (legacy-compatible admin decision endpoint)
     path(
         "refunds/admin/<int:refund_id>/update/",
         AdminRefundUpdateView.as_view(),
         name="admin-refund-update",
     ),
     path(
-        "refunds/admin/<int:refund_id>/process/",
-        AdminRefundProcessView.as_view(),
-        name="admin-refund-process",
+        "refunds/admin/<int:refund_id>/<str:decision>/",
+        AdminRefundDecisionView.as_view(),
+        name="admin-refund-decision",
     ),
 ]
 

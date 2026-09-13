@@ -228,6 +228,16 @@ const OrderDetails = () => {
                                         <span>Refund status</span>
                                         <strong>{order.refund_status || "No refund requested"}</strong>
                                     </div>
+                                    {order.refund_deadline && !order.refund_window_expired && (
+                                        <p className="small text-muted mt-2 mb-2">
+                                            Refund requests are accepted until {formatDateTime(order.refund_deadline)}.
+                                        </p>
+                                    )}
+                                    {order.refund_window_expired && !order.refund_status && (
+                                        <div className="alert alert-secondary mt-3 mb-0">
+                                            The 72-hour refund window has expired. New refund requests are no longer available for this order.
+                                        </div>
+                                    )}
                                     {order.can_request_refund && (
                                         <RefundRequestForm
                                             orderId={order.id}

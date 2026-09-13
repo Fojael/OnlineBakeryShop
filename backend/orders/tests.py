@@ -1,6 +1,7 @@
 from decimal import Decimal
 from datetime import timedelta
 from io import BytesIO
+from unittest import skip
 from unittest.mock import patch
 
 from PIL import Image
@@ -47,6 +48,14 @@ def make_refund_photo(
         filename,
         image_buffer.getvalue(),
         content_type=content_type,
+    )
+
+
+def mark_order_delivered(order, delivered_at=None):
+    return Delivery.objects.create(
+        order=order,
+        status=Delivery.STATUS_DELIVERED,
+        delivered_at=delivered_at or timezone.now() - timedelta(hours=1),
     )
 
 
@@ -468,6 +477,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=1,
             price=200,
         )
+        mark_order_delivered(order)
 
         self.client.force_authenticate(user=customer)
 
@@ -534,6 +544,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=3,
             price=75,
         )
+        mark_order_delivered(order)
 
         self.client.force_authenticate(user=customer)
         response = self.client.post(
@@ -589,6 +600,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=2,
             price=75,
         )
+        mark_order_delivered(order)
 
         self.client.force_authenticate(user=customer)
         response = self.client.post(
@@ -649,6 +661,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=4,
             price=25,
         )
+        mark_order_delivered(order)
 
         self.client.force_authenticate(user=customer)
         response = self.client.post(
@@ -656,7 +669,6 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             {
                 "order_id": order.id,
                 "reason": Refund.REASON_DAMAGED_PRODUCT,
-                "refund_type": Refund.REFUND_TYPE_PARTIAL,
                 "items": [
                     {"order_item_id": cake_item.id, "quantity": 1},
                     {"order_item_id": cupcake_item.id, "quantity": 3},
@@ -700,10 +712,10 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=2,
             price=40,
         )
+        mark_order_delivered(order)
         payload = {
             "order_id": order.id,
             "reason": Refund.REASON_OTHER,
-            "refund_type": Refund.REFUND_TYPE_PARTIAL,
             "items": [{"order_item_id": order_item.id, "quantity": 1}],
         }
         self.client.force_authenticate(user=customer)
@@ -761,6 +773,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             quantity=4,
             price=25,
         )
+        mark_order_delivered(order)
         first_refund = Refund.objects.create(
             order=order,
             customer=customer,
@@ -782,7 +795,6 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             {
                 "order_id": order.id,
                 "reason": Refund.REASON_OTHER,
-                "refund_type": Refund.REFUND_TYPE_PARTIAL,
                 "items": [{"order_item_id": cake_item.id, "quantity": 2}],
             },
             format="json",
@@ -792,7 +804,6 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             {
                 "order_id": order.id,
                 "reason": Refund.REASON_OTHER,
-                "refund_type": Refund.REFUND_TYPE_PARTIAL,
                 "items": [
                     {"order_item_id": cake_item.id, "quantity": 1},
                     {"order_item_id": cupcake_item.id, "quantity": 4},
@@ -1242,6 +1253,7 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
             total_amount=260,
             status=Order.STATUS_DELIVERED,
         )
+        delivery = mark_order_delivered(order)
 
         self.client.force_authenticate(user=customer)
         response = self.client.get(
@@ -1251,6 +1263,160 @@ class InventoryAndOrderLifecycleRequirementsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["can_request_refund"])
         self.assertIsNone(response.data["refund_status"])
+        self.assertEqual(
+            response.data["refund_deadline"],
+            delivery.delivered_at + timedelta(hours=72),
+        )
+        self.assertFalse(response.data["refund_window_expired"])
+
+
+class RefundWindowEligibilityTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = User.objects.create_user(
+            username="refund_window_customer",
+            email="refund_window_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        self.other_customer = User.objects.create_user(
+            username="refund_window_other",
+            email="refund_window_other@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        self.product = Product.objects.create(
+            name="Refund Window Product",
+            category="Cake",
+            price=Decimal("100.00"),
+            stock_quantity=5,
+        )
+        self.now = timezone.now()
+        self.order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Refund window address",
+            payment_method=Order.PAYMENT_COD,
+            subtotal=100,
+            total_amount=100,
+            status=Order.STATUS_DELIVERED,
+        )
+        self.order_item = OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            quantity=1,
+            price=Decimal("100.00"),
+        )
+
+    def request_refund(self, delivered_age, extra_payload=None):
+        delivery = Delivery.objects.create(
+            order=self.order,
+            status=Delivery.STATUS_DELIVERED,
+            delivered_at=self.now - delivered_age,
+        )
+        payload = {
+            "order_id": self.order.id,
+            "reason": Refund.REASON_OTHER,
+            "items": [{"order_item_id": self.order_item.id, "quantity": 1}],
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+        self.client.force_authenticate(user=self.customer)
+        with patch("orders.serializers.timezone.now", return_value=self.now):
+            response = self.client.post(
+                reverse("orders:customer-refund-request"),
+                payload,
+                format="json",
+            )
+        return response, delivery
+
+    def test_refund_is_allowed_within_one_hour(self):
+        response, _ = self.request_refund(timedelta(hours=1))
+        self.assertEqual(response.status_code, 201)
+
+    def test_refund_is_allowed_at_seventy_one_hours(self):
+        response, _ = self.request_refund(timedelta(hours=71))
+        self.assertEqual(response.status_code, 201)
+
+    def test_refund_is_allowed_at_seventy_one_hours_fifty_nine_minutes(self):
+        response, _ = self.request_refund(timedelta(hours=71, minutes=59))
+        self.assertEqual(response.status_code, 201)
+
+    def test_refund_is_rejected_at_exactly_seventy_two_hours(self):
+        response, _ = self.request_refund(timedelta(hours=72))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("refund window has expired", str(response.data).lower())
+
+    def test_refund_is_rejected_after_seventy_two_hours(self):
+        response, _ = self.request_refund(timedelta(hours=72, seconds=1))
+        self.assertEqual(response.status_code, 400)
+
+    def test_refund_is_rejected_when_order_is_not_delivered(self):
+        self.order.status = Order.STATUS_PROCESSING
+        self.order.save(update_fields=["status"])
+        Delivery.objects.create(
+            order=self.order,
+            status=Delivery.STATUS_OUT_FOR_DELIVERY,
+            delivered_at=None,
+        )
+        self.client.force_authenticate(user=self.customer)
+        with patch("orders.serializers.timezone.now", return_value=self.now):
+            response = self.client.post(
+                reverse("orders:customer-refund-request"),
+                {
+                    "order_id": self.order.id,
+                    "reason": Refund.REASON_OTHER,
+                    "items": [{"order_item_id": self.order_item.id, "quantity": 1}],
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_refund_is_rejected_when_delivered_at_is_missing(self):
+        Delivery.objects.create(
+            order=self.order,
+            status=Delivery.STATUS_DELIVERED,
+            delivered_at=None,
+        )
+        self.client.force_authenticate(user=self.customer)
+        with patch("orders.serializers.timezone.now", return_value=self.now):
+            response = self.client.post(
+                reverse("orders:customer-refund-request"),
+                {
+                    "order_id": self.order.id,
+                    "reason": Refund.REASON_OTHER,
+                    "items": [{"order_item_id": self.order_item.id, "quantity": 1}],
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_customer_cannot_refund_another_customers_order(self):
+        self.order.customer = self.other_customer
+        self.order.save(update_fields=["customer"])
+        mark_order_delivered(self.order, self.now - timedelta(hours=1))
+        self.client.force_authenticate(user=self.customer)
+        with patch("orders.serializers.timezone.now", return_value=self.now):
+            response = self.client.post(
+                reverse("orders:customer-refund-request"),
+                {
+                    "order_id": self.order.id,
+                    "reason": Refund.REASON_OTHER,
+                    "items": [{"order_item_id": self.order_item.id, "quantity": 1}],
+                    "delivered_at": "2099-01-01T00:00:00Z",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_payload_timestamp_cannot_bypass_expired_window(self):
+        response, _ = self.request_refund(
+            timedelta(hours=72, seconds=1),
+            {"delivered_at": "2099-01-01T00:00:00Z"},
+        )
+        self.assertEqual(response.status_code, 400)
 
 
 class CompleteOrderWorkflowTests(TestCase):
@@ -1495,7 +1661,9 @@ class CompleteOrderWorkflowTests(TestCase):
                 "order_id": order.id,
                 "reason": Refund.REASON_WRONG_PRODUCT,
                 "description": "Workflow refund test",
-                "refund_type": Refund.REFUND_TYPE_FULL,
+                "items": [
+                    {"order_item_id": order.items.first().id, "quantity": 1},
+                ],
             },
             format="json",
         )
@@ -1507,19 +1675,15 @@ class CompleteOrderWorkflowTests(TestCase):
         order.payment.save(update_fields=["status", "bank_transaction_id"])
 
         self.client.force_authenticate(user=self.admin)
-        with patch(
-            "orders.views.refund_payment",
-            return_value={"status": "success", "refund_ref_id": "REF-123"},
-        ):
-            response = self.client.patch(
-                f"/api/orders/refunds/admin/{refund.id}/update/",
-                {
-                    "status": Refund.STATUS_APPROVED,
-                    "refund_type": Refund.REFUND_TYPE_FULL,
-                },
-                format="json",
-            )
-            self.assertEqual(response.status_code, 200)
+        response = self.client.patch(
+            f"/api/orders/refunds/admin/{refund.id}/update/",
+            {
+                "status": Refund.STATUS_APPROVED,
+                "refund_type": Refund.REFUND_TYPE_FULL,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
 
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.STATUS_APPROVED)
@@ -1722,6 +1886,30 @@ class RefundReviewAccessTests(TestCase):
             total_amount=250,
             status=Order.STATUS_DELIVERED,
         )
+        product = Product.objects.create(
+            name="Refund Detail Product",
+            category="Cake",
+            price=Decimal("250.00"),
+            stock_quantity=5,
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            product=product,
+            quantity=1,
+            price=Decimal("250.00"),
+        )
+        OrderAddress.objects.create(
+            order=self.order,
+            full_name="Refund Review Customer",
+            phone="01700000000",
+            email=self.customer.email,
+            division="Dhaka",
+            district="Dhaka",
+            city="Dhaka",
+            area="Dhanmondi",
+            street_address="Refund review address",
+            postal_code="1205",
+        )
         Payment.objects.create(
             order=self.order,
             transaction_id="REFUND-REVIEW-1",
@@ -1735,6 +1923,12 @@ class RefundReviewAccessTests(TestCase):
             description="Package arrived damaged.",
             refund_type=Refund.REFUND_TYPE_FULL,
             refund_amount=250,
+        )
+        RefundItem.objects.create(
+            refund=self.refund,
+            order_item=self.order.items.first(),
+            quantity=1,
+            amount=Decimal("250.00"),
         )
 
     def test_admin_can_review_payment_and_request_details(self):
@@ -1752,10 +1946,7 @@ class RefundReviewAccessTests(TestCase):
         self.assertEqual(refund_data["description"], "Package arrived damaged.")
         self.assertEqual(refund_data["payment_method"], Order.PAYMENT_SSLCOMMERZ)
         self.assertEqual(refund_data["payment_status"], Payment.STATUS_SUCCESS)
-        self.assertEqual(
-            refund_data["transaction_reference"],
-            "REFUND-REVIEW-1",
-        )
+        self.assertEqual(refund_data["eligible_amount"], "250.00")
 
     def test_customer_supplier_and_rider_refund_access_is_scoped(self):
         self.client.force_authenticate(user=self.customer)
@@ -1775,6 +1966,31 @@ class RefundReviewAccessTests(TestCase):
             )
             self.assertEqual(customer_list_response.status_code, 403)
             self.assertEqual(admin_list_response.status_code, 403)
+
+    def test_admin_can_view_complete_refund_details_and_backend_preview(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(
+            reverse("orders:admin-refund-detail", args=[self.refund.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["customer_phone"], "01700000000")
+        self.assertIn("Dhanmondi", response.data["customer_address"])
+        self.assertEqual(response.data["original_order_total"], "250.00")
+        self.assertEqual(response.data["eligible_amount"], "250.00")
+        self.assertEqual(response.data["calculated_full_amount"], "250.00")
+        self.assertEqual(response.data["calculated_partial_amount"], "62.50")
+        self.assertEqual(response.data["items"][0]["purchased_quantity"], 1)
+
+    def test_customer_cannot_view_admin_refund_details(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(
+            reverse("orders:admin-refund-detail", args=[self.refund.id]),
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 class RefundStatusWorkflowTests(TestCase):
@@ -1843,19 +2059,15 @@ class RefundStatusWorkflowTests(TestCase):
         )
         self.assertEqual(arbitrary_response.status_code, 400)
 
-        partial_response = self.client.patch(
-            url,
-            {
-                "status": Refund.STATUS_APPROVED,
-                "refund_type": Refund.REFUND_TYPE_PARTIAL,
-            },
-            format="json",
+        partial_response = self.client.post(
+            reverse("orders:admin-refund-decision", args=[self.refund.id, "approve-partial"]),
         )
         self.assertEqual(partial_response.status_code, 200)
         self.refund.refresh_from_db()
         self.assertEqual(self.refund.refund_percentage, 25)
         self.assertEqual(self.refund.approved_amount, Decimal("25.00"))
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_processing_then_completed_marks_payment_refunded(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("orders:admin-refund-process", args=[self.refund.id])
@@ -1885,6 +2097,7 @@ class RefundStatusWorkflowTests(TestCase):
         self.payment.refresh_from_db()
         self.assertEqual(self.payment.status, Payment.STATUS_REFUNDED)
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_refund_history_and_customer_notifications_cover_full_lifecycle(self):
         order = Order.objects.create(
             customer=self.customer,
@@ -1892,6 +2105,18 @@ class RefundStatusWorkflowTests(TestCase):
             payment_method=Order.PAYMENT_SSLCOMMERZ,
             total_amount=125,
             status=Order.STATUS_DELIVERED,
+        )
+        product = Product.objects.create(
+            name="Notification Refund Product",
+            category="Cake",
+            price=Decimal("125.00"),
+            stock_quantity=5,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=1,
+            price=Decimal("125.00"),
         )
         payment = Payment.objects.create(
             order=order,
@@ -1907,7 +2132,9 @@ class RefundStatusWorkflowTests(TestCase):
             {
                 "order_id": order.id,
                 "reason": Refund.REASON_OTHER,
-                "refund_type": Refund.REFUND_TYPE_FULL,
+                "items": [
+                    {"order_item_id": order.items.first().id, "quantity": 1},
+                ],
             },
             format="json",
         )
@@ -1971,6 +2198,7 @@ class RefundStatusWorkflowTests(TestCase):
             ).count() >= 3
         )
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_gateway_failure_enters_failed_and_can_be_retried(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("orders:admin-refund-process", args=[self.refund.id])
@@ -1999,6 +2227,7 @@ class RefundStatusWorkflowTests(TestCase):
         self.refund.refresh_from_db()
         self.assertEqual(self.refund.status, Refund.STATUS_COMPLETED)
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_processing_uses_backend_payment_and_rejects_duplicate_completion(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("orders:admin-refund-process", args=[self.refund.id])
@@ -2024,6 +2253,7 @@ class RefundStatusWorkflowTests(TestCase):
         self.assertEqual(duplicate_response.status_code, 400)
         duplicate_gateway.assert_not_called()
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_invalid_amount_transaction_and_unsuccessful_payment_are_rejected(self):
         self.client.force_authenticate(user=self.admin)
         url = reverse("orders:admin-refund-process", args=[self.refund.id])
@@ -2063,6 +2293,7 @@ class RefundStatusWorkflowTests(TestCase):
         self.assertEqual(self.refund.status, Refund.STATUS_APPROVED)
         invalid_transaction_gateway.assert_not_called()
 
+    @skip("SSLCommerz refund processing was removed.")
     def test_invalid_status_transitions_and_non_admin_processing_are_rejected(self):
         self.client.force_authenticate(user=self.customer)
         customer_response = self.client.post(
