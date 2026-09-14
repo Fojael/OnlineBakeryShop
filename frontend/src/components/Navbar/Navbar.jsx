@@ -414,7 +414,16 @@ const Navbar = () => {
 
                                 </li>
 
+                                <li className="nav-item">
 
+                                    <Link
+                                        className="nav-link"
+                                        to="/nur"
+                                    >
+                                        Nur
+                                    </Link>
+
+                                </li>
                                 <li className="nav-item">
 
                                     <Link

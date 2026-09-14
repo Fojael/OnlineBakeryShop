@@ -26,6 +26,8 @@ import ProductDetails
 import Login
     from "../pages/Login/Login";
 
+import Nur from "../pages/Nur/Nur";
+
 import Register
     from "../pages/Register/Register";
 
@@ -292,10 +294,17 @@ const AppRoutes = () => {
                 path="/login"
                 element={<Login />}
             />
+            
+        
 
             <Route
                 path="/register"
                 element={<Register />}
+            />
+
+            <Route
+                path="/nur"
+                element={<Nur />}
             />
 
 
