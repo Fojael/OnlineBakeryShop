@@ -6,9 +6,7 @@ return (
                 className="spinner-border text-primary"
                 role="status"
             >
-                <span className="visually-hidden">
-                    Loading...
-                </span>
+                
             </div>
 
             <h4 className="mt-3">
