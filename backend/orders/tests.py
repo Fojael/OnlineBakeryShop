@@ -1568,7 +1568,6 @@ class CompleteOrderWorkflowTests(TestCase):
             (Delivery.STATUS_ACCEPTED, Order.STATUS_ASSIGNED),
             (Delivery.STATUS_PICKED_UP, Order.STATUS_ASSIGNED),
             (Delivery.STATUS_OUT_FOR_DELIVERY, Order.STATUS_OUT_FOR_DELIVERY),
-            (Delivery.STATUS_DELIVERED, Order.STATUS_DELIVERED),
         ]:
             response = self.client.patch(
                 f"/api/delivery/{delivery.id}/status/",
@@ -1578,6 +1577,25 @@ class CompleteOrderWorkflowTests(TestCase):
             self.assertEqual(response.status_code, 200)
             order.refresh_from_db()
             self.assertEqual(order.status, expected_order_status)
+
+        with patch(
+            "delivery.models.DeliveryOTP.generate_secure_code",
+            return_value="123456",
+        ):
+            otp_response = self.client.post(
+                f"/api/delivery/{delivery.id}/request-otp/",
+                {},
+                format="json",
+            )
+        self.assertEqual(otp_response.status_code, 200)
+        delivered_response = self.client.post(
+            f"/api/delivery/{delivery.id}/verify-otp/",
+            {"otp": "123456"},
+            format="json",
+        )
+        self.assertEqual(delivered_response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_DELIVERED)
 
         self.assertTrue(
             {
@@ -2838,6 +2856,25 @@ class OfflineSaleApiTests(TestCase):
         self.assertTrue(all(transaction.created_by_id == self.admin.id for transaction in transactions))
         self.assertEqual(response.data["order"]["order_source"], Order.SOURCE_OFFLINE)
         self.assertEqual(response.data["order"]["items"][0]["product_name"], "Offline API Cake")
+
+    def test_admin_creates_offline_sale_without_address(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            reverse("orders:admin-offline-sale-create"),
+            {
+                "customer_name": "Walk-in Buyer",
+                "phone": "01722222222",
+                "items": [{"product_id": self.product.id, "quantity": 1}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(order_source=Order.SOURCE_OFFLINE)
+        self.assertEqual(order.shipping_address, "")
+        self.assertEqual(order.delivery_charge, Decimal("0.00"))
+        self.assertEqual(order.payment_method, Order.PAYMENT_CASH)
 
     def test_non_admin_roles_cannot_create_offline_sale(self):
         for user in [self.customer, self.supplier_user, self.rider]:

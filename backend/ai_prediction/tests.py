@@ -1113,6 +1113,76 @@ class AIPredictionTests(TestCase):
         self.assertNotIn("artifact", summary_response.data)
 
 
+    def test_admin_can_fetch_sales_analysis_with_refunds_and_channels(self):
+        today = timezone.localdate()
+        online_order = self.make_delivered_order(self.product, 2, timezone.now())
+        Refund.objects.create(
+            order=online_order,
+            customer=self.admin,
+            reason=Refund.REASON_OTHER,
+            refund_type=Refund.REFUND_TYPE_PARTIAL,
+            refund_amount=Decimal("50.00"),
+            approved_amount=Decimal("50.00"),
+            status=Refund.STATUS_COMPLETED,
+        )
+        offline_order = Order.objects.create(
+            customer=None,
+            order_source=Order.SOURCE_OFFLINE,
+            offline_customer_name="Counter Buyer",
+            offline_customer_phone="01700000000",
+            created_by=self.admin,
+            shipping_address="",
+            payment_method=Order.PAYMENT_CASH,
+            subtotal=Decimal("100.00"),
+            total_amount=Decimal("100.00"),
+            status=Order.STATUS_DELIVERED,
+        )
+        OrderItem.objects.create(
+            order=offline_order,
+            product=self.second_product,
+            quantity=1,
+            price=Decimal("100.00"),
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            reverse("ai_prediction:admin-sales-analysis"),
+            {"period": "today"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["overview"]["total_orders"], 2)
+        self.assertEqual(response.data["overview"]["total_sales"], "600.00")
+        self.assertEqual(response.data["overview"]["refund_amount"], "50.00")
+        self.assertEqual(response.data["overview"]["net_sales"], "550.00")
+        self.assertEqual(response.data["overview"]["online"]["orders"], 1)
+        self.assertEqual(response.data["overview"]["offline"]["orders"], 1)
+        self.assertEqual(response.data["period"]["start_date"], today.isoformat())
+        self.assertTrue(any(row["product"] == self.product.name for row in response.data["details"]))
+
+    def test_non_admin_roles_cannot_fetch_sales_analysis(self):
+        users = [
+            User.objects.create_user(username="sales_analysis_customer", email="sales_analysis_customer@example.com", password="StrongPass123!", role=User.ROLE_CUSTOMER),
+            User.objects.create_user(username="sales_analysis_supplier", email="sales_analysis_supplier@example.com", password="StrongPass123!", role=User.ROLE_SUPPLIER),
+            User.objects.create_user(username="sales_analysis_rider", email="sales_analysis_rider@example.com", password="StrongPass123!", role=User.ROLE_DELIVERY_RIDER),
+        ]
+        url = reverse("ai_prediction:admin-sales-analysis")
+        for user in users:
+            self.client.force_authenticate(user=user)
+            self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_sales_analysis_returns_zero_filled_empty_period(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            reverse("ai_prediction:admin-sales-analysis"),
+            {"period": "custom", "start_date": "2020-01-01", "end_date": "2020-01-03"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["overview"]["total_sales"], "0.00")
+        self.assertEqual(response.data["details"], [])
+        self.assertEqual(len(response.data["trend"]), 3)
+
+
 class CustomerRecommendationTests(TestCase):
 
     def setUp(self):
@@ -1169,6 +1239,7 @@ class CustomerRecommendationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
         self.assertEqual(response.data["recommended_products"][0]["id"], self.product.id)
         self.assertEqual(response.data["related_products"][0]["id"], self.related_product.id)
         self.assertNotIn("forecast", response.data)

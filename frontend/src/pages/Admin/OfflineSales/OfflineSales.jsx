@@ -10,7 +10,6 @@ import OfflineReceipt from "./OfflineReceipt";
 const emptyForm = {
     customer_name: "",
     phone: "",
-    address: "",
 };
 
 const getProductsFromResponse = (response) => {
@@ -127,8 +126,8 @@ const OfflineSales = () => {
 
     const submitSale = async (event) => {
         event.preventDefault();
-        if (!form.customer_name.trim() || !form.phone.trim() || !form.address.trim()) {
-            toast.warning("Customer name, phone, and address are required.");
+        if (!form.customer_name.trim() || !form.phone.trim()) {
+            toast.warning("Customer name and phone are required.");
             return;
         }
         if (items.length === 0) {
@@ -141,7 +140,6 @@ const OfflineSales = () => {
             const response = await createOfflineSale({
                 customer_name: form.customer_name.trim(),
                 phone: form.phone.trim(),
-                address: form.address.trim(),
                 items: items.map((item) => ({
                     product_id: item.product_id,
                     quantity: item.quantity,
@@ -171,7 +169,7 @@ const OfflineSales = () => {
                 <form onSubmit={submitSale}>
                     <div className="row g-4">
                         <div className="col-lg-7">
-                            <div className="card border-0 shadow-sm mb-4"><div className="card-body"><h5 className="mb-3">Customer Information</h5><div className="row g-3"><div className="col-md-4"><label className="form-label">Customer Name</label><input className="form-control" name="customer_name" value={form.customer_name} onChange={updateForm} required /></div><div className="col-md-4"><label className="form-label">Phone</label><input className="form-control" name="phone" value={form.phone} onChange={updateForm} required /></div><div className="col-md-4"><label className="form-label">Address</label><input className="form-control" name="address" value={form.address} onChange={updateForm} required /></div></div></div></div>
+                            <div className="card border-0 shadow-sm mb-4"><div className="card-body"><h5 className="mb-3">Customer Information</h5><div className="row g-3"><div className="col-md-6"><label className="form-label">Customer Name</label><input className="form-control" name="customer_name" value={form.customer_name} onChange={updateForm} required /></div><div className="col-md-6"><label className="form-label">Phone</label><input className="form-control" name="phone" value={form.phone} onChange={updateForm} required /></div></div></div></div>
                             <div className="card border-0 shadow-sm"><div className="card-body"><h5 className="mb-3">Product Selection</h5>{loading ? <div className="text-muted">Loading products...</div> : <><div className="row g-2 align-items-end"><div className="col-md-5"><label className="form-label">Search</label><input className="form-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products" /></div><div className="col-md-4"><label className="form-label">Product</label><select className="form-select" value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)}><option value="">Select product</option>{filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · ৳{product.price} · {product.stock_quantity} available</option>)}</select></div><div className="col-md-2"><label className="form-label">Quantity</label><input className="form-control" type="number" min="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></div><div className="col-md-1"><button type="button" className="btn btn-primary w-100" onClick={addItem} aria-label="Add product">+</button></div></div>{selectedProduct && <div className="small text-muted mt-2">Current price: ৳{selectedProduct.price} · Available stock: {selectedProduct.stock_quantity}</div>}</>}</div></div>
                         </div>
                         <div className="col-lg-5"><div className="card border-0 shadow-sm"><div className="card-body"><h5 className="mb-3">Order Summary</h5>{items.length === 0 ? <p className="text-muted">No products added.</p> : <div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Product</th><th>Qty</th><th className="text-end">Preview</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.product_id}><td>{item.name}<div className="small text-muted">৳{item.price}</div></td><td><input className="form-control form-control-sm" type="number" min="1" max={item.stock_quantity} value={item.quantity} onChange={(event) => changeQuantity(item.product_id, event.target.value)} /></td><td className="text-end">৳{(Number(item.price) * item.quantity).toFixed(2)}</td><td><button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(item.product_id)} aria-label={`Remove ${item.name}`}>×</button></td></tr>)}</tbody></table></div>}<div className="d-flex justify-content-between"><span>Preview subtotal</span><strong>৳{previewSubtotal.toFixed(2)}</strong></div><div className="d-flex justify-content-between"><span>Delivery charge</span><strong>৳0.00</strong></div><div className="d-flex justify-content-between border-top mt-2 pt-2"><span>Server total after submit</span><strong>৳{previewSubtotal.toFixed(2)}</strong></div><button className="btn btn-success w-100 mt-4" type="submit" disabled={submitting}>{submitting ? "Creating sale..." : "Confirm and Create Sale"}</button></div></div></div>

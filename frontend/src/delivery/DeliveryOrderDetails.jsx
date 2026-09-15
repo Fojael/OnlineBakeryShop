@@ -26,6 +26,8 @@ const DeliveryOrderDetails = () => {
     const [error, setError] = useState("");
 
     const [success, setSuccess] = useState("");
+    const [otpInput, setOtpInput] = useState("");
+    const [otpLoading, setOtpLoading] = useState(false);
 
     // ======================================================
     // LOAD ORDER
@@ -93,6 +95,40 @@ const DeliveryOrderDetails = () => {
         } finally {
 
             setUpdating(false);
+        }
+    };
+
+    const handleRequestOtp = async () => {
+        try {
+            setOtpLoading(true);
+            setError("");
+            setSuccess("");
+            const data = await deliveryService.requestOtp(order?.delivery_id || orderId);
+            setSuccess(data.detail || "OTP sent to customer.");
+            setOtpInput("");
+        } catch (err) {
+            console.error("OTP request error:", err);
+            setError(err.response?.data?.detail || "Failed to request OTP.");
+        } finally {
+            setOtpLoading(false);
+        }
+    };
+
+    const handleVerifyOtp = async () => {
+        try {
+            setOtpLoading(true);
+            setError("");
+            setSuccess("");
+            const data = await deliveryService.verifyOtp(order?.delivery_id || orderId, otpInput);
+            setSuccess(data.detail || "OTP verified successfully.");
+            setOtpInput("");
+            await loadOrder();
+        } catch (err) {
+            console.error("OTP verification error:", err);
+            setError(err.response?.data?.detail || "OTP verification failed.");
+            setOtpInput("");
+        } finally {
+            setOtpLoading(false);
         }
     };
 
@@ -343,7 +379,43 @@ const DeliveryOrderDetails = () => {
                 {/* NEXT ACTION */}
                 {/* ======================================== */}
 
-                {nextStatus && (
+                {currentStatus === "OUT_FOR_DELIVERY" && (
+                    <div className="otp-verification-box">
+                        <h3>Customer Delivery Verification</h3>
+                        <p>OTP sent to customer. Ask the customer for the OTP and enter it below.</p>
+
+                        <div className="otp-actions">
+                            <button
+                                className="delivery-status-btn"
+                                disabled={updating || otpLoading}
+                                onClick={handleRequestOtp}
+                            >
+                                {otpLoading ? "Processing..." : "Request OTP"}
+                            </button>
+                        </div>
+
+                        <div className="otp-input-row">
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={6}
+                                value={otpInput}
+                                onChange={(event) => setOtpInput(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                                placeholder="Enter 6-digit OTP"
+                                className="otp-input"
+                            />
+                            <button
+                                className="delivery-status-btn"
+                                disabled={updating || otpLoading || otpInput.length !== 6}
+                                onClick={handleVerifyOtp}
+                            >
+                                Verify OTP
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {nextStatus && currentStatus !== "OUT_FOR_DELIVERY" && (
 
                     <div className="next-action">
 

@@ -10,7 +10,6 @@ const OfflineReceipt = ({ order, onCreateAnother }) => {
             ["Sale Type", "Offline Sale"],
             ["Customer", order.customer_name],
             ["Phone", order.offline_customer_phone],
-            ["Address", order.shipping_address],
             ["Payment", "CASH / PAID"],
             [],
             ["SL", "Product Name", "Quantity", "Unit Price", "Line Total"],
@@ -66,7 +65,6 @@ const OfflineReceipt = ({ order, onCreateAnother }) => {
                     <div className="col-md-4"><strong>Sale Type</strong><div>Offline Sale</div></div>
                     <div className="col-md-4"><strong>Customer</strong><div>{order.customer_name}</div><div>{order.offline_customer_phone}</div></div>
                     <div className="col-md-4"><strong>Created By</strong><div>{order.created_by_name || "Admin"}</div></div>
-                    <div className="col-12"><strong>Address</strong><div>{order.shipping_address}</div></div>
                 </div>
                 <table className="table offline-receipt-items">
                     <thead><tr><th>SL</th><th>Product Name</th><th>Quantity</th><th>Unit Price</th><th className="text-end">Line Total</th></tr></thead>

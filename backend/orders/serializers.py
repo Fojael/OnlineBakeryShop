@@ -637,7 +637,12 @@ class OfflineSaleCreateSerializer(serializers.Serializer):
 
     customer_name = serializers.CharField(max_length=150, allow_blank=False)
     phone = serializers.CharField(max_length=20, allow_blank=False)
-    address = serializers.CharField(max_length=500, allow_blank=False)
+    address = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
     payment_method = serializers.ChoiceField(
         choices=[Order.PAYMENT_CASH],
         default=Order.PAYMENT_CASH,
@@ -654,12 +659,6 @@ class OfflineSaleCreateSerializer(serializers.Serializer):
         value = value.strip()
         if not value:
             raise serializers.ValidationError("Phone number is required.")
-        return value
-
-    def validate_address(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Address is required.")
         return value
 
     def validate_items(self, value):

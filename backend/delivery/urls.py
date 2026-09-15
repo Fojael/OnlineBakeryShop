@@ -5,6 +5,8 @@ from .views import (
     DeliveryDashboardView,
     MyDeliveryListView,
     DeliveryDetailView,
+    DeliveryOTPRequestView,
+    DeliveryOTPVerifyView,
     DeliveryStatusUpdateView,
 )
 
@@ -69,6 +71,18 @@ urlpatterns = [
         "<int:delivery_id>/status/",
         DeliveryStatusUpdateView.as_view(),
         name="delivery-status-update",
+    ),
+
+    path(
+        "<int:delivery_id>/request-otp/",
+        DeliveryOTPRequestView.as_view(),
+        name="request-otp",
+    ),
+
+    path(
+        "<int:delivery_id>/verify-otp/",
+        DeliveryOTPVerifyView.as_view(),
+        name="verify-otp",
     ),
 ]
 

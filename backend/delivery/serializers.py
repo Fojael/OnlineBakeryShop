@@ -208,6 +208,16 @@ class DeliveryStatusUpdateSerializer(
     )
 
 
+class DeliveryOTPVerificationSerializer(
+    serializers.Serializer
+):
+    otp = serializers.CharField(
+        min_length=6,
+        max_length=6,
+        trim_whitespace=True,
+    )
+
+
 DeliveryStatusSerializer = DeliveryStatusUpdateSerializer
 
 

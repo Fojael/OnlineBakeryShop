@@ -66,6 +66,18 @@ const deliveryService = {
         return response.data;
     },
 
+    requestOtp: async (deliveryId) => {
+        const response = await api.post(`delivery/${deliveryId}/request-otp/`);
+        return response.data;
+    },
+
+    verifyOtp: async (deliveryId, otp) => {
+        const response = await api.post(`delivery/${deliveryId}/verify-otp/`, {
+            otp,
+        });
+        return response.data;
+    },
+
     // ======================================================
     // GET DELIVERY PROFILE
     // ======================================================

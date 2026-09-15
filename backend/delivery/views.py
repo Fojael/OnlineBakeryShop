@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -16,9 +17,10 @@ from orders.models import Order
 from orders.services import record_order_status_change
 from payments.models import Payment
 
-from .models import Delivery
+from .models import Delivery, DeliveryOTP, MAX_OTP_ATTEMPTS, OTP_EXPIRY_MINUTES, OTP_RESEND_SECONDS
 from .serializers import (
     DeliveryAssignmentSerializer,
+    DeliveryOTPVerificationSerializer,
     DeliveryOrderSerializer,
     DeliverySerializer,
     DeliveryStatusUpdateSerializer,
@@ -545,6 +547,182 @@ class DeliveryDetailView(APIView):
 
 
 # ==========================================================
+# OTP REQUEST / VERIFICATION
+# ==========================================================
+
+
+def get_delivery_for_rider(request, delivery_id):
+    return get_object_or_404(
+        Delivery.objects.select_for_update(),
+        id=delivery_id,
+        rider=request.user,
+    )
+
+
+class DeliveryOTPRequestView(APIView):
+    permission_classes = [IsAuthenticated, IsDeliveryRider]
+
+    @transaction.atomic
+    def post(self, request, delivery_id):
+        delivery = get_delivery_for_rider(request, delivery_id)
+
+        if delivery.status != Delivery.STATUS_OUT_FOR_DELIVERY:
+            return Response(
+                {"detail": "OTP can only be requested while delivery is out for delivery."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if delivery.delivered_at is not None:
+            return Response(
+                {"detail": "This delivery has already been completed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing_otp = DeliveryOTP.objects.filter(delivery=delivery).first()
+        if existing_otp:
+            now = timezone.now()
+            if (
+                existing_otp.last_sent_at
+                and now - existing_otp.last_sent_at
+                < timezone.timedelta(seconds=OTP_RESEND_SECONDS)
+            ):
+                return Response(
+                    {"detail": "Please wait before requesting another OTP."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            if existing_otp.is_used or existing_otp.verified_at:
+                existing_otp.delete()
+
+        DeliveryOTP.create_for_delivery(delivery)
+        order = delivery.order
+        notify_user(
+            order.customer,
+            "Delivery OTP Required",
+            (
+                f"Your Order #{order.id} is being delivered. "
+                f"Please share the verification code with the rider to complete delivery."
+            ),
+            Notification.TYPE_INFO,
+        )
+
+        return Response(
+            {"detail": "OTP sent to customer."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class DeliveryOTPVerifyView(APIView):
+    permission_classes = [IsAuthenticated, IsDeliveryRider]
+
+    @transaction.atomic
+    def post(self, request, delivery_id):
+        delivery = get_delivery_for_rider(request, delivery_id)
+        otp_code = request.data.get("otp", "")
+        serializer = DeliveryOTPVerificationSerializer(data={"otp": otp_code})
+        serializer.is_valid(raise_exception=True)
+
+        if delivery.status != Delivery.STATUS_OUT_FOR_DELIVERY:
+            return Response(
+                {"detail": "Delivery is not awaiting OTP verification."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        otp = DeliveryOTP.objects.filter(delivery=delivery).first()
+        if not otp:
+            return Response(
+                {"detail": "No active OTP found for this delivery."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp.is_used:
+            return Response(
+                {"detail": "This OTP has already been used."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if timezone.now() > otp.expires_at:
+            return Response(
+                {"detail": "OTP has expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp.attempt_count >= MAX_OTP_ATTEMPTS:
+            otp.is_used = True
+            otp.save(update_fields=["is_used", "verified_at"])
+            return Response(
+                {"detail": "Maximum OTP attempts exceeded."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not check_password(serializer.validated_data["otp"], otp.otp_hash):
+            otp.attempt_count += 1
+            otp.save(update_fields=["attempt_count"])
+            if otp.attempt_count >= MAX_OTP_ATTEMPTS:
+                return Response(
+                    {"detail": "Maximum OTP attempts exceeded."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {"detail": "Invalid OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        otp.attempt_count += 1
+        otp.is_used = True
+        otp.verified_at = timezone.now()
+        otp.save(update_fields=["attempt_count", "is_used", "verified_at"])
+
+        order = delivery.order
+        previous_order_status = order.status
+
+        if order.payment_method == Order.PAYMENT_SSLCOMMERZ and not Payment.objects.filter(
+            order=order,
+            status=Payment.STATUS_SUCCESS,
+        ).exists():
+            return Response(
+                {"detail": "SSLCommerz payment must be successful before an order can be delivered."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        delivery.status = Delivery.STATUS_DELIVERED
+        delivery.delivered_at = timezone.now()
+        delivery.save(update_fields=["status", "delivered_at", "updated_at"])
+
+        order.status = Order.STATUS_DELIVERED
+        order.save(update_fields=["status", "updated_at"])
+
+        record_order_status_change(
+            order=order,
+            previous_status=previous_order_status,
+            new_status=Order.STATUS_DELIVERED,
+            changed_by=request.user,
+            note="Order delivered by rider after OTP verification.",
+        )
+
+        notify_user(
+            order.customer,
+            "Order Delivered",
+            (
+                f"Your Order #{order.id} has been delivered successfully."
+            ),
+            Notification.TYPE_DELIVERED,
+        )
+
+        record_audit(
+            actor=request.user,
+            action="delivery_verified",
+            obj=delivery,
+            old_value={"status": Delivery.STATUS_OUT_FOR_DELIVERY},
+            new_value={"status": Delivery.STATUS_DELIVERED},
+        )
+
+        return Response(
+            {"detail": "OTP verified and delivery completed."},
+            status=status.HTTP_200_OK,
+        )
+
+
+# ==========================================================
 # RIDER STATUS UPDATE
 # ==========================================================
 
@@ -647,6 +825,12 @@ class DeliveryStatusUpdateView(APIView):
                         allowed_next_statuses
                     ),
                 },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if new_status == Delivery.STATUS_DELIVERED:
+            return Response(
+                {"detail": "Delivery completion requires successful OTP verification."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

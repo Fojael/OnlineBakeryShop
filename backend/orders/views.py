@@ -669,7 +669,7 @@ class AdminOfflineSaleCreateView(APIView):
             offline_customer_name=validated["customer_name"],
             offline_customer_phone=validated["phone"],
             created_by=request.user,
-            shipping_address=validated["address"],
+            shipping_address=validated.get("address", "").strip(),
             payment_method=validated["payment_method"],
             subtotal=subtotal,
             delivery_charge=Decimal("0.00"),

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -365,9 +366,19 @@ class AdminRiderAssignmentTests(TestCase):
         self.assertIsNotNone(out_for_delivery_at)
         self.assertGreaterEqual(out_for_delivery_at, picked_up_at)
 
-        delivered_response = self.client.patch(
-            reverse("delivery:delivery-status-update", args=[delivery.id]),
-            {"status": Delivery.STATUS_DELIVERED},
+        with patch(
+            "delivery.models.DeliveryOTP.generate_secure_code",
+            return_value="123456",
+        ):
+            request_otp_response = self.client.post(
+                reverse("delivery:request-otp", args=[delivery.id]),
+                {},
+                format="json",
+            )
+        self.assertEqual(request_otp_response.status_code, 200)
+        delivered_response = self.client.post(
+            reverse("delivery:verify-otp", args=[delivery.id]),
+            {"otp": "123456"},
             format="json",
         )
         self.assertEqual(delivered_response.status_code, 200)
@@ -558,3 +569,256 @@ class AdminRiderAssignmentTests(TestCase):
         self.assertIsNone(delivery.picked_up_at)
         self.assertIsNone(delivery.out_for_delivery_at)
         self.assertIsNone(delivery.delivered_at)
+
+
+class DeliveryOTPTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username="otp_admin",
+            email="otp_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+        self.customer = User.objects.create_user(
+            username="otp_customer",
+            email="otp_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        self.rider = User.objects.create_user(
+            username="otp_rider",
+            email="otp_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=True,
+        )
+        self.other_rider = User.objects.create_user(
+            username="otp_other_rider",
+            email="otp_other_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=True,
+        )
+        self.supplier = User.objects.create_user(
+            username="otp_supplier",
+            email="otp_supplier@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_SUPPLIER,
+            is_active=True,
+        )
+        self.product = Product.objects.create(
+            name="OTP Product",
+            category="Cake",
+            price=Decimal("70.00"),
+            stock_quantity=50,
+            is_available=True,
+        )
+
+    def create_order(self, status=Order.STATUS_READY):
+        order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="OTP Address",
+            payment_method=Order.PAYMENT_COD,
+            subtotal=Decimal("70.00"),
+            total_amount=Decimal("80.00"),
+            status=status,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            price=Decimal("70.00"),
+        )
+        return order
+
+    def assign_delivery(self, order):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse("delivery:admin-create-delivery", args=[order.id]),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.rider)
+        self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_ACCEPTED},
+            format="json",
+        )
+        self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_PICKED_UP},
+            format="json",
+        )
+        self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_OUT_FOR_DELIVERY},
+            format="json",
+        )
+        delivery.refresh_from_db()
+        return delivery
+
+    def request_otp(self, delivery, code="123456"):
+        with patch(
+            "delivery.models.DeliveryOTP.generate_secure_code",
+            return_value=code,
+        ):
+            return self.client.post(
+                reverse("delivery:request-otp", args=[delivery.id]),
+                {},
+                format="json",
+            )
+
+    def verify_otp(self, delivery, code):
+        return self.client.post(
+            reverse("delivery:verify-otp", args=[delivery.id]),
+            {"otp": code},
+            format="json",
+        )
+
+    def test_otp_is_generated_for_out_for_delivery_delivery(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("detail", response.data)
+        self.assertTrue(Delivery.objects.get(pk=delivery.pk).otp)
+
+    def test_otp_not_generated_for_assigned_delivery(self):
+        order = self.create_order(status=Order.STATUS_READY)
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            reverse("delivery:admin-create-delivery", args=[order.id]),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+        delivery = Delivery.objects.get(order=order)
+        self.client.force_authenticate(user=self.rider)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 400)
+
+    def test_otp_generation_requires_assigned_rider(self):
+        order = self.create_order()
+        delivery = Delivery.objects.create(
+            order=order,
+            rider=self.other_rider,
+            status=Delivery.STATUS_OUT_FOR_DELIVERY,
+        )
+        self.client.force_authenticate(user=self.rider)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 404)
+
+    def test_customer_cannot_request_rider_otp(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.client.force_authenticate(user=self.customer)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 403)
+
+    def test_supplier_cannot_request_otp(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.client.force_authenticate(user=self.supplier)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 403)
+
+    def test_anonymous_user_cannot_request_otp(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.client.force_authenticate(user=None)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 401)
+
+    def test_correct_otp_verifies_delivery(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        response = self.verify_otp(delivery, "123456")
+        self.assertEqual(response.status_code, 200)
+        delivery.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(delivery.status, Delivery.STATUS_DELIVERED)
+        self.assertEqual(order.status, Order.STATUS_DELIVERED)
+        self.assertIsNotNone(delivery.delivered_at)
+
+    def test_incorrect_otp_is_rejected_and_counts_attempts(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        response = self.verify_otp(delivery, "000000")
+        self.assertEqual(response.status_code, 400)
+        delivery.otp.refresh_from_db()
+        self.assertEqual(delivery.otp.attempt_count, 1)
+
+    def test_fifth_incorrect_attempt_invalidates_otp(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        for _ in range(5):
+            self.verify_otp(delivery, "000000")
+        delivery.otp.refresh_from_db()
+        self.assertGreaterEqual(delivery.otp.attempt_count, 5)
+        response = self.verify_otp(delivery, "000000")
+        self.assertEqual(response.status_code, 400)
+
+    def test_expired_otp_is_rejected(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        delivery.otp.expires_at = timezone.now() - timezone.timedelta(minutes=1)
+        delivery.otp.save(update_fields=["expires_at"])
+        response = self.verify_otp(delivery, "123456")
+        self.assertEqual(response.status_code, 400)
+
+    def test_used_otp_cannot_be_reused(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        response = self.verify_otp(delivery, "123456")
+        self.assertEqual(response.status_code, 200)
+        second_response = self.verify_otp(delivery, "123456")
+        self.assertEqual(second_response.status_code, 400)
+
+    def test_rider_cannot_bypass_otp_via_status_patch(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        response = self.client.patch(
+            reverse("delivery:delivery-status-update", args=[delivery.id]),
+            {"status": Delivery.STATUS_DELIVERED},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        delivery.refresh_from_db()
+        self.assertNotEqual(delivery.status, Delivery.STATUS_DELIVERED)
+
+    def test_resend_invalidates_previous_otp_and_new_otp_works(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        first_response = self.request_otp(delivery, "123456")
+        self.assertEqual(first_response.status_code, 200)
+        delivery.otp.last_sent_at = timezone.now() - timezone.timedelta(minutes=2)
+        delivery.otp.save(update_fields=["last_sent_at"])
+        second_response = self.request_otp(delivery, "654321")
+        self.assertEqual(second_response.status_code, 200)
+        response = self.verify_otp(delivery, "654321")
+        self.assertEqual(response.status_code, 200)
+
+    def test_resend_is_rate_limited(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery)
+        self.request_otp(delivery)
+        response = self.request_otp(delivery)
+        self.assertEqual(response.status_code, 429)
+
+    def test_plaintext_otp_not_returned_in_api_response(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        response = self.request_otp(delivery)
+        self.assertNotIn("otp", response.data)
+        self.assertNotIn("code", response.data)
+        self.assertEqual(response.status_code, 200)

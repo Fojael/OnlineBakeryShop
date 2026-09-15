@@ -143,6 +143,197 @@ def extract_sales_dataset():
         )
     ]
 
+
+def build_sales_analysis(start_date, end_date):
+    """Build refund-aware historical sales data for the admin dashboard."""
+    completed_refunds = Prefetch(
+        "refunds",
+        queryset=(
+            Refund.objects
+            .filter(status=Refund.STATUS_COMPLETED)
+            .prefetch_related("refund_items")
+        ),
+        to_attr="_analysis_refunds",
+    )
+    orders = (
+        Order.objects
+        .filter(status=Order.STATUS_DELIVERED)
+        .select_related("delivery")
+        .prefetch_related(
+            Prefetch(
+                "items",
+                queryset=OrderItem.objects.select_related("product"),
+            ),
+            completed_refunds,
+        )
+        .order_by("created_at", "id")
+    )
+
+    current_rows = {}
+    product_totals = {}
+    channel_totals = {
+        Order.SOURCE_ONLINE: {"gross": Decimal("0.00"), "refund": Decimal("0.00"), "orders": 0},
+        Order.SOURCE_OFFLINE: {"gross": Decimal("0.00"), "refund": Decimal("0.00"), "orders": 0},
+    }
+    current_order_count = 0
+    current_units = 0
+    gross_sales = Decimal("0.00")
+    refund_amount = Decimal("0.00")
+    previous_start = start_date - (end_date - start_date + timedelta(days=1))
+    previous_end = start_date - timedelta(days=1)
+    previous_net_sales = Decimal("0.00")
+
+    for order in orders:
+        delivery = getattr(order, "delivery", None)
+        sale_date = (
+            timezone.localtime(delivery.delivered_at).date()
+            if delivery and delivery.delivered_at
+            else timezone.localtime(order.created_at).date()
+        )
+        refunds = list(getattr(order, "_analysis_refunds", []))
+        order_refund = sum(
+            (refund.approved_amount if refund.approved_amount is not None else refund.refund_amount)
+            for refund in refunds
+        )
+        if previous_start <= sale_date <= previous_end:
+            previous_net_sales += order.total_amount - order_refund
+            continue
+        if not (start_date <= sale_date <= end_date):
+            continue
+
+        source = order.order_source
+        channel = channel_totals.setdefault(
+            source,
+            {"gross": Decimal("0.00"), "refund": Decimal("0.00"), "orders": 0},
+        )
+        channel["gross"] += order.total_amount
+        channel["refund"] += order_refund
+        channel["orders"] += 1
+        gross_sales += order.total_amount
+        refund_amount += order_refund
+        current_order_count += 1
+
+        refund_by_item = defaultdict(lambda: Decimal("0.00"))
+        refunded_quantity_by_item = defaultdict(int)
+        has_refund_lines = False
+        for refund in refunds:
+            for refund_item in refund.refund_items.all():
+                has_refund_lines = True
+                refund_by_item[refund_item.order_item_id] += refund_item.amount
+                refunded_quantity_by_item[refund_item.order_item_id] += refund_item.quantity
+
+        items = list(order.items.all())
+        item_total = sum((item.subtotal for item in items), Decimal("0.00"))
+        if not has_refund_lines and any(refund.refund_type == Refund.REFUND_TYPE_FULL for refund in refunds):
+            for item in items:
+                refund_by_item[item.id] = item.subtotal
+                refunded_quantity_by_item[item.id] = item.quantity
+        elif not has_refund_lines and order_refund and item_total:
+            for item in items:
+                refund_by_item[item.id] = order_refund * item.subtotal / item_total
+
+        for item in items:
+            refunded_quantity = min(item.quantity, refunded_quantity_by_item[item.id])
+            sold_quantity = max(0, item.quantity - refunded_quantity)
+            sales_amount = max(Decimal("0.00"), item.subtotal - refund_by_item[item.id])
+            current_units += sold_quantity
+            product = product_totals.setdefault(
+                item.product_id,
+                {
+                    "product_id": item.product_id,
+                    "product_name": item.product_name or item.product.name,
+                    "units_sold": 0,
+                    "revenue": Decimal("0.00"),
+                },
+            )
+            product["units_sold"] += sold_quantity
+            product["revenue"] += sales_amount
+            key = (sale_date, item.product_id, source)
+            row = current_rows.setdefault(
+                key,
+                {
+                    "date": sale_date.isoformat(),
+                    "product": product["product_name"],
+                    "quantity_sold": 0,
+                    "sales_amount": Decimal("0.00"),
+                    "orders": set(),
+                    "refund": Decimal("0.00"),
+                    "net_sales": Decimal("0.00"),
+                    "channel": "Online" if source == Order.SOURCE_ONLINE else "Offline",
+                },
+            )
+            row["quantity_sold"] += sold_quantity
+            row["sales_amount"] += item.subtotal
+            row["refund"] += refund_by_item[item.id]
+            row["net_sales"] += sales_amount
+            row["orders"].add(order.id)
+
+    net_sales = gross_sales - refund_amount
+    product_rows = []
+    for product in sorted(product_totals.values(), key=lambda item: (-item["revenue"], item["product_name"])):
+        share = (product["revenue"] / net_sales * 100) if net_sales else Decimal("0.00")
+        product_rows.append({
+            **product,
+            "revenue": str(product["revenue"].quantize(Decimal("0.01"))),
+            "sales_share": str(share.quantize(Decimal("0.01"))),
+            "trend": "Stable",
+        })
+
+    details = [
+        {
+            **row,
+            "sales_amount": str(row["sales_amount"].quantize(Decimal("0.01"))),
+            "refund": str(row["refund"].quantize(Decimal("0.01"))),
+            "net_sales": str(row["net_sales"].quantize(Decimal("0.01"))),
+            "orders": len(row["orders"]),
+        }
+        for row in sorted(current_rows.values(), key=lambda item: (item["date"], item["product"]))
+    ]
+    trend = {date.isoformat(): Decimal("0.00") for date in _date_range(start_date, end_date)}
+    for row in current_rows.values():
+        trend[row["date"]] += row["net_sales"]
+    trend_rows = [
+        {"date": key, "sales_amount": str(value.quantize(Decimal("0.01")))}
+        for key, value in trend.items()
+    ]
+    growth = ((net_sales - previous_net_sales) / previous_net_sales * 100) if previous_net_sales else None
+    best_selling = product_rows[0]["product_name"] if product_rows else "No sales yet"
+
+    def channel_payload(source):
+        values = channel_totals[source]
+        return {
+            "sales": str(values["gross"].quantize(Decimal("0.01"))),
+            "refund": str(values["refund"].quantize(Decimal("0.01"))),
+            "net_sales": str((values["gross"] - values["refund"]).quantize(Decimal("0.01"))),
+            "orders": values["orders"],
+        }
+
+    return {
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "overview": {
+            "total_sales": str(gross_sales.quantize(Decimal("0.01"))),
+            "total_orders": current_order_count,
+            "total_products_sold": current_units,
+            "average_order_value": str((gross_sales / current_order_count if current_order_count else Decimal("0.00")).quantize(Decimal("0.01"))),
+            "best_selling_product": best_selling,
+            "sales_growth_percent": str(growth.quantize(Decimal("0.01"))) if growth is not None else None,
+            "refund_amount": str(refund_amount.quantize(Decimal("0.01"))),
+            "net_sales": str(net_sales.quantize(Decimal("0.01"))),
+            "online": channel_payload(Order.SOURCE_ONLINE),
+            "offline": channel_payload(Order.SOURCE_OFFLINE),
+        },
+        "details": details,
+        "trend": trend_rows,
+        "products": product_rows,
+    }
+
+
+def _date_range(start_date, end_date):
+    current = start_date
+    while current <= end_date:
+        yield current
+        current += timedelta(days=1)
+
 def clean_sales_data(rows):
     if not rows:
         return {"dates": [], "products": {}}

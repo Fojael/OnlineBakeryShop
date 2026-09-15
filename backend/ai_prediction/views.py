@@ -1,4 +1,7 @@
 import logging
+from datetime import datetime, timedelta
+
+from django.utils import timezone
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +16,7 @@ from .services import (
     ForecastTrainingThrottled,
     build_reorder_recommendations,
     build_forecast,
+    build_sales_analysis,
     load_forecast_model,
     train_forecast_model,
 )
@@ -75,6 +79,49 @@ class AdminAIPredictionSummaryView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class AdminSalesAnalysisView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        today = timezone.localdate()
+        period = request.query_params.get("period", "month").lower()
+        try:
+            if period == "today":
+                start_date = end_date = today
+            elif period == "week":
+                end_date = today
+                start_date = today - timedelta(days=6)
+            elif period == "month":
+                start_date = today.replace(day=1)
+                end_date = today
+            elif period == "year":
+                start_date = today.replace(month=1, day=1)
+                end_date = today
+            elif period == "custom":
+                start_date = datetime.strptime(
+                    request.query_params.get("start_date"), "%Y-%m-%d"
+                ).date()
+                end_date = datetime.strptime(
+                    request.query_params.get("end_date"), "%Y-%m-%d"
+                ).date()
+                if end_date < start_date:
+                    raise ValueError
+            else:
+                raise ValueError
+            if end_date > today:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Use a valid period and YYYY-MM-DD custom dates."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            build_sales_analysis(start_date, end_date),
+            status=status.HTTP_200_OK,
+        )
 
 
 class AdminAIPredictionTrainView(APIView):
