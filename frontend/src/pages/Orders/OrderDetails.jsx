@@ -127,6 +127,21 @@ const OrderDetails = () => {
 
                     <CustomerOrderTimeline order={order} />
 
+                    {order.delivery_verification_otp && order.delivery_status === "OUT_FOR_DELIVERY" && (
+                        <div className="alert alert-warning border-0 shadow-sm mt-4" role="status">
+                            <h3 className="h5 mb-2">Delivery Verification</h3>
+                            <p className="mb-2">Your delivery is out for delivery.</p>
+                            <p className="mb-2">Your verification OTP is: <strong>{order.delivery_verification_otp}</strong></p>
+                            <p className="mb-0">Please provide this OTP to the delivery rider. Expires in 10 minutes.</p>
+                        </div>
+                    )}
+
+                    {order.status === "Delivered" && (
+                        <div className="alert alert-success border-0 shadow-sm mt-4" role="status">
+                            <strong>✓ Delivery verified</strong>
+                        </div>
+                    )}
+
                     <div className="row g-4 mt-1">
                         <div className="col-lg-7">
                             <div className="card border-0 shadow-sm h-100">

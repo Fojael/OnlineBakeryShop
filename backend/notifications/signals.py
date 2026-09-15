@@ -8,7 +8,7 @@ from .services import send_notification_email
 
 @receiver(post_save, sender=Notification)
 def queue_notification_email(sender, instance, created, **kwargs):
-    if created:
+    if created and not getattr(instance, "_skip_email", False):
         transaction.on_commit(
             lambda: send_notification_email(instance.pk),
         )

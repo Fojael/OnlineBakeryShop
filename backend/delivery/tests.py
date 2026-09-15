@@ -1,7 +1,8 @@
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import SimpleTestCase, TestCase
+from django.core import mail
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -14,7 +15,7 @@ from orders.models import (
 )
 from products.models import Product
 from notifications.models import Notification
-from .models import Delivery
+from .models import Delivery, DeliveryOTP
 from delivery.serializers import (
     DeliveryOrderSerializer,
     DeliveryRiderCreateSerializer,
@@ -588,6 +589,13 @@ class DeliveryOTPTests(TestCase):
             role=User.ROLE_CUSTOMER,
             is_active=True,
         )
+        self.other_customer = User.objects.create_user(
+            username="otp_other_customer",
+            email="otp_other_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
         self.rider = User.objects.create_user(
             username="otp_rider",
             email="otp_rider@example.com",
@@ -822,3 +830,75 @@ class DeliveryOTPTests(TestCase):
         self.assertNotIn("otp", response.data)
         self.assertNotIn("code", response.data)
         self.assertEqual(response.status_code, 200)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_otp_email_is_sent_to_customer_with_plaintext_only_in_email(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        mail.outbox.clear()
+
+        response = self.request_otp(delivery, "123456")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["destination"], "otp***@example.com")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.customer.email])
+        self.assertIn("Your delivery verification OTP is: 123456", mail.outbox[0].body)
+        self.assertIn("This OTP expires in 10 minutes.", mail.outbox[0].body)
+        self.assertNotIn("123456", response.data)
+        self.assertNotEqual(delivery.otp.otp_hash, "123456")
+        notification = Notification.objects.get(
+            recipient=self.customer,
+            title="Your Bakery Delivery Verification OTP",
+        )
+        self.assertIn("Your delivery verification OTP is: 123456", notification.message)
+        self.assertIn("This OTP expires in 10 minutes.", notification.message)
+
+        self.client.force_authenticate(user=self.customer)
+        notification_response = self.client.get(reverse("notification-list"))
+        self.assertEqual(notification_response.status_code, 200)
+        self.assertIn("123456", notification_response.data["notifications"][0]["message"])
+
+        self.client.force_authenticate(user=self.other_rider)
+        other_rider_response = self.client.get(reverse("notification-list"))
+        self.assertEqual(other_rider_response.status_code, 200)
+        self.assertNotIn("123456", str(other_rider_response.data))
+
+        self.client.force_authenticate(user=self.other_customer)
+        other_customer_response = self.client.get(reverse("notification-list"))
+        self.assertEqual(other_customer_response.status_code, 200)
+        self.assertNotIn("123456", str(other_customer_response.data))
+        self.assertEqual(
+            self.client.get(reverse("orders:order-detail", args=[order.id])).status_code,
+            404,
+        )
+
+        self.client.force_authenticate(user=self.customer)
+        order_response = self.client.get(
+            reverse("orders:order-detail", args=[order.id]),
+        )
+        self.assertEqual(order_response.status_code, 200)
+        self.assertEqual(order_response.data["delivery_verification_otp"], "123456")
+
+        self.client.force_authenticate(user=self.admin)
+        admin_response = self.client.get(
+            reverse("orders:admin-order-detail", args=[order.id]),
+        )
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertIsNone(admin_response.data.get("delivery_verification_otp"))
+
+    @patch(
+        "notifications.services.send_mail",
+        side_effect=RuntimeError("email backend unavailable"),
+    )
+    def test_otp_email_failure_does_not_create_active_otp_or_deliver(self, send_mail):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+
+        response = self.request_otp(delivery)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertTrue(send_mail.called)
+        self.assertFalse(DeliveryOTP.objects.filter(delivery=delivery).exists())
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, Delivery.STATUS_OUT_FOR_DELIVERY)

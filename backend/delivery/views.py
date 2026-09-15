@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsDeliveryRider
 from audit_logs.services import record_audit
 from notifications.models import Notification
-from notifications.services import create_notification
+from notifications.services import create_notification, create_notification_with_email
 from orders.models import Order
 from orders.services import record_order_status_change
 from payments.models import Payment
@@ -559,6 +559,14 @@ def get_delivery_for_rider(request, delivery_id):
     )
 
 
+def mask_email(email):
+    local_part, separator, domain = email.partition("@")
+    if not separator:
+        return ""
+    visible_local = local_part[:3]
+    return f"{visible_local}***@{domain}"
+
+
 class DeliveryOTPRequestView(APIView):
     permission_classes = [IsAuthenticated, IsDeliveryRider]
 
@@ -593,20 +601,39 @@ class DeliveryOTPRequestView(APIView):
             if existing_otp.is_used or existing_otp.verified_at:
                 existing_otp.delete()
 
-        DeliveryOTP.create_for_delivery(delivery)
+        otp = DeliveryOTP.create_for_delivery(delivery)
         order = delivery.order
-        notify_user(
-            order.customer,
-            "Delivery OTP Required",
-            (
-                f"Your Order #{order.id} is being delivered. "
-                f"Please share the verification code with the rider to complete delivery."
-            ),
-            Notification.TYPE_INFO,
-        )
+        try:
+            Notification.objects.filter(
+                recipient=order.customer,
+                related_order=order,
+                title="Your Bakery Delivery Verification OTP",
+            ).delete()
+            email_message = (
+                f"Your delivery verification OTP is: {otp.otp_code}\n\n"
+                "This OTP expires in 10 minutes.\n\n"
+                "Please provide this OTP to the delivery rider to confirm delivery."
+            )
+            create_notification_with_email(
+                recipient=order.customer,
+                title="Your Bakery Delivery Verification OTP",
+                message=email_message,
+                email_message=email_message,
+                notification_type=Notification.TYPE_INFO,
+                related_order=order,
+            )
+        except Exception:
+            transaction.set_rollback(True)
+            return Response(
+                {"detail": "Unable to send the delivery verification email."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
-            {"detail": "OTP sent to customer."},
+            {
+                "detail": "OTP sent successfully.",
+                "destination": mask_email(order.customer.email),
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -690,6 +717,12 @@ class DeliveryOTPVerifyView(APIView):
 
         order.status = Order.STATUS_DELIVERED
         order.save(update_fields=["status", "updated_at"])
+
+        Notification.objects.filter(
+            recipient=order.customer,
+            related_order=order,
+            title="Your Bakery Delivery Verification OTP",
+        ).delete()
 
         record_order_status_change(
             order=order,

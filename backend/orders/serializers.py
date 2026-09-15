@@ -1,12 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
+import re
 
 from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import User
 from payments.models import Payment
-from delivery.models import Delivery
+from delivery.models import Delivery, DeliveryOTP
+from notifications.models import Notification
 
 from .models import (
     Order,
@@ -143,6 +145,8 @@ class OrderSerializer(
 
     delivery_timestamps = serializers.SerializerMethodField()
 
+    delivery_verification_otp = serializers.SerializerMethodField()
+
     refund_status = serializers.SerializerMethodField()
 
     can_request_refund = serializers.SerializerMethodField()
@@ -196,6 +200,7 @@ class OrderSerializer(
             "delivery_status",
             "rider_name",
             "delivery_timestamps",
+            "delivery_verification_otp",
 
             "refund_status",
             "can_request_refund",
@@ -376,6 +381,44 @@ class OrderSerializer(
             "out_for_delivery_at": delivery.out_for_delivery_at,
             "delivered_at": delivery.delivered_at,
         }
+
+    def get_delivery_verification_otp(self, obj):
+        request = self.context.get("request")
+        user = request.user if request else None
+        if (
+            not user
+            or getattr(user, "role", None) != User.ROLE_CUSTOMER
+            or obj.customer_id != user.id
+            or obj.status != Order.STATUS_OUT_FOR_DELIVERY
+        ):
+            return None
+
+        try:
+            delivery = obj.delivery
+            otp = delivery.otp
+        except (Delivery.DoesNotExist, DeliveryOTP.DoesNotExist):
+            return None
+
+        if (
+            delivery.status != Delivery.STATUS_OUT_FOR_DELIVERY
+            or otp.is_used
+            or timezone.now() > otp.expires_at
+        ):
+            return None
+
+        notification = Notification.objects.filter(
+            recipient=user,
+            related_order=obj,
+            title="Your Bakery Delivery Verification OTP",
+        ).order_by("-created_at").first()
+        if not notification:
+            return None
+
+        match = re.search(
+            r"Your delivery verification OTP is: (\d{6})",
+            notification.message,
+        )
+        return match.group(1) if match else None
 
     def _customer_can_see_delivery(self, obj):
         request = self.context.get("request")

@@ -8,7 +8,7 @@ from .models import Notification
 logger = logging.getLogger(__name__)
 
 
-def send_notification_email(notification_id):
+def send_notification_email(notification_id, message=None, fail_silently=True):
     try:
         notification = Notification.objects.select_related("recipient").get(
             pk=notification_id,
@@ -18,13 +18,17 @@ def send_notification_email(notification_id):
             return
         send_mail(
             subject=notification.title,
-            message=notification.message,
+            message=message if message is not None else notification.message,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[recipient_email],
-            fail_silently=True,
+            fail_silently=fail_silently,
         )
+        return True
     except Exception:
         logger.exception("Notification email delivery failed.")
+        if not fail_silently:
+            raise
+        return False
 
 
 def create_notification(
@@ -49,4 +53,45 @@ def create_notification(
     if related_order and notification.related_order_id is None:
         notification.related_order = related_order
         notification.save(update_fields=["related_order"])
+    return notification
+
+
+def create_notification_with_email(
+    *,
+    recipient,
+    title,
+    message,
+    email_message,
+    notification_type=Notification.TYPE_INFO,
+    related_order=None,
+):
+    """Create an in-app notification and send a separate email body."""
+    if not recipient:
+        return None
+
+    notification = Notification.objects.filter(
+        recipient=recipient,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+    ).first()
+    if notification is None:
+        notification = Notification(
+            recipient=recipient,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            related_order=related_order,
+        )
+        notification._skip_email = True
+        notification.save()
+    elif related_order and notification.related_order_id is None:
+        notification.related_order = related_order
+        notification.save(update_fields=["related_order"])
+
+    send_notification_email(
+        notification.pk,
+        message=email_message,
+        fail_silently=False,
+    )
     return notification

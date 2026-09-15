@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -26,6 +26,7 @@ const DeliveryOrderDetails = () => {
     const [error, setError] = useState("");
 
     const [success, setSuccess] = useState("");
+    const [otpDestination, setOtpDestination] = useState("");
     const [otpInput, setOtpInput] = useState("");
     const [otpLoading, setOtpLoading] = useState(false);
 
@@ -104,7 +105,8 @@ const DeliveryOrderDetails = () => {
             setError("");
             setSuccess("");
             const data = await deliveryService.requestOtp(order?.delivery_id || orderId);
-            setSuccess(data.detail || "OTP sent to customer.");
+            setSuccess(data.detail || "OTP sent successfully.");
+            setOtpDestination(data.destination || "");
             setOtpInput("");
         } catch (err) {
             console.error("OTP request error:", err);
@@ -382,7 +384,13 @@ const DeliveryOrderDetails = () => {
                 {currentStatus === "OUT_FOR_DELIVERY" && (
                     <div className="otp-verification-box">
                         <h3>Customer Delivery Verification</h3>
-                        <p>OTP sent to customer. Ask the customer for the OTP and enter it below.</p>
+                        {otpDestination ? (
+                            <p>OTP sent to: {otpDestination}</p>
+                        ) : (
+                            <p>Click Request OTP to send a verification code to the customer's registered email.</p>
+                        )}
+                        {otpDestination && <p>Ask the customer for the OTP and enter it below.</p>}
+                        <p>OTP expires in 10 minutes.</p>
 
                         <div className="otp-actions">
                             <button
