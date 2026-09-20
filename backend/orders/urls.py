@@ -40,6 +40,12 @@ from .views import (
     AdminRefundDetailView,
     AdminRefundUpdateView,
     AdminRefundDecisionView,
+    AdminRefundAssignRiderView,
+    AdminRefundProcessView,
+    RefundPickupListView,
+    RefundPickupDetailView,
+    RefundPickupOTPRequestView,
+    RefundPickupOTPVerifyView,
     AdminOfflineSaleCreateView,
     AdminOfflineSaleListView,
     AdminOfflineSaleDetailView,
@@ -240,6 +246,36 @@ urlpatterns = [
         "refunds/admin/<int:refund_id>/<str:decision>/",
         AdminRefundDecisionView.as_view(),
         name="admin-refund-decision",
+    ),
+    path(
+        "refunds/admin/<int:refund_id>/assign-rider/",
+        AdminRefundAssignRiderView.as_view(),
+        name="admin-refund-assign-rider",
+    ),
+    path(
+        "refunds/admin/<int:refund_id>/process/",
+        AdminRefundProcessView.as_view(),
+        name="admin-refund-process",
+    ),
+    path(
+        "refund-pickups/",
+        RefundPickupListView.as_view(),
+        name="refund-pickup-list",
+    ),
+    path(
+        "refund-pickups/<int:refund_id>/",
+        RefundPickupDetailView.as_view(),
+        name="refund-pickup-detail",
+    ),
+    path(
+        "refund-pickups/<int:refund_id>/request-otp/",
+        RefundPickupOTPRequestView.as_view(),
+        name="refund-pickup-request-otp",
+    ),
+    path(
+        "refund-pickups/<int:refund_id>/verify-otp/",
+        RefundPickupOTPVerifyView.as_view(),
+        name="refund-pickup-verify-otp",
     ),
 ]
 

@@ -18,9 +18,10 @@ const deliveryService = {
     // ======================================================
 
     getDashboard: async () => {
-        const [dashboardResponse, deliveriesResponse] = await Promise.all([
+        const [dashboardResponse, deliveriesResponse, refundResponse] = await Promise.all([
             api.get("delivery/dashboard/"),
             api.get("delivery/my/"),
+            api.get("orders/refund-pickups/"),
         ]);
 
         return {
@@ -28,6 +29,7 @@ const deliveryService = {
             deliveries: (deliveriesResponse.data || []).map(
                 deliveryService.normalizeDelivery
             ),
+            refundPickups: refundResponse.data || [],
         };
     },
 
@@ -75,6 +77,26 @@ const deliveryService = {
         const response = await api.post(`delivery/${deliveryId}/verify-otp/`, {
             otp,
         });
+        return response.data;
+    },
+
+    getRefundPickups: async () => {
+        const response = await api.get("orders/refund-pickups/");
+        return response.data || [];
+    },
+
+    acceptRefundPickup: async (refundId) => {
+        const response = await api.post(`orders/refund-pickups/${refundId}/`, { action: "accept" });
+        return response.data;
+    },
+
+    requestRefundPickupOtp: async (refundId) => {
+        const response = await api.post(`orders/refund-pickups/${refundId}/request-otp/`);
+        return response.data;
+    },
+
+    verifyRefundPickupOtp: async (refundId, otp) => {
+        const response = await api.post(`orders/refund-pickups/${refundId}/verify-otp/`, { otp });
         return response.data;
     },
 

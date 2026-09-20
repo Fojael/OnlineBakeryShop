@@ -601,11 +601,17 @@ class Refund(models.Model):
     # ======================================================
 
     STATUS_PENDING = "Pending"
-    STATUS_APPROVED = "Approved"
+    STATUS_REQUESTED = STATUS_PENDING
+    STATUS_RETURN_PENDING = "Return Pending"
+    STATUS_APPROVED = STATUS_RETURN_PENDING
+    STATUS_RIDER_ASSIGNED = "Rider Assigned"
+    STATUS_RIDER_ACCEPTED = "Rider Accepted"
+    STATUS_PICKED_UP = "Picked Up"
     STATUS_REJECTED = "Rejected"
     STATUS_PROCESSING = "Processing"
     STATUS_COMPLETED = "Completed"
     STATUS_FAILED = "Failed"
+    STATUS_PICKUP_EXPIRED = "Pickup Expired"
 
     STATUS_CHOICES = [
         (
@@ -613,8 +619,20 @@ class Refund(models.Model):
             "Pending",
         ),
         (
-            STATUS_APPROVED,
-            "Approved",
+            STATUS_RETURN_PENDING,
+            "Return Pending",
+        ),
+        (
+            STATUS_RIDER_ASSIGNED,
+            "Rider Assigned",
+        ),
+        (
+            STATUS_RIDER_ACCEPTED,
+            "Rider Accepted",
+        ),
+        (
+            STATUS_PICKED_UP,
+            "Picked Up",
         ),
         (
             STATUS_REJECTED,
@@ -631,6 +649,10 @@ class Refund(models.Model):
         (
             STATUS_FAILED,
             "Failed",
+        ),
+        (
+            STATUS_PICKUP_EXPIRED,
+            "Pickup Expired",
         ),
     ]
 
@@ -764,6 +786,20 @@ class Refund(models.Model):
         null=True,
         blank=True,
     )
+
+    pickup_deadline = models.DateTimeField(null=True, blank=True)
+
+    assigned_rider = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_refund_pickups",
+    )
+
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    rider_accepted_at = models.DateTimeField(null=True, blank=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
 
     completed_at = models.DateTimeField(
         null=True,

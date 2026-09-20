@@ -18,6 +18,16 @@ class DeliveryOTP(models.Model):
         "Delivery",
         on_delete=models.CASCADE,
         related_name="otp",
+        null=True,
+        blank=True,
+    )
+
+    refund = models.OneToOneField(
+        "orders.Refund",
+        on_delete=models.CASCADE,
+        related_name="pickup_otp",
+        null=True,
+        blank=True,
     )
 
     otp_hash = models.CharField(
@@ -74,6 +84,26 @@ class DeliveryOTP(models.Model):
                 expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
             )
 
+        otp.otp_hash = make_password(raw_code)
+        otp.expires_at = timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)
+        otp.verified_at = None
+        otp.is_used = False
+        otp.attempt_count = 0
+        otp.last_sent_at = timezone.now()
+        otp.otp_code = raw_code
+        otp.save()
+        return otp
+
+    @staticmethod
+    def create_for_refund(refund):
+        raw_code = DeliveryOTP.generate_secure_code()
+        otp = DeliveryOTP.objects.filter(refund=refund).first()
+        if otp is None:
+            otp = DeliveryOTP(
+                refund=refund,
+                otp_hash="",
+                expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
+            )
         otp.otp_hash = make_password(raw_code)
         otp.expires_at = timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)
         otp.verified_at = None

@@ -1,7 +1,9 @@
 from decimal import Decimal
+from datetime import timedelta
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from django.db import transaction
 from django.db.models import (
     Sum,
@@ -25,7 +27,7 @@ from cart.models import Cart, CartItem
 from payments.models import Payment
 from products.models import Product
 from notifications.models import Notification
-from notifications.services import create_notification
+from notifications.services import create_notification, create_notification_with_email
 from inventory.services import (
     deduct_order_stock,
     restore_order_stock,
@@ -40,7 +42,13 @@ from accounts.permissions import (
 from suppliers.models import Supplier
 from audit_logs.services import record_audit
 
-from delivery.models import Delivery
+from delivery.models import (
+    Delivery,
+    DeliveryOTP,
+    MAX_OTP_ATTEMPTS,
+    OTP_EXPIRY_MINUTES,
+    OTP_RESEND_SECONDS,
+)
 from delivery.serializers import (
     DeliveryRiderCreateSerializer,
     DeliveryRiderUpdateSerializer,
@@ -89,6 +97,13 @@ User = get_user_model()
 
 DELIVERY_CHARGE = Decimal("60.00")
 MONEY_QUANTUM = Decimal("0.01")
+
+
+def mask_email(email):
+    local_part, separator, domain = (email or "").partition("@")
+    if not separator:
+        return ""
+    return f"{local_part[:3]}***@{domain}"
 
 
 def calculate_refund_eligible_amount(refund):
@@ -196,10 +211,25 @@ def notify_refund_customer(refund, status, detail=""):
             "Refund request submitted",
             "Your refund request has been submitted for admin review.",
         ),
-        Refund.STATUS_APPROVED: (
+        Refund.STATUS_RETURN_PENDING: (
             Notification.TYPE_REFUND_APPROVED,
-            "Refund approved",
-            "Your refund request has been approved.",
+            "Refund Approved - Pickup Required",
+            "Your refund request has been approved. Please keep the product ready. A delivery rider will collect it within 2 days.",
+        ),
+        Refund.STATUS_RIDER_ASSIGNED: (
+            Notification.TYPE_REFUND_APPROVED,
+            "Refund Pickup Assigned",
+            "A delivery rider has been assigned to collect your refund product.",
+        ),
+        Refund.STATUS_RIDER_ACCEPTED: (
+            Notification.TYPE_REFUND_APPROVED,
+            "Refund Pickup Accepted",
+            "The assigned rider has accepted your refund pickup.",
+        ),
+        Refund.STATUS_PICKED_UP: (
+            Notification.TYPE_REFUND_PROCESSING,
+            "Refund Product Collected",
+            "Your refund product has been successfully collected. Your refund is now being processed.",
         ),
         Refund.STATUS_REJECTED: (
             Notification.TYPE_REFUND_REJECTED,
@@ -220,6 +250,11 @@ def notify_refund_customer(refund, status, detail=""):
             Notification.TYPE_REFUND_FAILED,
             "Refund failed",
             "Your refund could not be completed and requires review or retry.",
+        ),
+        Refund.STATUS_PICKUP_EXPIRED: (
+            Notification.TYPE_REFUND_FAILED,
+            "Refund Pickup Expired",
+            "The pickup period for your approved refund has expired. Please contact the bakery for further assistance.",
         ),
     }
 
@@ -3562,10 +3597,12 @@ class AdminRefundUpdateView(APIView):
             refund.approved_at = (
                 timezone.now()
             )
+            refund.pickup_deadline = refund.approved_at + timedelta(days=2)
 
             update_fields.append(
                 "approved_at"
             )
+            update_fields.append("pickup_deadline")
 
             refund.status = Refund.STATUS_APPROVED
             refund.refund_failure_reason = ""
@@ -3575,6 +3612,7 @@ class AdminRefundUpdateView(APIView):
                 "approved_amount",
                 "refund_amount",
                 "reviewed_at",
+                "pickup_deadline",
             ])
 
         refund.save(update_fields=list(dict.fromkeys(update_fields)))
@@ -3649,3 +3687,174 @@ class AdminRefundDecisionView(AdminRefundUpdateView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return self._update(request, refund_id, decision=decision)
+
+
+class AdminRefundAssignRiderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, refund_id):
+        if request.user.role != User.ROLE_ADMIN:
+            return Response({"detail": "Admin permission required."}, status=status.HTTP_403_FORBIDDEN)
+
+        refund = get_object_or_404(Refund.objects.select_for_update(), id=refund_id)
+        rider_id = request.data.get("rider_id")
+        rider = get_object_or_404(User, id=rider_id)
+        if rider.role != User.ROLE_DELIVERY_RIDER:
+            return Response({"detail": "Selected user is not a delivery rider."}, status=status.HTTP_400_BAD_REQUEST)
+        if not rider.is_active:
+            return Response({"detail": "Selected delivery rider is inactive."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.status != Refund.STATUS_RETURN_PENDING:
+            return Response({"detail": "Only approved refunds awaiting pickup can be assigned."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.pickup_deadline and timezone.now() >= refund.pickup_deadline:
+            refund.status = Refund.STATUS_PICKUP_EXPIRED
+            refund.save(update_fields=["status"])
+            record_refund_status_change(refund, refund.status, request.user, "Pickup deadline expired before rider assignment.")
+            notify_refund_customer(refund, refund.status)
+            return Response({"detail": "The pickup deadline has expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        refund.assigned_rider = rider
+        refund.assigned_at = now
+        refund.status = Refund.STATUS_RIDER_ASSIGNED
+        refund.save(update_fields=["assigned_rider", "assigned_at", "status"])
+        record_refund_status_change(refund, refund.status, request.user, f"Rider assigned: {rider.get_username()}.")
+        notify_user(rider, "Refund Pickup Assigned", f"Refund pickup for Order #{refund.order_id} has been assigned to you.", Notification.TYPE_INFO)
+        notify_refund_customer(refund, refund.status, "A delivery rider has been assigned to collect your refund product.")
+        return Response(RefundSerializer(refund, context={"request": request}).data)
+
+
+class RefundPickupListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != User.ROLE_DELIVERY_RIDER:
+            return Response({"detail": "Delivery rider permission required."}, status=status.HTTP_403_FORBIDDEN)
+        refunds = Refund.objects.filter(assigned_rider=request.user).select_related("order", "customer", "assigned_rider").prefetch_related("refund_items__order_item__product", "status_history__actor")
+        return Response(RefundSerializer(refunds, many=True, context={"request": request}).data)
+
+
+class RefundPickupDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _refund(self, request, refund_id):
+        if request.user.role != User.ROLE_DELIVERY_RIDER:
+            return None
+        return get_object_or_404(Refund.objects.select_for_update().select_related("order", "customer", "assigned_rider"), id=refund_id, assigned_rider=request.user)
+
+    @transaction.atomic
+    def get(self, request, refund_id):
+        refund = self._refund(request, refund_id)
+        if refund is None:
+            return Response({"detail": "Delivery rider permission required."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(RefundSerializer(refund, context={"request": request}).data)
+
+    @transaction.atomic
+    def post(self, request, refund_id):
+        refund = self._refund(request, refund_id)
+        if refund is None:
+            return Response({"detail": "Delivery rider permission required."}, status=status.HTTP_403_FORBIDDEN)
+        action = request.data.get("action")
+        now = timezone.now()
+        if refund.pickup_deadline and now >= refund.pickup_deadline:
+            refund.status = Refund.STATUS_PICKUP_EXPIRED
+            refund.save(update_fields=["status"])
+            record_refund_status_change(refund, refund.status, request.user, "Pickup deadline expired.")
+            notify_refund_customer(refund, refund.status)
+            return Response({"detail": "The pickup deadline has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        if action != "accept" or refund.status != Refund.STATUS_RIDER_ASSIGNED:
+            return Response({"detail": "This refund pickup is not awaiting acceptance."}, status=status.HTTP_400_BAD_REQUEST)
+        refund.status = Refund.STATUS_RIDER_ACCEPTED
+        refund.rider_accepted_at = now
+        refund.save(update_fields=["status", "rider_accepted_at"])
+        record_refund_status_change(refund, refund.status, request.user, "Rider accepted refund pickup.")
+        return Response(RefundSerializer(refund, context={"request": request}).data)
+
+
+class RefundPickupOTPRequestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, refund_id):
+        if request.user.role != User.ROLE_DELIVERY_RIDER:
+            return Response({"detail": "Delivery rider permission required."}, status=status.HTTP_403_FORBIDDEN)
+        refund = get_object_or_404(Refund.objects.select_for_update().select_related("customer", "order"), id=refund_id, assigned_rider=request.user)
+        if refund.status != Refund.STATUS_RIDER_ACCEPTED:
+            return Response({"detail": "OTP can only be requested after accepting the pickup."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.pickup_deadline and timezone.now() >= refund.pickup_deadline:
+            return Response({"detail": "The pickup deadline has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        existing = DeliveryOTP.objects.filter(refund=refund).first()
+        if existing and existing.last_sent_at and timezone.now() - existing.last_sent_at < timedelta(seconds=OTP_RESEND_SECONDS):
+            return Response({"detail": "Please wait before requesting another OTP."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        otp = DeliveryOTP.create_for_refund(refund)
+        otp_message = f"Your refund pickup verification OTP is: {otp.otp_code}\n\nThis OTP expires in {OTP_EXPIRY_MINUTES} minutes.\n\nPlease provide this OTP to the assigned delivery rider."
+        create_notification_with_email(
+            recipient=refund.customer,
+            title="Refund Pickup Verification OTP",
+            message=otp_message,
+            email_message=otp_message,
+            notification_type=Notification.TYPE_INFO,
+            related_order=refund.order,
+        )
+        return Response({"detail": "OTP sent successfully.", "destination": mask_email(refund.customer.email)})
+
+
+class RefundPickupOTPVerifyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, refund_id):
+        if request.user.role != User.ROLE_DELIVERY_RIDER:
+            return Response({"detail": "Delivery rider permission required."}, status=status.HTTP_403_FORBIDDEN)
+        refund = get_object_or_404(Refund.objects.select_for_update().select_related("customer", "order"), id=refund_id, assigned_rider=request.user)
+        if refund.status != Refund.STATUS_RIDER_ACCEPTED:
+            return Response({"detail": "Refund pickup is not awaiting OTP verification."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.pickup_deadline and timezone.now() >= refund.pickup_deadline:
+            return Response({"detail": "The pickup deadline has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        otp_code = str(request.data.get("otp", ""))
+        if len(otp_code) != 6 or not otp_code.isdigit():
+            return Response({"detail": "Enter a valid 6-digit OTP."}, status=status.HTTP_400_BAD_REQUEST)
+        otp = get_object_or_404(DeliveryOTP.objects.select_for_update(), refund=refund)
+        if otp.is_used:
+            return Response({"detail": "This OTP has already been used."}, status=status.HTTP_400_BAD_REQUEST)
+        if timezone.now() > otp.expires_at:
+            return Response({"detail": "OTP has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        if otp.attempt_count >= MAX_OTP_ATTEMPTS:
+            return Response({"detail": "Maximum OTP attempts exceeded."}, status=status.HTTP_400_BAD_REQUEST)
+        if not check_password(otp_code, otp.otp_hash):
+            otp.attempt_count += 1
+            otp.save(update_fields=["attempt_count"])
+            return Response({"detail": "Invalid OTP."}, status=status.HTTP_400_BAD_REQUEST)
+        now = timezone.now()
+        otp.attempt_count += 1
+        otp.is_used = True
+        otp.verified_at = now
+        otp.save(update_fields=["attempt_count", "is_used", "verified_at"])
+        refund.status = Refund.STATUS_PICKED_UP
+        refund.picked_up_at = now
+        refund.save(update_fields=["status", "picked_up_at"])
+        record_refund_status_change(refund, refund.status, request.user, "Refund product collected after OTP verification.")
+        notify_refund_customer(refund, refund.status, "The rider has successfully collected your product. Your refund is now being processed.")
+        return Response({"detail": "OTP verified and refund product picked up."})
+
+
+class AdminRefundProcessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, refund_id):
+        if request.user.role != User.ROLE_ADMIN:
+            return Response({"detail": "Admin permission required."}, status=status.HTTP_403_FORBIDDEN)
+        refund = get_object_or_404(Refund.objects.select_for_update(), id=refund_id)
+        if refund.status != Refund.STATUS_PICKED_UP:
+            return Response({"detail": "Refund payment is allowed only after successful rider pickup OTP verification."}, status=status.HTTP_400_BAD_REQUEST)
+        refund.status = Refund.STATUS_PROCESSING
+        refund.save(update_fields=["status"])
+        record_refund_status_change(refund, refund.status, request.user, "Refund processing started after verified pickup.")
+        notify_refund_customer(refund, refund.status)
+        refund.status = Refund.STATUS_COMPLETED
+        refund.completed_at = timezone.now()
+        refund.save(update_fields=["status", "completed_at"])
+        record_refund_status_change(refund, refund.status, request.user, "Refund completed.")
+        notify_refund_customer(refund, refund.status, f"Your refund of ৳{refund.approved_amount:.2f} has been completed.")
+        return Response(RefundSerializer(refund, context={"request": request}).data)

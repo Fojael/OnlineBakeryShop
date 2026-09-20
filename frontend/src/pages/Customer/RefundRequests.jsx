@@ -6,7 +6,11 @@ import { getRefunds } from "../../services/refundService";
 
 const STATUS_STYLES = {
     Pending: "bg-warning text-dark",
-    Approved: "bg-info text-dark",
+    "Return Pending": "bg-info text-dark",
+    "Rider Assigned": "bg-info text-dark",
+    "Rider Accepted": "bg-info text-dark",
+    "Picked Up": "bg-primary",
+    "Pickup Expired": "bg-danger",
     Rejected: "bg-danger",
     Processing: "bg-primary",
     Completed: "bg-success",
@@ -117,7 +121,7 @@ const RefundRequests = () => {
                                             </div>
                                             <div className="col-md-6">
                                                 <div className="small text-muted">Timeline</div>
-                                                <div>Approved: {formatDate(refund.approved_at)}</div>
+                                                <div>Pickup deadline: {formatDate(refund.pickup_deadline)}</div>
                                                 <div>Completed: {formatDate(refund.completed_at)}</div>
                                             </div>
                                         </div>
@@ -127,11 +131,14 @@ const RefundRequests = () => {
                                                 Your refund request is waiting for admin review.
                                             </div>
                                         )}
-                                        {refund.status === "Approved" && (
+                                        {refund.status === "Return Pending" && (
                                             <div className="alert alert-info mt-4 mb-0">
-                                                Your refund has been approved by an admin. Money has not been returned automatically.
+                                                <strong>Refund Approved</strong><br />Please keep the product ready. A delivery rider will collect it within 2 days.<br />Refund will be processed after successful pickup.
                                             </div>
                                         )}
+                                        {refund.status === "Rider Assigned" && <div className="alert alert-info mt-4 mb-0">A delivery rider has been assigned to collect your refund product.</div>}
+                                        {refund.status === "Rider Accepted" && <div className="alert alert-info mt-4 mb-0">The rider is on the way to collect your product.</div>}
+                                        {refund.status === "Picked Up" && <div className="alert alert-primary mt-4 mb-0">✓ Product collected. Refund is now being processed.</div>}
                                         {refund.status === "Rejected" && refund.admin_notes && (
                                             <div className="alert alert-danger mt-4 mb-0">
                                                 <strong>Admin Note:</strong> {refund.admin_notes}

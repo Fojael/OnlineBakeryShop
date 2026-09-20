@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Link } from "react-router-dom";
 
@@ -49,9 +49,10 @@ const DeliveryDashboard = () => {
     };
 
     useEffect(() => {
-
-        loadDashboard();
-
+        const timer = window.setTimeout(() => {
+            void loadDashboard();
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, []);
 
     // ======================================================
@@ -102,6 +103,25 @@ const DeliveryDashboard = () => {
     const stats = dashboard?.stats || {};
 
     const deliveries = dashboard?.deliveries || dashboard?.orders || [];
+    const refundPickups = dashboard?.refundPickups || [];
+
+    const handleRefundAction = async (refund, action) => {
+        try {
+            setError("");
+            if (action === "accept") {
+                await deliveryService.acceptRefundPickup(refund.id);
+            } else if (action === "request") {
+                await deliveryService.requestRefundPickupOtp(refund.id);
+            } else {
+                const otp = window.prompt("Enter the 6-digit customer OTP:");
+                if (!otp) return;
+                await deliveryService.verifyRefundPickupOtp(refund.id, otp);
+            }
+            await loadDashboard();
+        } catch (err) {
+            setError(err.response?.data?.detail || "Refund pickup action failed.");
+        }
+    };
 
     // ======================================================
     // PAGE
@@ -349,6 +369,28 @@ const DeliveryDashboard = () => {
 
                 )}
 
+            </div>
+
+            <div className="delivery-section">
+                <div className="section-header"><h2>REFUND PICKUPS</h2></div>
+                {refundPickups.length === 0 ? (
+                    <div className="empty-delivery"><p>No refund pickups assigned.</p></div>
+                ) : (
+                    <div className="delivery-list">
+                        {refundPickups.map((refund) => (
+                            <div className="delivery-card" key={`refund-${refund.id}`}>
+                                <div className="delivery-card-top">
+                                    <div><h3>Refund #{refund.id} / Order #{refund.order}</h3><p>Customer: {refund.customer_name || "N/A"}</p></div>
+                                    <span className="status-badge">{refund.status}</span>
+                                </div>
+                                <p>Pickup deadline: {refund.pickup_deadline ? new Date(refund.pickup_deadline).toLocaleString() : "-"}</p>
+                                <p>Refund amount: ৳{Number(refund.approved_amount || 0).toFixed(2)}</p>
+                                {refund.status === "Rider Assigned" && <button className="delivery-status-btn" onClick={() => handleRefundAction(refund, "accept")}>Accept Pickup</button>}
+                                {refund.status === "Rider Accepted" && <div className="d-flex gap-2"><button className="delivery-status-btn" onClick={() => handleRefundAction(refund, "request")}>Request OTP</button><button className="delivery-status-btn" onClick={() => handleRefundAction(refund, "verify")}>Complete Pickup</button></div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
         </div>

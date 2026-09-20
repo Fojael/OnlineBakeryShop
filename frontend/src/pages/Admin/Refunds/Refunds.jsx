@@ -5,7 +5,11 @@ import api from "../../../services/api";
 
 const STATUS_CLASSES = {
     Pending: "bg-warning text-dark",
-    Approved: "bg-info text-dark",
+    "Return Pending": "bg-info text-dark",
+    "Rider Assigned": "bg-info text-dark",
+    "Rider Accepted": "bg-info text-dark",
+    "Picked Up": "bg-primary",
+    "Pickup Expired": "bg-danger",
     Rejected: "bg-danger",
     Processing: "bg-primary",
     Completed: "bg-success",
@@ -23,6 +27,8 @@ const RefundDetails = ({
     adminNote,
     onAdminNoteChange,
     onDecision,
+    onAssignRider,
+    onProcessRefund,
     onClose,
 }) => {
     if (!refund && loading) {
@@ -38,6 +44,7 @@ const RefundDetails = ({
     const fullAmount = Number(refund.calculated_full_amount || eligible);
     const partialAmount = Number(refund.calculated_partial_amount || (eligible * 0.25).toFixed(2));
     const canDecide = refund.status === "Pending";
+    const canProcess = refund.status === "Picked Up";
 
     return (
         <div className="modal d-block" role="dialog" aria-modal="true">
@@ -75,6 +82,8 @@ const RefundDetails = ({
                                     <dt className="col-sm-5">Eligible amount</dt><dd className="col-sm-7">{money(eligible)}</dd>
                                     <dt className="col-sm-5">Admin decision</dt><dd className="col-sm-7">{refund.admin_decision || "Pending admin decision"}</dd>
                                     <dt className="col-sm-5">Decision date</dt><dd className="col-sm-7">{formatDate(refund.reviewed_at)}</dd>
+                                    <dt className="col-sm-5">Pickup deadline</dt><dd className="col-sm-7">{formatDate(refund.pickup_deadline)}</dd>
+                                    <dt className="col-sm-5">Assigned rider</dt><dd className="col-sm-7">{refund.assigned_rider || "-"}</dd>
                                 </dl>
                             </section>
                         </div>
@@ -150,6 +159,8 @@ const RefundDetails = ({
                             </section>
                         )}
                         {!canDecide && refund.admin_notes && <div className="alert alert-secondary mt-4 mb-0">Admin decision note: {refund.admin_notes}</div>}
+                        {refund.status === "Return Pending" && <button type="button" className="btn btn-outline-primary mt-4" disabled={updating} onClick={async () => { const riderId = window.prompt("Enter eligible active rider ID:"); if (!riderId) return; await onAssignRider(riderId); }}>Assign Rider</button>}
+                        {canProcess && <button type="button" className="btn btn-success mt-4" disabled={updating} onClick={onProcessRefund}>Process Refund</button>}
                     </div>
                 </div>
             </div>
@@ -237,6 +248,28 @@ const Refunds = () => {
         }
     };
 
+    const assignRider = async (riderId) => {
+        setUpdating(true);
+        try {
+            await api.post(`orders/refunds/admin/${selectedRefund.id}/assign-rider/`, { rider_id: Number(riderId) });
+            await loadRefunds();
+            await openDetails(selectedRefund.id);
+        } catch (requestError) {
+            setDetailsError(requestError.response?.data?.detail || "Failed to assign rider.");
+        } finally { setUpdating(false); }
+    };
+
+    const processRefund = async () => {
+        setUpdating(true);
+        try {
+            await api.post(`orders/refunds/admin/${selectedRefund.id}/process/`);
+            await loadRefunds();
+            await openDetails(selectedRefund.id);
+        } catch (requestError) {
+            setDetailsError(requestError.response?.data?.detail || "Failed to process refund.");
+        } finally { setUpdating(false); }
+    };
+
     return (
         <DashboardLayout>
             <div className="container-fluid py-4">
@@ -263,7 +296,7 @@ const Refunds = () => {
                     </div>
                 </div>
             </div>
-            {(selectedRefund || detailsLoading || detailsError) && <RefundDetails refund={selectedRefund} loading={detailsLoading} error={detailsError} updating={updating} adminNote={adminNote} onAdminNoteChange={setAdminNote} onDecision={decideRefund} onClose={() => { setSelectedRefund(null); setDetailsError(""); }} />}
+            {(selectedRefund || detailsLoading || detailsError) && <RefundDetails refund={selectedRefund} loading={detailsLoading} error={detailsError} updating={updating} adminNote={adminNote} onAdminNoteChange={setAdminNote} onDecision={decideRefund} onAssignRider={assignRider} onProcessRefund={processRefund} onClose={() => { setSelectedRefund(null); setDetailsError(""); }} />}
         </DashboardLayout>
     );
 };
