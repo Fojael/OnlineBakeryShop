@@ -3706,6 +3706,13 @@ class AdminRefundAssignRiderView(APIView):
             return Response({"detail": "Selected delivery rider is inactive."}, status=status.HTTP_400_BAD_REQUEST)
         if refund.status != Refund.STATUS_RETURN_PENDING:
             return Response({"detail": "Only approved refunds awaiting pickup can be assigned."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.refund_type not in {
+            Refund.REFUND_TYPE_FULL,
+            Refund.REFUND_TYPE_PARTIAL,
+        } or refund.approved_at is None or refund.approved_amount is None:
+            return Response({"detail": "Refund approval decision is incomplete."}, status=status.HTTP_400_BAD_REQUEST)
+        if refund.pickup_deadline is None:
+            return Response({"detail": "Approved refunds must have a pickup deadline."}, status=status.HTTP_400_BAD_REQUEST)
         if refund.pickup_deadline and timezone.now() >= refund.pickup_deadline:
             refund.status = Refund.STATUS_PICKUP_EXPIRED
             refund.save(update_fields=["status"])

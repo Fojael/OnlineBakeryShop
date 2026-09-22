@@ -243,11 +243,6 @@ urlpatterns = [
         name="admin-refund-update",
     ),
     path(
-        "refunds/admin/<int:refund_id>/<str:decision>/",
-        AdminRefundDecisionView.as_view(),
-        name="admin-refund-decision",
-    ),
-    path(
         "refunds/admin/<int:refund_id>/assign-rider/",
         AdminRefundAssignRiderView.as_view(),
         name="admin-refund-assign-rider",
@@ -256,6 +251,11 @@ urlpatterns = [
         "refunds/admin/<int:refund_id>/process/",
         AdminRefundProcessView.as_view(),
         name="admin-refund-process",
+    ),
+    path(
+        "refunds/admin/<int:refund_id>/<str:decision>/",
+        AdminRefundDecisionView.as_view(),
+        name="admin-refund-decision",
     ),
     path(
         "refund-pickups/",

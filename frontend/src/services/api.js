@@ -77,6 +77,17 @@ api.interceptors.request.use(
 
     (config) => {
 
+        if (
+            typeof FormData !== "undefined" &&
+            config.data instanceof FormData
+        ) {
+
+            config.headers = config.headers || {};
+
+            delete config.headers["Content-Type"];
+            delete config.headers["content-type"];
+        }
+
         const token =
             getAccessToken();
 

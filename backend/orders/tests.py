@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from cart.models import Cart, CartItem
-from delivery.models import Delivery
+from delivery.models import Delivery, DeliveryOTP
 from inventory.models import InventoryTransaction
 from inventory.services import deduct_order_stock
 from notifications.models import Notification
@@ -2339,6 +2339,236 @@ class RefundStatusWorkflowTests(TestCase):
             reverse("orders:admin-refund-process", args=[self.refund.id]),
         )
         self.assertEqual(rejected_response.status_code, 400)
+
+
+class RefundPickupAssignmentTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username="refund_assignment_admin",
+            email="refund_assignment_admin@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_ADMIN,
+            is_active=True,
+        )
+        self.customer = User.objects.create_user(
+            username="refund_assignment_customer",
+            email="refund_assignment_customer@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        self.rider = User.objects.create_user(
+            username="refund_assignment_rider",
+            email="refund_assignment_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=True,
+        )
+        self.other_rider = User.objects.create_user(
+            username="refund_assignment_other_rider",
+            email="refund_assignment_other_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=True,
+        )
+        self.inactive_rider = User.objects.create_user(
+            username="refund_assignment_inactive_rider",
+            email="refund_assignment_inactive_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_DELIVERY_RIDER,
+            is_active=False,
+        )
+        self.customer_order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Refund pickup address",
+            payment_method=Order.PAYMENT_COD,
+            total_amount=100,
+            status=Order.STATUS_DELIVERED,
+        )
+        self.product = Product.objects.create(
+            name="Refund Pickup Product",
+            category="Pastry",
+            price=Decimal("100.00"),
+            stock_quantity=5,
+        )
+        self.order_item = OrderItem.objects.create(
+            order=self.customer_order,
+            product=self.product,
+            quantity=1,
+            price=Decimal("100.00"),
+        )
+        self.refund = Refund.objects.create(
+            order=self.customer_order,
+            customer=self.customer,
+            reason=Refund.REASON_OTHER,
+            refund_type=Refund.REFUND_TYPE_FULL,
+            refund_amount=Decimal("100.00"),
+        )
+        RefundItem.objects.create(
+            refund=self.refund,
+            order_item=self.order_item,
+            quantity=1,
+            amount=Decimal("100.00"),
+        )
+
+    def approve_refund(self, refund_type):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse(
+                "orders:admin-refund-decision",
+                args=[self.refund.id, "approve-full" if refund_type == Refund.REFUND_TYPE_FULL else "approve-partial"],
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.refund_type, refund_type)
+        return response
+
+    def assign_rider(self, rider=None):
+        self.client.force_authenticate(user=self.admin)
+        return self.client.post(
+            reverse("orders:admin-refund-assign-rider", args=[self.refund.id]),
+            {"rider_id": (rider or self.rider).id},
+            format="json",
+        )
+
+    def test_approved_full_refund_can_be_assigned_through_literal_endpoint(self):
+        self.approve_refund(Refund.REFUND_TYPE_FULL)
+
+        response = self.assign_rider()
+
+        self.assertEqual(response.status_code, 200)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.status, Refund.STATUS_RIDER_ASSIGNED)
+        self.assertEqual(self.refund.assigned_rider_id, self.rider.id)
+        self.assertTrue(
+            RefundStatusHistory.objects.filter(
+                refund=self.refund,
+                status=Refund.STATUS_RIDER_ASSIGNED,
+            ).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.rider,
+                title="Refund Pickup Assigned",
+            ).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.customer,
+                message__icontains="assigned to collect",
+            ).exists()
+        )
+
+    def test_approved_partial_refund_can_be_assigned(self):
+        self.approve_refund(Refund.REFUND_TYPE_PARTIAL)
+
+        response = self.assign_rider()
+
+        self.assertEqual(response.status_code, 200)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.refund_type, Refund.REFUND_TYPE_PARTIAL)
+        self.assertEqual(self.refund.status, Refund.STATUS_RIDER_ASSIGNED)
+
+    def test_assign_rider_route_is_not_treated_as_a_decision(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            reverse("orders:admin-refund-decision", args=[self.refund.id, "full"]),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "Invalid refund decision.")
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.status, Refund.STATUS_PENDING)
+
+    def test_pending_and_rejected_refunds_cannot_be_assigned(self):
+        pending_response = self.assign_rider()
+        self.assertEqual(pending_response.status_code, 400)
+
+        self.refund.status = Refund.STATUS_REJECTED
+        self.refund.save(update_fields=["status"])
+        rejected_response = self.assign_rider()
+        self.assertEqual(rejected_response.status_code, 400)
+
+    def test_assignment_rejects_invalid_rider_and_duplicate_assignment(self):
+        self.approve_refund(Refund.REFUND_TYPE_FULL)
+
+        wrong_role = User.objects.create_user(
+            username="refund_assignment_customer_rider",
+            email="refund_assignment_customer_rider@example.com",
+            password="StrongPass123!",
+            role=User.ROLE_CUSTOMER,
+            is_active=True,
+        )
+        wrong_role_response = self.assign_rider(wrong_role)
+        self.assertEqual(wrong_role_response.status_code, 400)
+
+        inactive_response = self.assign_rider(self.inactive_rider)
+        self.assertEqual(inactive_response.status_code, 400)
+
+        self.assertEqual(self.assign_rider().status_code, 200)
+        duplicate_response = self.assign_rider(self.other_rider)
+        self.assertEqual(duplicate_response.status_code, 400)
+
+    def test_non_admin_cannot_assign_refund_rider(self):
+        self.approve_refund(Refund.REFUND_TYPE_FULL)
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse("orders:admin-refund-assign-rider", args=[self.refund.id]),
+            {"rider_id": self.rider.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_rider_accepts_and_completes_refund_pickup_otp(self):
+        self.approve_refund(Refund.REFUND_TYPE_FULL)
+        self.assertEqual(self.assign_rider().status_code, 200)
+
+        self.client.force_authenticate(user=self.rider)
+        accept_response = self.client.post(
+            reverse("orders:refund-pickup-detail", args=[self.refund.id]),
+            {"action": "accept"},
+            format="json",
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        with patch(
+            "delivery.models.DeliveryOTP.generate_secure_code",
+            return_value="123456",
+        ):
+            otp_response = self.client.post(
+                reverse("orders:refund-pickup-request-otp", args=[self.refund.id]),
+            )
+        self.assertEqual(otp_response.status_code, 200)
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.customer,
+                title="Refund Pickup Verification OTP",
+            ).exists()
+        )
+
+        wrong_otp_response = self.client.post(
+            reverse("orders:refund-pickup-verify-otp", args=[self.refund.id]),
+            {"otp": "000000"},
+            format="json",
+        )
+        self.assertEqual(wrong_otp_response.status_code, 400)
+
+        valid_otp_response = self.client.post(
+            reverse("orders:refund-pickup-verify-otp", args=[self.refund.id]),
+            {"otp": "123456"},
+            format="json",
+        )
+        self.assertEqual(valid_otp_response.status_code, 200)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.status, Refund.STATUS_PICKED_UP)
+        otp = DeliveryOTP.objects.get(refund=self.refund)
+        self.assertTrue(otp.is_used)
 
 
 class BuyNowOrderTests(TestCase):

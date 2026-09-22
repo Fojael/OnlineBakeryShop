@@ -1,5 +1,6 @@
 import {
     useState,
+    useEffect,
 } from "react";
 
 import {
@@ -15,6 +16,10 @@ import DashboardLayout from "../../../layouts/DashboardLayout";
 import {
     createProduct,
 } from "../../../services/productService";
+
+import {
+    getSuppliers,
+} from "../../../services/supplierService";
 
 
 const AddProduct = () => {
@@ -44,6 +49,7 @@ const AddProduct = () => {
 
     const [formData, setFormData] = useState({
         name: "",
+        supplier: "",
         category: "",
         description: "",
         price: "",
@@ -59,12 +65,55 @@ const AddProduct = () => {
 
     const [image, setImage] = useState(null);
 
+    const [suppliers, setSuppliers] = useState([]);
+
+    const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+
 
     // =========================================================
     // SAVING
     // =========================================================
 
     const [saving, setSaving] = useState(false);
+
+
+    // =========================================================
+    // LOAD SUPPLIERS
+    // =========================================================
+
+    useEffect(() => {
+
+        const loadSuppliers = async () => {
+
+            try {
+
+                const response = await getSuppliers();
+
+                const supplierItems = Array.isArray(response.data)
+                    ? response.data
+                    : response.data?.results || [];
+
+                setSuppliers(supplierItems);
+
+            } catch (error) {
+
+                console.error(
+                    "Failed to load suppliers:",
+                    error
+                );
+
+                toast.error(
+                    "Failed to load suppliers."
+                );
+
+            } finally {
+
+                setLoadingSuppliers(false);
+            }
+        };
+
+        loadSuppliers();
+    }, []);
 
 
     // =========================================================
@@ -153,6 +202,16 @@ const AddProduct = () => {
         }
 
 
+        if (!formData.supplier) {
+
+            toast.warning(
+                "Please select a supplier."
+            );
+
+            return;
+        }
+
+
         if (!description) {
 
             toast.warning(
@@ -207,6 +266,11 @@ const AddProduct = () => {
         productData.append(
             "category",
             formData.category
+        );
+
+        productData.append(
+            "supplier",
+            formData.supplier
         );
 
         productData.append(
@@ -428,6 +492,60 @@ const AddProduct = () => {
 
 
                             {/* CATEGORY */}
+
+                            {/* SUPPLIER */}
+
+                            <div className="mb-4">
+
+                                <label
+                                    htmlFor="product-supplier"
+                                    className="form-label fw-semibold"
+                                >
+                                    Supplier
+                                </label>
+
+                                <select
+                                    id="product-supplier"
+                                    name="supplier"
+                                    className="form-select"
+                                    value={
+                                        formData.supplier
+                                    }
+                                    onChange={
+                                        handleChange
+                                    }
+                                    required
+                                    disabled={loadingSuppliers}
+                                >
+
+                                    <option value="">
+                                        {loadingSuppliers
+                                            ? "Loading suppliers..."
+                                            : "Select Supplier"}
+                                    </option>
+
+                                    {suppliers.map(
+                                        (supplier) => (
+
+                                            <option
+                                                key={
+                                                    supplier.id
+                                                }
+                                                value={
+                                                    supplier.id
+                                                }
+                                            >
+                                                {
+                                                    supplier.name
+                                                }
+                                            </option>
+
+                                        )
+                                    )}
+
+                                </select>
+
+                            </div>
 
                             <div className="mb-4">
 
