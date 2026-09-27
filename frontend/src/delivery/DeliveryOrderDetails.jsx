@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -34,7 +34,7 @@ const DeliveryOrderDetails = () => {
     // LOAD ORDER
     // ======================================================
 
-    const loadOrder = async () => {
+    const loadOrder = useCallback(async () => {
 
         try {
 
@@ -57,13 +57,15 @@ const DeliveryOrderDetails = () => {
 
             setLoading(false);
         }
-    };
+    }, [orderId]);
 
     useEffect(() => {
 
-        loadOrder();
+        const timeoutId = setTimeout(loadOrder, 0);
 
-    }, [orderId]);
+        return () => clearTimeout(timeoutId);
+
+    }, [loadOrder]);
 
     // ======================================================
     // UPDATE STATUS

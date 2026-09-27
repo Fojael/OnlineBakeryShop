@@ -382,7 +382,7 @@ const Dashboard = () => {
                         <section className="mt-5" aria-labelledby="ai-dashboard-heading">
                             <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                                 <div>
-                                    <h3 id="ai-dashboard-heading" className="mb-1">AI Demand Intelligence</h3>
+                                    <h3 id="ai-dashboard-heading" className="mb-1 ">AI Demand Intelligence</h3>
                                     <p className="text-muted mb-0">Forecasts and reorder guidance from realized delivered sales.</p>
                                 </div>
                                 {aiData && <span className="badge text-bg-light">Model {aiData.pipeline?.model_version || "fallback"}</span>}

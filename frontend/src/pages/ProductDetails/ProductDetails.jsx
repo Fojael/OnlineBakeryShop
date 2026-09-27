@@ -207,7 +207,7 @@ const ProductDetails = () => {
         return () => {
             mounted = false;
         };
-    }, [product]);
+    }, [product, isLoggedIn]);
     // ========================================================
 // PRODUCT IMAGE
 // ========================================================
@@ -586,11 +586,11 @@ return (
 
             <div className="col-lg-6">
 
-                <span className="badge bg-secondary mb-3">
+                <span className="badge bg-success mb-3">
                     {product.category}
                 </span>
 
-                <h1 className="fw-bold">
+                <h1 className="fw-bold text-primary">
                     {product.name}
                 </h1>
 

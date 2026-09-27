@@ -164,7 +164,7 @@ const ReplenishmentRequests = () => {
                                         <option value="">Select supplier</option>
                                         {suppliers.map((supplier) => (
                                             <option key={supplier.id} value={supplier.id}>
-                                                {supplier.company || supplier.name}
+                                                {supplier.name}
                                             </option>
                                         ))}
                                     </select>
@@ -244,7 +244,7 @@ const ReplenishmentRequests = () => {
                                     <option value="">All suppliers</option>
                                     {suppliers.map((supplier) => (
                                         <option key={supplier.id} value={supplier.id}>
-                                            {supplier.company || supplier.name}
+                                            {supplier.name}
                                         </option>
                                     ))}
                                 </select>

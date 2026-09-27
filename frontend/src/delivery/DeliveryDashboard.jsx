@@ -150,7 +150,7 @@ const DeliveryDashboard = () => {
 
                 <Link
                     to="/delivery/orders"
-                    className="delivery-header-btn"
+                    className="delivery-header-btn "
                 >
                     View All Deliveries
                 </Link>
@@ -231,7 +231,7 @@ const DeliveryDashboard = () => {
                     </div>
 
                     <div>
-                        <h3>
+                        <h3 class>
                             Out for Delivery
                         </h3>
 
@@ -270,12 +270,13 @@ const DeliveryDashboard = () => {
 
                 <div className="section-header">
 
-                    <h2>
+                    <h2 className="text-primary">
                         MY DELIVERIES
                     </h2>
 
                     <Link
                         to="/delivery/orders"
+                        className="text-success"
                     >
                         View All
                     </Link>

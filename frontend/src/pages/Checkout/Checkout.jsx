@@ -904,6 +904,7 @@ const Checkout = () => {
 
                                     </div>
 
+                            
 
                                     {/* DELIVERY NOTE */}
 

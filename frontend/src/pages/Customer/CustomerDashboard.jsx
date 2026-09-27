@@ -284,11 +284,11 @@ const CustomerDashboard = () => {
 
             <div className="mb-5">
 
-                <h2 className="fw-bold">
+                <h2 className="fw-bold text-primary mb-1">
                     👋 Welcome, {username}
                 </h2>
 
-                <p className="text-muted">
+                <p className="text-success mb-0">
                     Manage your orders, cart,
                     wishlist and account.
                 </p>
@@ -323,11 +323,11 @@ const CustomerDashboard = () => {
 
                             <h1>📦</h1>
 
-                            <h2 className="fw-bold">
+                            <h2 className="fw-bold text-success">
                                 {orders.length}
                             </h2>
 
-                            <p className="text-muted mb-0">
+                            <p className="text-primary mb-0">
                                 Total Orders
                             </p>
 
@@ -349,11 +349,11 @@ const CustomerDashboard = () => {
 
                             <h1>❤️</h1>
 
-                            <h2 className="fw-bold">
+                            <h2 className="fw-bold text-danger">
                                 {wishlistCount}
                             </h2>
 
-                            <p className="text-muted mb-0">
+                            <p className="text-primary mb-0">
                                 Wishlist Items
                             </p>
 
@@ -367,8 +367,8 @@ const CustomerDashboard = () => {
                     <div className="card border-0 shadow-sm h-100 text-center">
                         <div className="card-body">
                             <h1>↩</h1>
-                            <h2 className="fw-bold">{refundCount}</h2>
-                            <p className="text-muted mb-0">Refunds</p>
+                            <h2 className="fw-bold text-warning">{refundCount}</h2>
+                            <p className="text-primary mb-0">Refunds</p>
                         </div>
                     </div>
                 </div>
@@ -385,11 +385,11 @@ const CustomerDashboard = () => {
 
                             <h1>🛒</h1>
 
-                            <h2 className="fw-bold">
+                            <h2 className="fw-bold text-success">
                                 {cartItems}
                             </h2>
 
-                            <p className="text-muted mb-0">
+                            <p className="text-primary mb-0">
                                 Cart Items
                             </p>
 
@@ -416,11 +416,11 @@ const CustomerDashboard = () => {
 
                                 <h1>📍</h1>
 
-                                <h2 className="fw-bold">
+                                <h2 className="fw-bold text-secondary">
                                     {addressCount}
                                 </h2>
 
-                                <p className="text-muted mb-0">
+                                <p className="text-primary mb-0">
                                     Saved Addresses
                                 </p>
 
@@ -438,7 +438,7 @@ const CustomerDashboard = () => {
                 <div className="col-md-6">
                     <div className="card border-0 shadow-sm h-100">
                         <div className="card-body">
-                            <h5>Order overview</h5>
+                            <h5 className="text-primary">Order overview</h5>
                             <p className="mb-1">Pending orders: <strong>{orders.filter((order) => ["Pending", "Accepted", "Processing", "Ready"].includes(order.status)).length}</strong></p>
                             <p className="mb-0">Delivered orders: <strong>{orders.filter((order) => order.status === "Delivered").length}</strong></p>
                         </div>
@@ -448,7 +448,7 @@ const CustomerDashboard = () => {
                     <Link to="/notifications" className="text-decoration-none text-dark">
                         <div className="card border-0 shadow-sm h-100">
                             <div className="card-body">
-                                <h5>Notifications</h5>
+                                <h5 className="text-primary">Notifications</h5>
                                 <p className="mb-0">{unreadCount} unread notification{unreadCount === 1 ? "" : "s"}</p>
                             </div>
                         </div>

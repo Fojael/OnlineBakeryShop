@@ -26,7 +26,7 @@ import ProductDetails
 import Login
     from "../pages/Login/Login";
 
-import Nur from "../pages/Nur/Nur";
+
 
 import Register
     from "../pages/Register/Register";
@@ -215,6 +215,8 @@ import AdminProfile
     from "../pages/Admin/Profile/AdminProfile";
 
 
+
+
 /// ============================================================
 // SUPPLIER ROUTES
 // ============================================================
@@ -302,11 +304,7 @@ const AppRoutes = () => {
                 element={<Register />}
             />
 
-            <Route
-                path="/nur"
-                element={<Nur />}
-            />
-
+            
 
             {/* ==================================================
                 CUSTOMER ROUTES
@@ -830,6 +828,8 @@ const AppRoutes = () => {
                     </ProtectedAdminRoute>
                 }
             />
+
+            
 
            {/* ======================================================
     SUPPLIER DASHBOARD

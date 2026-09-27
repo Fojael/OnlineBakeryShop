@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Link } from "react-router-dom";
 
@@ -24,7 +24,7 @@ const DeliveryOrders = () => {
     // LOAD ORDERS
     // ======================================================
 
-    const loadOrders = async () => {
+    const loadOrders = useCallback(async () => {
 
         try {
 
@@ -56,13 +56,24 @@ const DeliveryOrders = () => {
 
             setLoading(false);
         }
-    };
+    }, [selectedStatus]);
 
     useEffect(() => {
 
-        loadOrders();
+        let cancelled = false;
 
-    }, [selectedStatus]);
+        queueMicrotask(() => {
+
+            if (!cancelled) {
+                loadOrders();
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+
+    }, [loadOrders]);
 
     // ======================================================
     // STATUS LABEL

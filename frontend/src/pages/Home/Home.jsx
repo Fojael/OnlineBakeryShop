@@ -258,7 +258,7 @@ const Home = () => {
 
                                 <Link
                                     to="/register"
-                                    className="btn btn-outline-primary btn-lg"
+                                    className="btn btn-primary btn-lg"
                                 >
                                     Create Account
                                 </Link>
@@ -266,7 +266,7 @@ const Home = () => {
 
                                 <Link
                                     to="/login"
-                                    className="btn btn-outline-dark btn-lg"
+                                    className="btn btn-primary btn-lg"
                                 >
                                     Login
                                 </Link>

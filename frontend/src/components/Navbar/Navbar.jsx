@@ -350,7 +350,7 @@ const Navbar = () => {
                         <li className="nav-item">
 
                             <Link
-                                className="nav-link"
+                                className="nav-link "
                                 to="/about"
                             >
                                 About
@@ -358,7 +358,16 @@ const Navbar = () => {
 
                         </li>
 
+                        <li className="nav-item">
 
+                            <Link
+                                className="nav-link"
+                                to="/nur"
+                               onClick={(e) => e.preventDefault()}
+                            >
+                                NUR
+                            </Link>
+                        </li>
                         {/* CONTACT */}
 
                         <li className="nav-item">
@@ -406,7 +415,10 @@ const Navbar = () => {
                                 <li className="nav-item">
 
                                     <Link
-                                        className="nav-link"
+                                        className=" btn
+                                            btn-warning
+                                            ms-lg-2
+                                            "
                                         to="/login"
                                     >
                                         Login

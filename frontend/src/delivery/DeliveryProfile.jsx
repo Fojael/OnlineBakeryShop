@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Link } from "react-router-dom";
 
@@ -33,7 +33,7 @@ const DeliveryProfile = () => {
     // LOAD PROFILE
     // ======================================================
 
-    const loadProfile = async () => {
+    const loadProfile = useCallback(async () => {
 
         try {
 
@@ -63,13 +63,24 @@ const DeliveryProfile = () => {
 
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
 
-        loadProfile();
+        let cancelled = false;
 
-    }, []);
+        queueMicrotask(() => {
+
+            if (!cancelled) {
+                loadProfile();
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+
+    }, [loadProfile]);
 
     // ======================================================
     // INPUT CHANGE

@@ -440,7 +440,7 @@ if (
                                         />
 
                                         <label
-                                            className="form-check-label"
+                                            className="form-check-label text-primary"
                                             htmlFor="rememberMe"
                                         >
                                             Remember Me
@@ -485,7 +485,7 @@ if (
 
                             {/* REGISTER */}
 
-                            <div className="text-center">
+                            <div className="text-center ">
 
                                 Don't have an account?
 
