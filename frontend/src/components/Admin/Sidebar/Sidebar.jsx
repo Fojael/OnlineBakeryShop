@@ -187,16 +187,7 @@ const Sidebar = () => {
                         AI Prediction
                     </NavLink>
                 </li>
-                {/* Welcome */}
-
-<li className="nav-item mb-1">
-    <NavLink
-        to="/admin/akhanda"
-        className={linkClass}
-    >
-        Akhanda
-    </NavLink>
-</li>
+               
                 {/* Notifications */}
 
                 <li className="nav-item mb-1">
