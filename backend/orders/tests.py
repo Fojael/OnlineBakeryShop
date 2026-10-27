@@ -2570,6 +2570,47 @@ class RefundPickupAssignmentTests(TestCase):
         otp = DeliveryOTP.objects.get(refund=self.refund)
         self.assertTrue(otp.is_used)
 
+    def test_refund_pickup_otp_attempt_limit_survives_resend(self):
+        self.approve_refund(Refund.REFUND_TYPE_FULL)
+        self.assertEqual(self.assign_rider().status_code, 200)
+        self.client.force_authenticate(user=self.rider)
+        self.client.post(
+            reverse("orders:refund-pickup-detail", args=[self.refund.id]),
+            {"action": "accept"},
+            format="json",
+        )
+
+        request_url = reverse("orders:refund-pickup-request-otp", args=[self.refund.id])
+        verify_url = reverse("orders:refund-pickup-verify-otp", args=[self.refund.id])
+        with patch("delivery.models.DeliveryOTP.generate_secure_code", return_value="123456"):
+            first_response = self.client.post(request_url)
+        self.assertEqual(first_response.status_code, 200)
+
+        for _ in range(3):
+            self.client.post(verify_url, {"otp": "000000"}, format="json")
+
+        otp = DeliveryOTP.objects.get(refund=self.refund)
+        otp.last_sent_at = timezone.now() - timedelta(minutes=2)
+        otp.save(update_fields=["last_sent_at"])
+        with patch("delivery.models.DeliveryOTP.generate_secure_code", return_value="654321"):
+            resend_response = self.client.post(request_url)
+        self.assertEqual(resend_response.status_code, 200)
+        otp.refresh_from_db()
+        self.assertEqual(otp.attempt_count, 3)
+
+        self.client.post(verify_url, {"otp": "000000"}, format="json")
+        failed_response = self.client.post(verify_url, {"otp": "000000"}, format="json")
+        self.assertEqual(failed_response.status_code, 400)
+        otp.refresh_from_db()
+        self.assertEqual(otp.attempt_count, 5)
+        self.assertTrue(otp.is_used)
+
+        otp.last_sent_at = timezone.now() - timedelta(minutes=2)
+        otp.save(update_fields=["last_sent_at"])
+        locked_resend = self.client.post(request_url)
+        self.assertEqual(locked_resend.status_code, 400)
+        self.assertEqual(otp.attempt_count, 5)
+
 
 class BuyNowOrderTests(TestCase):
 
@@ -3293,4 +3334,3 @@ class OfflineSaleApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_response.data["order_source"], Order.SOURCE_OFFLINE)
         self.assertEqual(online_detail_response.status_code, 404)
-

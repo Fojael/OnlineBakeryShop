@@ -815,6 +815,35 @@ class DeliveryOTPTests(TestCase):
         response = self.verify_otp(delivery, "654321")
         self.assertEqual(response.status_code, 200)
 
+    def test_resend_does_not_reset_failed_attempt_limit(self):
+        order = self.create_order()
+        delivery = self.assign_delivery(order)
+        self.request_otp(delivery, "123456")
+
+        for _ in range(3):
+            self.verify_otp(delivery, "000000")
+
+        otp = delivery.otp
+        otp.last_sent_at = timezone.now() - timezone.timedelta(minutes=2)
+        otp.save(update_fields=["last_sent_at"])
+        resend_response = self.request_otp(delivery, "654321")
+        self.assertEqual(resend_response.status_code, 200)
+        otp.refresh_from_db()
+        self.assertEqual(otp.attempt_count, 3)
+
+        self.verify_otp(delivery, "000000")
+        failed_response = self.verify_otp(delivery, "000000")
+        self.assertEqual(failed_response.status_code, 400)
+        otp.refresh_from_db()
+        self.assertEqual(otp.attempt_count, 5)
+        self.assertTrue(otp.is_used)
+
+        otp.last_sent_at = timezone.now() - timezone.timedelta(minutes=2)
+        otp.save(update_fields=["last_sent_at"])
+        locked_resend = self.request_otp(delivery, "111111")
+        self.assertEqual(locked_resend.status_code, 400)
+        self.assertEqual(otp.attempt_count, 5)
+
     def test_resend_is_rate_limited(self):
         order = self.create_order()
         delivery = self.assign_delivery(order)

@@ -88,7 +88,6 @@ class DeliveryOTP(models.Model):
         otp.expires_at = timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)
         otp.verified_at = None
         otp.is_used = False
-        otp.attempt_count = 0
         otp.last_sent_at = timezone.now()
         otp.otp_code = raw_code
         otp.save()
@@ -108,7 +107,6 @@ class DeliveryOTP(models.Model):
         otp.expires_at = timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)
         otp.verified_at = None
         otp.is_used = False
-        otp.attempt_count = 0
         otp.last_sent_at = timezone.now()
         otp.otp_code = raw_code
         otp.save()

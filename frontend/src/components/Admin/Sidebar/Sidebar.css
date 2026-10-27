@@ -1,0 +1,51 @@
+.admin-sidebar {
+    flex: 0 0 260px;
+    width: 260px;
+    min-height: 100vh;
+    z-index: 1040;
+}
+
+.admin-layout__content {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-sidebar__section {
+    width: 100%;
+    list-style: none;
+}
+
+.admin-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1030;
+    border: 0;
+    background: rgb(0 0 0 / 50%);
+}
+
+@media (max-width: 767.98px) {
+    .admin-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(260px, 85vw);
+        min-height: 0;
+        overflow-y: auto;
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 0.2s ease, visibility 0s linear 0.2s;
+    }
+
+    .admin-sidebar.is-open {
+        transform: translateX(0);
+        visibility: visible;
+        transition-delay: 0s;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-sidebar {
+        transition: none;
+    }
+}

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.test import TestCase
 from django.urls import reverse
@@ -32,7 +32,7 @@ class AdminSalesReportsTests(TestCase):
             role=User.ROLE_CUSTOMER,
             is_active=True,
         )
-        Order.objects.create(
+        self.order = Order.objects.create(
             customer=self.customer,
             shipping_address="Dhaka",
             payment_method=Order.PAYMENT_SSLCOMMERZ,
@@ -55,6 +55,21 @@ class AdminSalesReportsTests(TestCase):
         self.assertGreaterEqual(response.data["orders_count"], 1)
 
     def test_admin_reports_support_custom_date_range(self):
+        Order.objects.filter(pk=self.order.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 9, 15, 12, 0)),
+        )
+        outside_order = Order.objects.create(
+            customer=self.customer,
+            shipping_address="Outside report range",
+            payment_method=Order.PAYMENT_SSLCOMMERZ,
+            subtotal=Decimal("100.00"),
+            delivery_charge=Decimal("10.00"),
+            total_amount=Decimal("110.00"),
+            status=Order.STATUS_DELIVERED,
+        )
+        Order.objects.filter(pk=outside_order.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 8, 31, 12, 0)),
+        )
         self.client.force_authenticate(user=self.admin)
 
         response = self.client.get(

@@ -3791,6 +3791,10 @@ class RefundPickupOTPRequestView(APIView):
         if refund.pickup_deadline and timezone.now() >= refund.pickup_deadline:
             return Response({"detail": "The pickup deadline has expired."}, status=status.HTTP_400_BAD_REQUEST)
         existing = DeliveryOTP.objects.filter(refund=refund).first()
+        if existing and existing.attempt_count >= MAX_OTP_ATTEMPTS:
+            return Response({"detail": "Maximum OTP attempts exceeded. Contact support."}, status=status.HTTP_400_BAD_REQUEST)
+        if existing and (existing.is_used or existing.verified_at):
+            return Response({"detail": "This OTP has already been used."}, status=status.HTTP_400_BAD_REQUEST)
         if existing and existing.last_sent_at and timezone.now() - existing.last_sent_at < timedelta(seconds=OTP_RESEND_SECONDS):
             return Response({"detail": "Please wait before requesting another OTP."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         otp = DeliveryOTP.create_for_refund(refund)
@@ -3830,6 +3834,10 @@ class RefundPickupOTPVerifyView(APIView):
             return Response({"detail": "Maximum OTP attempts exceeded."}, status=status.HTTP_400_BAD_REQUEST)
         if not check_password(otp_code, otp.otp_hash):
             otp.attempt_count += 1
+            if otp.attempt_count >= MAX_OTP_ATTEMPTS:
+                otp.is_used = True
+                otp.save(update_fields=["attempt_count", "is_used"])
+                return Response({"detail": "Maximum OTP attempts exceeded."}, status=status.HTTP_400_BAD_REQUEST)
             otp.save(update_fields=["attempt_count"])
             return Response({"detail": "Invalid OTP."}, status=status.HTTP_400_BAD_REQUEST)
         now = timezone.now()

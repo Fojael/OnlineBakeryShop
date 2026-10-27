@@ -588,6 +588,16 @@ class DeliveryOTPRequestView(APIView):
 
         existing_otp = DeliveryOTP.objects.filter(delivery=delivery).first()
         if existing_otp:
+            if existing_otp.attempt_count >= MAX_OTP_ATTEMPTS:
+                return Response(
+                    {"detail": "Maximum OTP attempts exceeded. Contact support."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if existing_otp.is_used or existing_otp.verified_at:
+                return Response(
+                    {"detail": "This OTP has already been used."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             now = timezone.now()
             if (
                 existing_otp.last_sent_at
@@ -598,8 +608,6 @@ class DeliveryOTPRequestView(APIView):
                     {"detail": "Please wait before requesting another OTP."},
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
-            if existing_otp.is_used or existing_otp.verified_at:
-                existing_otp.delete()
 
         otp = DeliveryOTP.create_for_delivery(delivery)
         order = delivery.order
@@ -675,7 +683,7 @@ class DeliveryOTPVerifyView(APIView):
 
         if otp.attempt_count >= MAX_OTP_ATTEMPTS:
             otp.is_used = True
-            otp.save(update_fields=["is_used", "verified_at"])
+            otp.save(update_fields=["is_used"])
             return Response(
                 {"detail": "Maximum OTP attempts exceeded."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -683,12 +691,14 @@ class DeliveryOTPVerifyView(APIView):
 
         if not check_password(serializer.validated_data["otp"], otp.otp_hash):
             otp.attempt_count += 1
-            otp.save(update_fields=["attempt_count"])
             if otp.attempt_count >= MAX_OTP_ATTEMPTS:
+                otp.is_used = True
+                otp.save(update_fields=["attempt_count", "is_used"])
                 return Response(
                     {"detail": "Maximum OTP attempts exceeded."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            otp.save(update_fields=["attempt_count"])
             return Response(
                 {"detail": "Invalid OTP."},
                 status=status.HTTP_400_BAD_REQUEST,

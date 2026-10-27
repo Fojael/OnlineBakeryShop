@@ -1,215 +1,93 @@
 import { NavLink } from "react-router-dom";
+import "./Sidebar.css";
 
-const Sidebar = () => {
+const navigationSections = [
+    [
+        { label: "Dashboard", to: "/admin/dashboard" },
+        { label: "Category Management", to: "/admin/categories" },
+        { label: "Product Management", to: "/admin/products" },
+        { label: "Inventory", to: "/admin/inventory" },
+        { label: "Supplier Management", to: "/admin/suppliers" },
+        { label: "Stock Replenishment", to: "/admin/replenishments" },
+        { label: "Customer Management", to: "/admin/customers" },
+    ],
+    [
+        { label: "Order Management", to: "/admin/orders" },
+        { label: "Create Offline Sale", to: "/admin/offline-sales" },
+        { label: "Offline Sales History", to: "/admin/offline-sales/history" },
+        { label: "Delivery Management", to: "/admin/delivery" },
+        { label: "Rider Management", to: "/admin/riders" },
+    ],
+    [
+        { label: "Payment Management", to: "/admin/payments" },
+        { label: "Refunds", to: "/admin/refunds" },
+        { label: "Sales Reports", to: "/admin/reports" },
+        { label: "AI Prediction", to: "/admin/ai-prediction" },
+        { label: "Notifications", to: "/admin/notifications" },
+        { label: "Profile", to: "/admin/profile" },
+    ],
+];
+
+const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     const linkClass = ({ isActive }) =>
-        `nav-link ${
-            isActive
-                ? "active bg-primary text-white rounded"
-                : "text-white"
-        }`;
+        `nav-link ${isActive ? "active bg-primary text-white rounded" : "text-white"}`;
 
     return (
-        <div
-            className="bg-dark text-white p-3"
-            style={{
-                width: "260px",
-                minHeight: "100vh",
-            }}
-        >
-            <h4 className="mb-3 fw-bold">
-                Admin Dashboard
-            </h4>
+        <>
+            {isOpen && (
+                <button
+                    type="button"
+                    className="admin-sidebar-backdrop d-md-none"
+                    aria-label="Close admin navigation"
+                    onClick={onClose}
+                />
+            )}
 
-            <hr className="border-secondary" />
-
-            <ul className="nav flex-column">
-
-                {/* Dashboard */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/dashboard"
-                        className={linkClass}
+            <aside
+                id="admin-sidebar"
+                className={`admin-sidebar bg-dark text-white p-3${isOpen ? " is-open" : ""}`}
+                aria-label="Admin navigation"
+            >
+                <div className="d-flex align-items-center justify-content-between">
+                    <h4 className="mb-3 fw-bold">Admin Dashboard</h4>
+                    <button
+                        type="button"
+                        className="btn btn-link text-white d-md-none mb-3"
+                        aria-label="Close admin navigation"
+                        onClick={onClose}
                     >
-                        Dashboard
-                    </NavLink>
-                </li>
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                    </button>
+                </div>
 
-                {/* Products */}
+                <hr className="border-secondary" />
 
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/categories"
-                        className={linkClass}
-                    >
-                        Category Management
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/products"
-                        className={linkClass}
-                    >
-                        Product Management
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/inventory"
-                        className={linkClass}
-                    >
-                        Inventory
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/suppliers"
-                        className={linkClass}
-                    >
-                        Supplier Management
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/replenishments"
-                        className={linkClass}
-                    >
-                        Stock Replenishment
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/customers"
-                        className={linkClass}
-                    >
-                        Customer Management
-                    </NavLink>
-                </li>
-
-                <hr className="border-secondary my-3" />
-
-                {/* Orders */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/orders"
-                        className={linkClass}
-                    >
-                        Order Management
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/offline-sales"
-                        className={linkClass}
-                    >
-                        Create Offline Sale
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/offline-sales/history"
-                        className={linkClass}
-                    >
-                        Offline Sales History
-                    </NavLink>
-                </li>
-
-                {/* Delivery */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/delivery"
-                        className={linkClass}
-                    >
-                        Delivery Management
-                    </NavLink>
-                </li>
-
-                {/* Riders */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/riders"
-                        className={linkClass}
-                    >
-                        Rider Management
-                    </NavLink>
-                </li>
-
-                <hr className="border-secondary my-3" />
-
-                {/* Payments */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/payments"
-                        className={linkClass}
-                    >
-                        Payment Management
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/refunds"
-                        className={linkClass}
-                    >
-                        Refunds
-                    </NavLink>
-                </li>
-
-                {/* Reports */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/reports"
-                        className={linkClass}
-                    >
-                        Sales Reports
-                    </NavLink>
-                </li>
-
-                {/* AI */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/ai-prediction"
-                        className={linkClass}
-                    >
-                        AI Prediction
-                    </NavLink>
-                </li>
-               
-                {/* Notifications */}
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/notifications"
-                        className={linkClass}
-                    >
-                        Notifications
-                    </NavLink>
-                </li>
-
-                <li className="nav-item mb-1">
-                    <NavLink
-                        to="/admin/profile"
-                        className={linkClass}
-                    >
-                        Profile
-                    </NavLink>
-                </li>
-
-            </ul>
-        </div>
+                <nav aria-label="Admin pages">
+                    <ul className="nav flex-column">
+                        {navigationSections.map((section, sectionIndex) => (
+                            <li className="admin-sidebar__section" key={section[0].to}>
+                                {sectionIndex > 0 && (
+                                    <hr className="border-secondary my-3" />
+                                )}
+                                <ul className="nav flex-column">
+                                    {section.map(({ label, to }) => (
+                                        <li className="nav-item mb-1" key={to}>
+                                            <NavLink
+                                                to={to}
+                                                className={linkClass}
+                                                onClick={onClose}
+                                            >
+                                                {label}
+                                            </NavLink>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                </nav>
+            </aside>
+        </>
     );
 };
 

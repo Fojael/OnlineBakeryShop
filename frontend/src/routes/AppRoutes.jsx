@@ -693,15 +693,6 @@ const AppRoutes = () => {
             />
 
             <Route
-                path="/admin/delivery-management"
-                element={
-                    <ProtectedAdminRoute>
-                        <DeliveryManagement />
-                    </ProtectedAdminRoute>
-                }
-            />
-
-            <Route
                 path="/admin/rider-management"
                 element={
                     <ProtectedAdminRoute>
@@ -965,4 +956,3 @@ const AppRoutes = () => {
 };
 
 export default AppRoutes;
-
